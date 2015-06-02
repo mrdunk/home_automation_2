@@ -1,0 +1,29 @@
+
+Install packages.
+
+on a client:
+  dbus
+  avahi-utils
+  lua-mosquitto  (if possible)
+  mosquitto-client (mosquitto-client-nossl if short on space.)
+
+on a server:
+  mosquitto
+
+Make sure these are run at reboot:
+# /etc/init.d/dbus enable
+# /etc/init.d/avahi-daemon enable
+
+
+Test avahi on OpenWRT with
+# avahi-browse -a
+
+Test mosquitto with this on the OpenWRT box
+# /usr/bin/mosquitto_sub -v -h $MQTT_SERVER -p 1883 -t homeautomation/lighting/#
+and this anywhere:
+$ mosquitto_pub -h $MQTT_SERVER -t homeautomation/lighting/kitchen/all -m "#000"
+
+
+
+Uploading scripts
+$ scp fs_root/usr/share/homeautomation/homeautomation*.lua  root@192.168.192.9:/usr/share/homeautomation/ && scp fs_root/bin/pubsub.lua root@192.168.192.9:/bin/

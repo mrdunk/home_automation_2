@@ -1,0 +1,37 @@
+This module turns a GPIO pin into a PWM pin using software timers.
+That means it's inefficient compared to hardware PWM but that may be acceptable if CPU usage is expected to be low on the system.
+
+
+Building:
+Modify the Makefile so the OPENWRT variable points to your openwrt build enviroment and run "make".
+
+
+Install:
+scp the new module to your OpenWRT box:
+  $ scp gpio-pwm.ko root@$HOST_IP:/lib/modules/3.18.11/
+
+Test load the module on the OpenWRT machine:
+  # insmod gpio-pwm.ko
+  # dmesg
+
+Auto load the module at boot time (after everyhting else due to "60" being relatively high number.)
+  # echo gpio-pwm > /etc/modules.d/60-gpio-pwm
+
+
+Usage:
+When you load the module the following files are created:
+  /sys/class/sw_pwm/register_gpio
+and
+  /sys/class/sw_pwm/unregister_gpio
+
+To register an IO pin with the module do the following:
+  $ echo $GPIO_PIN_NUMBER > /sys/class/sw_pwm/register_gpio
+You will now see a new file in /sys/class/sw_pwm/ matching the GPIO pin number.
+
+To set the pin doing GPIO stuff:
+  $ echo $PWM_VALUE > /sys/class/sw_pwm/pwm_$GPIO_PIN_NUMBER
+
+You can see what pins are registered and their PWM values by reading /sys/class/sw_pwm/register_gpio:
+  $ cat /sys/class/sw_pwm/register_gpio
+
+You can register a maximum number of GPIO pins defined by MAX_SW_PWMS.
