@@ -28,8 +28,11 @@ To register an IO pin with the module do the following:
   $ echo $GPIO_PIN_NUMBER > /sys/class/sw_pwm/register_gpio
 You will now see a new file in /sys/class/sw_pwm/ matching the GPIO pin number.
 
-To set the pin doing GPIO stuff:
+To set the pin doing PWM stuff:
   $ echo $PWM_VALUE > /sys/class/sw_pwm/pwm_$GPIO_PIN_NUMBER
+$PWM_VALUE should be between 0 and 255.
+0 = 0% duty cycle (off).
+255 = 100% duty cycle.
 
 You can see what pins are registered and their PWM values by reading /sys/class/sw_pwm/register_gpio:
   $ cat /sys/class/sw_pwm/register_gpio

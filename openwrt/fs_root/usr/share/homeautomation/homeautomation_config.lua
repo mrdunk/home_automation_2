@@ -44,7 +44,7 @@ function homeautomation_config.read(file_name)
       if label then
         if label == "id" then
           if current_id then
-            configuration[current_id] = current_object
+            homeautomation_config.configuration[current_id] = current_object
           end
           current_id = value
           current_object = {}

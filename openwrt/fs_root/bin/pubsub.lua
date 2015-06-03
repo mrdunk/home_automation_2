@@ -82,6 +82,8 @@ end
 mqtt_client.ON_MESSAGE = function(mid, topic, payload)
   print(mid, topic, payload)
 
+  if topic == nil then return end
+
   local room = string.match(topic, "^[%w_%-]+/[%w_%-]+/([%w_%-]+)")
   local id = string.match(topic, "^[%w_%-]+/[%w_%-]+/[%w_%-]+/([%w_%-]+)")
   local command = string.match(topic, "^[%w_%-]+/[%w_%-]+/[%w_%-]+/[%w_%-]+/([%w_%-]+)")
@@ -98,7 +100,7 @@ mqtt_client.ON_MESSAGE = function(mid, topic, payload)
       -- Someone out there wants to know about connected nodes.
       local value  -- TODO Read current setting from gpio.
       print("I am ", target_data["room"], target_id, value)
-      mqtt_client:publish("homeautomation/lighting/advertise", target_data["room"] .. "/" .. target_id)
+      mqtt_client:publish("homeautomation/lighting/advertise", target_data["room"] .. "/" .. target_id .. "/" .. "TODO_value")
     end
 
   end

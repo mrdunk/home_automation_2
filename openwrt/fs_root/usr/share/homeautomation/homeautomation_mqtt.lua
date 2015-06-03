@@ -81,7 +81,7 @@ function mqtt:loop()
       if line then 
         local topic
         local payload
-        topic, payload = string.match(line, '^%s*([%w/+#]+)%s+([%w#]+)%s*$')
+        topic, payload = string.match(line, '^%s*([%w/+#]+)%s+([%w#%s]+)%s*$')
         self.ON_MESSAGE(0, topic, payload)
       else
         filesize = filehandle:seek("end")
