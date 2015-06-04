@@ -1,6 +1,32 @@
 body {
   background: #333;
-  color: #999;
+  color: #bbb;
   font: 300 100.01%/1.2 "Segoe UI", "Helvetica Neue", Helvetica, "Arial Unicode", Arial, sans-serif;
-  margin: 0 30px;
+  margin: 0 2%;
+}
+
+button-show-content {
+  float: left;
+  margin: 0.3em;
+  border-style: solid;
+  border-width: 1px;
+}
+
+.container-name {
+  margin: 0.3em;
+}
+
+draw-container {
+  background: #444;
+  width: 96%;
+  border-style: solid;
+  border-width: 1px;
+  display: block;
+  float: left;
+  clear: both;
+}
+
+#log {
+  position: absolute;
+  top: 50%;
 }

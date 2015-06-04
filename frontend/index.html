@@ -1,17 +1,38 @@
 <!DOCTYPE html>
+
 <html lang="en">
   <head>
     <meta charset="utf-8">
-    <title>Color Picker — Raphaël</title>
+    <title>HomeAutomation - Lighting.</title>
     <link rel="stylesheet" type="text/css" href="style.css">
+    <link rel="stylesheet" type="text/css" href="3rdparty/x-tag-components.min.css">
     <script src="3rdparty/mqttws31.js" type="text/javascript"></script>
+    <script src="3rdparty/x-tag-components.min.js" type="text/javascript"></script>
+
     <script src="config.js" type="text/javascript"></script>
     <script src="main.js" type="text/javascript"></script>
+    <script src="xtags.js" type="text/javascript"></script>
   </head>
   <body>
     <div id="content">
-      test
     </div>
-    <ul id="log"></ul>
+    <draw-container id="log"></draw-container>
   </body>
 </html>
+
+
+<template id="button-show-content">
+  <div class="button-show-content-show">+</div>
+  <div class="button-show-content-hide" style="display:none;">-</div>
+</template>
+
+<template id="draw-container">
+  <button-show-content></button-show-content>
+  <div class="container-name"></div>
+  <ul class="elements" style="display:none;"></ul>
+</template>
+
+<template id="draw-element">
+  <li class="element-name">blablabla</li>
+</template>
+
