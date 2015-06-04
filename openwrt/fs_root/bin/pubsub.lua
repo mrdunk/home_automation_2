@@ -74,7 +74,7 @@ mqtt_client.ON_CONNECT = function()
       mqtt_client:subscribe("homeautomation/lighting/" .. target_data["room"] .. "/all/#")
       mqtt_client:subscribe("homeautomation/lighting/all/" .. target_id .. "/#")
 
-      mqtt_client:publish("homeautomation/lighting/advertise", target_data["room"] .. "/" .. target_id)
+      mqtt_client:publish("homeautomation/lighting/advertise", target_data["room"] .. "/" .. target_id .. "/" .. gpio.read(target_data.type, target_data.io))
     end
   end
 end
@@ -96,11 +96,12 @@ mqtt_client.ON_MESSAGE = function(mid, topic, payload)
     elseif command == 'set' then
       -- Set lights on/off/etc.
       gpio.set(target_data.type, target_data.io, payload)
+      mqtt_client:publish("homeautomation/lighting/advertise", target_data["room"] .. "/" .. target_id .. "/" .. gpio.read(target_data.type, target_data.io))
     elseif command == 'solicit' then
       -- Someone out there wants to know about connected nodes.
       local value  -- TODO Read current setting from gpio.
       print("I am ", target_data["room"], target_id, value)
-      mqtt_client:publish("homeautomation/lighting/advertise", target_data["room"] .. "/" .. target_id .. "/" .. "TODO_value")
+      mqtt_client:publish("homeautomation/lighting/advertise", target_data["room"] .. "/" .. target_id .. "/" .. gpio.read(target_data.type, target_data.io))
     end
 
   end

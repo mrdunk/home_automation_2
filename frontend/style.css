@@ -28,5 +28,5 @@ draw-container {
 
 #log {
   position: absolute;
-  top: 50%;
+  bottom: 0;
 }

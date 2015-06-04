@@ -114,6 +114,7 @@ Mqtt.onMessageArrived = function(message) {
         var new_device = document.createElement('draw-element');
         room_element.getElementsByClassName("elements")[0].appendChild(new_device);
         new_device.getElementsByClassName("element-name")[0].innerHTML = device;
+        new_device.getElementsByClassName("element-value")[0].innerHTML = value;
         xtag.addClass(new_device, "devices");
         xtag.addClass(new_device, device);
       }
@@ -130,6 +131,7 @@ Mqtt.onMessageArrived = function(message) {
       var new_device = document.createElement('draw-element');
       new_room.getElementsByClassName("elements")[0].appendChild(new_device);
       new_device.getElementsByClassName("element-name")[0].innerHTML = device;
+      new_device.getElementsByClassName("element-value")[0].innerHTML = value;
       xtag.addClass(new_device, "devices");
       xtag.addClass(new_device, device);
   }

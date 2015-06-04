@@ -110,7 +110,47 @@ local function ControlOnoff(io_pin, value)
     f:write(value)
     f:close()
   end
+end
 
+local function ReadPWM(io_pin)
+  local filename_io = "/sys/class/sw_pwm/pwm_" .. io_pin
+  if file_exists(filename_io) then
+    local file_content = "";
+    for line in io.lines(filename_io) do
+      if line ~= nil then
+        file_content = file_content .. line
+      end
+    end
+    return string.match(file_content, "^.*pwm:%s*(%d*)$")
+  end
+  return "false"
+end
+
+local function ReadRGB(io_pins)
+  local red_io
+  local green_io
+  local blue_io
+  red_io, green_io, blue_io = string.match(io_pins, "^%s*(%d+)%s*,%s*(%d+)%s*,%s*(%d+)%s*$")
+
+  local return_value = ""
+  return_value = return_value .. "R: " .. ReadPWM(red_io) .. ","
+  return_value = return_value .. "G: " .. ReadPWM(green_io) .. ","
+  return_value = return_value .. "B: " .. ReadPWM(blue_io)
+
+  return return_value
+end
+
+local function ReadOnoff(io_pin)
+  if file_exists(io_pin) then
+    local f = assert(io.open(io_pin, "r"))
+    local return_value = ""
+    for line in io.lines(io_pin) do
+      return_value = return_value .. line
+    end
+    f:close()
+    return return_value
+  end
+  return false
 end
 
 function homeautomation_gpio.set(io_type, pin, payload) 
@@ -122,6 +162,18 @@ function homeautomation_gpio.set(io_type, pin, payload)
     ControlPWM(pin, payload)
   elseif io_type == "test" then
     print("test", pin, payload)
+  end
+end
+
+function homeautomation_gpio.read(io_type, pin)
+  if io_type == "rgb" then
+    return ReadRGB(pin, payload)
+  elseif io_type == "onoff" then
+    return ReadOnoff(pin, payload)
+  elseif io_type == "pwm" then
+    return ReadPWM(pin, payload)
+  elseif io_type == "test" then
+    return "test_value"
   end
 end
 
