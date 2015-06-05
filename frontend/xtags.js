@@ -39,8 +39,31 @@ xtag.register('draw-container', {
       var template = document.getElementById('draw-container').innerHTML;
       xtag.innerHTML(this, template);
 
-      this.appendChild = function(new_child){
-        this.getElementsByClassName("draw-elements")[0].appendChild(new_child);
+      this.getElement = function(element_name){
+        var elements = this.getElementsByTagName('draw-element');
+        for(var i=0; i < elements.length; i++){
+          if(xtag.hasClass(elements[i], element_name)){
+            return elements[i];
+          }
+        }
+      }
+
+      this.setElement = function(element_name, element_value){
+        var element = this.getElement(element_name);
+        if(element){
+          // already exists.
+        } else{
+          var element = document.createElement('draw-element');
+          this.getElementsByClassName("draw-elements")[0].appendChild(element);
+          element.element_name = element_name;
+        }
+        element.element_value = element_value;
+        if(element_value === "0" || element_value === "R: 0,G: 0,B: 0,"){
+          console.log("*** ", element_value);
+          element.switch = false;
+        } else {
+          element.switch = true;
+        }
       }
     }
   },
@@ -64,6 +87,12 @@ xtag.register('draw-container', {
              xtag.addClass(this, name);
              this.getElementsByClassName("draw-name")[0].innerHTML = name;
              this.title = name;
+      }
+    },
+    'switch': {
+      set: function(state){
+        var switchIcon = this.getElementsByClassName("light-switch")[0];
+        switchIcon.switched = state;
       }
     }
   }
@@ -92,6 +121,12 @@ xtag.register('draw-element', {
         xtag.addClass(this, "__device");
         xtag.addClass(this, name);
         this.title = name;
+      }
+    },
+    'switch': {
+      set: function(state){
+        var switchIcon = this.getElementsByTagName("light-switch")[0];
+        switchIcon.switched = state;
       }
     }
   }
@@ -147,7 +182,7 @@ xtag.register('light-switch', {
       }
 
       console.log(this.room, this.device);
-      //Mqtt.send(send_data, 'homeautomation/lighting/all/all/set');
+      Mqtt.send(send_data, 'homeautomation/lighting/all/all/set');
       this.switched = !this.on_off;  // To trigger accessors.switched.set.
     }
   }

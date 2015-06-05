@@ -39,7 +39,7 @@ Mqtt.MQTTconnect = function() {
       onSuccess: Mqtt.onConnect,
       onFailure: function (message) {
                  console.log("Connection failed: " + message.errorMessage + "Retrying");
-                 setTimeout(MQTTconnect, Mqtt.reconnectTimeout);
+                 setTimeout(Mqtt.MQTTconnect, Mqtt.reconnectTimeout);
       }
   };
 
@@ -84,41 +84,16 @@ Mqtt.onMessageArrived = function(message) {
   for (var i=0, room_element; room_element = rooms[i]; i++) {
     if (xtag.hasClass(room_element, room)){
       found_room = room;
-
-      var devices = room_element.getElementsByClassName("__devices");
-      for (var i=0, device_element; device_element = devices[i]; i++) {
-        if (xtag.hasClass(device_element, device)){
-          found_device = device;
-          device_element.element_value = value;
-          break;
-        }
-      }
-
-      if (found_device === false) {
-        var new_device = document.createElement('draw-element');
-        room_element.appendChild(new_device);
-        new_device.element_name = device;
-        new_device.element_value = value;
-        //xtag.addClass(new_device, "__devices");
-        //xtag.addClass(new_device, device);
-      }
+      room_element.setElement(device, value)
       break;
     }
   }
   if (found_room === false) {
-      var new_room = document.createElement('draw-container');
-      content_element.appendChild(new_room);
-      //new_room.getElementsByClassName("draw-name")[0].innerHTML = room;
-      new_room.draw_name = room;
-      //xtag.addClass(new_room, "__rooms");
-      //xtag.addClass(new_room, room);
+    var new_room = document.createElement('draw-container');
+    content_element.appendChild(new_room);
+    new_room.draw_name = room;
 
-      var new_device = document.createElement('draw-element');
-      new_room.appendChild(new_device);
-      new_device.element_name = device;
-      new_device.element_value = value;
-      //xtag.addClass(new_device, "__devices");
-      //xtag.addClass(new_device, device);
+    new_room.setElement(device, value)
   }
 };
 
