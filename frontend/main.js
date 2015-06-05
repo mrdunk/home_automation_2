@@ -1,30 +1,15 @@
-var Data = {};
-
-Data.init = function() {
-  Data.device_tree_ = {};
-}
-
-Data.add = function(room, device, value){
-  console.log(room, device, value);
-
-  if (!Data.device_tree_[room]) {
-    Data.device_tree_[room] = {};
-  }
-  Data.device_tree_[room][device] = value;
-}
-
 
 
 var Page = {}
 
 Page.init = function() {
   Page.running_ = true;
-  Page.fps_ = 1;
-  Page.log_ = document.getElementById("log").getElementsByClassName("elements")[0];
+  Page.fps_ = 10;
+  Page.log_ = document.getElementById("log").getElementsByClassName("draw-elements")[0];
   Page.topics = {};
   Page.topics.solicit_all = 'homeautomation/lighting/all/all/solicit';
 
-  document.getElementById("log").getElementsByClassName("container-name")[0].innerHTML = "Log";
+  document.getElementById("log").getElementsByClassName("draw-name")[0].innerHTML = "Log";
 }
 
 Page.run = function() {
@@ -91,32 +76,31 @@ Mqtt.onMessageArrived = function(message) {
   var device = payload.split("/")[1]
   var value = payload.split("/")[2]
 
-  Data.add(room, device, value);
 
-  var rooms = document.body.getElementsByClassName("rooms");
+  var rooms = document.body.getElementsByClassName("__rooms");
   var found_room = false;
   var found_device = false;
   var content_element = document.getElementById("content");
   for (var i=0, room_element; room_element = rooms[i]; i++) {
     if (xtag.hasClass(room_element, room)){
       found_room = room;
-      console.log("room: ", room, " exists!");
 
-      var devices = room_element.getElementsByClassName("devices");
+      var devices = room_element.getElementsByClassName("__devices");
       for (var i=0, device_element; device_element = devices[i]; i++) {
         if (xtag.hasClass(device_element, device)){
           found_device = device;
+          device_element.element_value = value;
           break;
         }
       }
 
       if (found_device === false) {
         var new_device = document.createElement('draw-element');
-        room_element.getElementsByClassName("elements")[0].appendChild(new_device);
-        new_device.getElementsByClassName("element-name")[0].innerHTML = device;
-        new_device.getElementsByClassName("element-value")[0].innerHTML = value;
-        xtag.addClass(new_device, "devices");
-        xtag.addClass(new_device, device);
+        room_element.appendChild(new_device);
+        new_device.element_name = device;
+        new_device.element_value = value;
+        //xtag.addClass(new_device, "__devices");
+        //xtag.addClass(new_device, device);
       }
       break;
     }
@@ -124,16 +108,17 @@ Mqtt.onMessageArrived = function(message) {
   if (found_room === false) {
       var new_room = document.createElement('draw-container');
       content_element.appendChild(new_room);
-      new_room.getElementsByClassName("container-name")[0].innerHTML = room;
-      xtag.addClass(new_room, "rooms");
-      xtag.addClass(new_room, room);
+      //new_room.getElementsByClassName("draw-name")[0].innerHTML = room;
+      new_room.draw_name = room;
+      //xtag.addClass(new_room, "__rooms");
+      //xtag.addClass(new_room, room);
 
       var new_device = document.createElement('draw-element');
-      new_room.getElementsByClassName("elements")[0].appendChild(new_device);
-      new_device.getElementsByClassName("element-name")[0].innerHTML = device;
-      new_device.getElementsByClassName("element-value")[0].innerHTML = value;
-      xtag.addClass(new_device, "devices");
-      xtag.addClass(new_device, device);
+      new_room.appendChild(new_device);
+      new_device.element_name = device;
+      new_device.element_value = value;
+      //xtag.addClass(new_device, "__devices");
+      //xtag.addClass(new_device, device);
   }
 };
 
@@ -146,12 +131,7 @@ Mqtt.send = function(data, send_topic) {
 
 
 window.onload = function() {
-  Data.init();
   Page.init();
   Page._intervalId_ = setInterval(Page.run, 1000 / Page.fps_);
   Mqtt.MQTTconnect();
-
-  //var thing = document.createElement('draw-container');
-  //document.body.appendChild(thing);
-
 };

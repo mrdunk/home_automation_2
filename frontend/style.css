@@ -8,25 +8,60 @@ body {
 button-show-content {
   float: left;
   margin: 0.3em;
-  border-style: solid;
-  border-width: 1px;
 }
 
-.container-name {
+.fa {
+  vertical-align: middle;
+}
+
+light-switch {
+  float: right;
+  vertical-align: middle;
   margin: 0.3em;
 }
 
-draw-container {
+.draw-header {
   background: #444;
+  overflow: hidden;
+  border: 1px solid;
+  margin-bottom: 0;
+}
+
+.draw-name {
+  float: left;
+  margin: 0.3em;
+}
+
+.draw-elements {
   width: 96%;
-  border-style: solid;
-  border-width: 1px;
+  background: #444;
+  margin-top: 0;
+  margin-left: 3em;
+}
+
+draw-container {
+  background: #333;
+  width: 96%;
   display: block;
   float: left;
   clear: both;
 }
 
+.draw-element-content {
+  border: 1px solid;
+  overflow: hidden;
+}
+
+.element-content {
+  float: left;
+  margin: 0.3em;
+}
+
 #log {
   position: absolute;
   bottom: 0;
+}
+
+draw-element {
+  clear: both;
 }
