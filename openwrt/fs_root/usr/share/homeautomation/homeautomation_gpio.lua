@@ -68,9 +68,17 @@ local function ControlRGB(io_pins, value)
   local red_value
   local green_value
   local blue_value
-  value = string.match(value, "^(#%x+)$")
+  --value = string.match(value, "^(#%x+)$")
   if value == nil then
     return
+  elseif value == 'off' then
+    red_value = 0
+    green_value = 0
+    blue_value = 0
+  elseif value == 'on' then
+    red_value = 'ff'
+    green_value = 'ff'
+    blue_value = 'ff'
   elseif string.len(value) == 7 then
     red_value, green_value, blue_value = string.match(value, "^#(%w%w)(%w%w)(%w%w)$")
   elseif string.len(value) == 4 then
@@ -89,9 +97,17 @@ end
 
 local function ControlOnoff(io_pin, value)
   --print("ControlOnoff", io_pin, value)
-  value = string.match(value, "^(#%x+)$")
+  --value = string.match(value, "^(#%x+)$")
   if value == nil then
     return
+  elseif value == 'off' then
+    red_value = 0
+    green_value = 0
+    blue_value = 0
+  elseif value == 'on' then
+    red_value = 'ff'
+    green_value = 'ff'
+    blue_value = 'ff'
   elseif string.len(value) == 7 then
     red_value, green_value, blue_value = string.match(value, "^#(%w%w)(%w%w)(%w%w)$")
   elseif string.len(value) == 4 then
@@ -153,7 +169,9 @@ local function ReadOnoff(io_pin)
   return false
 end
 
-function homeautomation_gpio.set(io_type, pin, payload) 
+homeautomation_gpio.test_data_ = {}
+
+function homeautomation_gpio.set(io_type, pin, payload)
   if io_type == "rgb" then
     ControlRGB(pin, payload)
   elseif io_type == "onoff" then
@@ -161,7 +179,7 @@ function homeautomation_gpio.set(io_type, pin, payload)
   elseif io_type == "pwm" then
     ControlPWM(pin, payload)
   elseif io_type == "test" then
-    print("test", pin, payload)
+    homeautomation_gpio.test_data_[pin] = payload
   end
 end
 
@@ -173,7 +191,10 @@ function homeautomation_gpio.read(io_type, pin)
   elseif io_type == "pwm" then
     return ReadPWM(pin, payload)
   elseif io_type == "test" then
-    return "test_value"
+    if homeautomation_gpio.test_data_[pin] ~= nil then
+      return homeautomation_gpio.test_data_[pin]
+    end
+      return "test_empty"
   end
 end
 

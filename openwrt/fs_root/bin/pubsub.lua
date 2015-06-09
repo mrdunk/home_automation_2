@@ -95,13 +95,17 @@ mqtt_client.ON_MESSAGE = function(mid, topic, payload)
       -- Reserved keywords. Don't do anything for these here.
     elseif command == 'set' then
       -- Set lights on/off/etc.
-      gpio.set(target_data.type, target_data.io, payload)
-      mqtt_client:publish("homeautomation/lighting/advertise", target_data["room"] .. "/" .. target_id .. "/" .. gpio.read(target_data.type, target_data.io))
+      if(room == 'all' or room == target_data["room"]) and (id == 'all' or id == target_id) then
+        gpio.set(target_data.type, target_data.io, payload)
+        mqtt_client:publish("homeautomation/lighting/advertise", target_data["room"] .. "/" .. target_id .. "/" .. gpio.read(target_data.type, target_data.io))
+      end
     elseif command == 'solicit' then
       -- Someone out there wants to know about connected nodes.
-      local value  -- TODO Read current setting from gpio.
-      print("I am ", target_data["room"], target_id, value)
-      mqtt_client:publish("homeautomation/lighting/advertise", target_data["room"] .. "/" .. target_id .. "/" .. gpio.read(target_data.type, target_data.io))
+      if(room == 'all' or room == target_data["room"]) and (id == 'all' or id == target_id) then
+        local value  -- TODO Read current setting from gpio.
+        print("I am ", target_data["room"], target_id, value)
+        mqtt_client:publish("homeautomation/lighting/advertise", target_data["room"] .. "/" .. target_id .. "/" .. gpio.read(target_data.type, target_data.io))
+      end
     end
 
   end

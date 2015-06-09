@@ -19,12 +19,14 @@ Page.exit = function() {
   clearInterval(Page._intervalId_);
 }
 
-Page.AppendToLog = function(new_content) {
+Page.AppendToLog = function(new_content, color) {
   var li = document.createElement("li");
   li.appendChild(document.createTextNode(new_content));
   Page.log_.appendChild(li)
+  if(color){
+    li.style.color = color;
+  }
 }
-
 
 
 var Mqtt = {}
@@ -84,7 +86,8 @@ Mqtt.onMessageArrived = function(message) {
   for (var i=0, room_element; room_element = rooms[i]; i++) {
     if (xtag.hasClass(room_element, room)){
       found_room = room;
-      room_element.setElement(device, value)
+      
+      room_element.setElement(device, Mqtt.ParsePayload(value));
       break;
     }
   }
@@ -93,9 +96,43 @@ Mqtt.onMessageArrived = function(message) {
     content_element.appendChild(new_room);
     new_room.draw_name = room;
 
-    new_room.setElement(device, value)
+    new_room.setElement(device, Mqtt.ParsePayload(value));
   }
 };
+
+Mqtt.ParsePayload = function(payload) {
+  return_value = {};
+
+  var key_counter = 0;
+
+  var payload_array = payload.split(',');
+
+  for (var i = 0; i < payload_array.length; i++) {
+    var key, value;
+    if(payload_array[i].split(':').length > 1) {
+      // payload in the format "R: 123,G: 456,B: 789".
+      key = payload_array[i].split(':')[0].trim();
+      value = payload_array[i].split(':')[1].trim();
+    } else {
+      key = key_counter;
+      key_counter++;
+      value = payload_array[i].trim();
+      if(value.split('#').length > 1){
+        // '#89a' type hex format.
+        value = '0x' + value.split('#')[1];
+      } else if (value === 'on') {
+        value = '0xff'
+      } else if (value === 'off') {
+        value = '0x00'
+      }
+    }
+    if(value){
+      return_value[key] = parseInt(value);
+    }
+  }
+
+  return return_value;
+}
 
 Mqtt.send = function(data, send_topic) {
   message = new Messaging.Message(data);

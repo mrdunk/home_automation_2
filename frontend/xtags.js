@@ -49,6 +49,7 @@ xtag.register('draw-container', {
       }
 
       this.setElement = function(element_name, element_value){
+        console.log(element_value);
         var element = this.getElement(element_name);
         if(element){
           // already exists.
@@ -56,13 +57,25 @@ xtag.register('draw-container', {
           var element = document.createElement('draw-element');
           this.getElementsByClassName("draw-elements")[0].appendChild(element);
           element.element_name = element_name;
+          element.element_parent = this;
         }
         element.element_value = element_value;
-        if(element_value === "0" || element_value === "R: 0,G: 0,B: 0,"){
-          console.log("*** ", element_value);
-          element.switch = false;
-        } else {
-          element.switch = true;
+
+        element.switch = false;
+        for(var k in element_value){
+          // If any color is switched on...
+          if(element_value[k]){
+            // display the switch in the "on" position for this element
+            element.switch = true;
+          }
+        }
+        // Now make sure the parent's switch is displayed correctly...
+        element.parentElement.parentElement.switch = false;
+        var peer_switches = this.getElementsByClassName('draw-elements')[0].getElementsByTagName("light-switch");
+        for(var i = 0; i < peer_switches.length; i++){
+          if(peer_switches[i].on_off){
+            element.parentElement.parentElement.switch = true;
+          }
         }
       }
     }
@@ -91,8 +104,13 @@ xtag.register('draw-container', {
     },
     'switch': {
       set: function(state){
-        var switchIcon = this.getElementsByClassName("light-switch")[0];
-        switchIcon.switched = state;
+        var switchIcon = this.getElementsByClassName('draw-header')[0].getElementsByTagName("light-switch")[0];
+        if(switchIcon){
+          switchIcon.switched = state;
+        }
+      //},
+      //get: function(){
+      //  console.log('&&&&');
       }
     }
   }
@@ -100,6 +118,7 @@ xtag.register('draw-container', {
 
 xtag.register('draw-element', {
   element_value: "",
+  //element_parent: null,
   lifecycle:{
     created: function(){
       // fired once at the time a component
@@ -107,12 +126,14 @@ xtag.register('draw-element', {
       console.log("draw-element.lifecycle.created");
       var template = document.getElementById('draw-element').innerHTML;
       xtag.innerHTML(this, template);
+
+      this.element_parent = null;
     }
   },
   accessors: {
     'element_value': {
       set: function(value){
-        this.getElementsByClassName("element-value")[0].innerHTML = value;
+        this.getElementsByClassName("element-value")[0].innerHTML = JSON.stringify(value);
       }
     },
     'element_name': {
@@ -165,10 +186,10 @@ xtag.register('light-switch', {
       var send_data;
       if(this.on_off){
         // Currently on. will be turning off.
-        send_data = '#000';
+        send_data = 'off';
       } else {
         // Currently off. will be turning on.
-        send_data = '#fff';
+        send_data = 'on';
       }
 
       if(!this.room){
@@ -181,8 +202,9 @@ xtag.register('light-switch', {
         }
       }
 
-      console.log(this.room, this.device);
-      Mqtt.send(send_data, 'homeautomation/lighting/all/all/set');
+      Mqtt.send(send_data, 'homeautomation/lighting/' + this.room + '/' + this.device + '/set');
+      Page.AppendToLog('homeautomation/lighting/' + this.room + '/' + this.device + '/set = ' + send_data, 'RED')
+
       this.switched = !this.on_off;  // To trigger accessors.switched.set.
     }
   }
