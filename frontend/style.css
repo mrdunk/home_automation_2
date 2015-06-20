@@ -34,9 +34,11 @@ light-switch {
 
 .draw-elements {
   width: 96%;
+  max-height: 200px;
   background: #444;
   margin-top: 0;
   margin-left: 3em;
+  overflow-y: auto;
 }
 
 draw-container {

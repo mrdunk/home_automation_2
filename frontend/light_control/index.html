@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="en">
+    <head>
+        <meta charset="utf-8">
+        <title>Color Picker — Raphaël</title>
+        <link rel="stylesheet" type="text/css" href="style.css">
+        <script src="3rdparty/raphael.js"></script>
+        <script src="3rdparty/colorpicker.js"></script>
+        <script src="3rdparty/mqttws31.js" type="text/javascript"></script>
+        <script src="config.js" type="text/javascript"></script>
+        <script>
+        var cp, out, drag_timer, mqtt_timer, timing;
+        Raphael(function () {
+            var vr = document.getElementById("vr"),
+                vg = document.getElementById("vg"),
+                vb = document.getElementById("vb"),
+                vh = document.getElementById("vh"),
+                vh2 = document.getElementById("vh2"),
+                vs = document.getElementById("vs"),
+                vs2 = document.getElementById("vs2"),
+                vv = document.getElementById("vv"),
+                vl = document.getElementById("vl"),
+                clr = Raphael.color("#eee");
+            out = document.getElementById("output");
+            cp = Raphael.colorpicker(10, 50, 300, "#eee");
+
+            vr.innerHTML = clr.r;
+            vg.innerHTML = clr.g;
+            vb.innerHTML = clr.b;
+            vh.innerHTML = vh2.innerHTML = Math.round(clr.h * 360) + "°";
+            vs.innerHTML = vs2.innerHTML = Math.round(clr.s * 100) + "%";
+            vv.innerHTML = Math.round(clr.v * 100) + "%";
+            vl.innerHTML = Math.round(clr.l * 100) + "%";
+            out.onkeyup = function () {
+                cp.color(this.value);
+            };
+            // assigning onchange event handler
+            var onchange = function (item) {
+                return function (clr) {
+                    out.value = clr.replace(/^#(.)\1(.)\2(.)\3$/, "#$1$2$3");
+                    item.color(clr);
+                    out.style.background = clr;
+                    out.style.color = Raphael.rgb2hsb(clr).b < .5 ? "#fff" : "#000";
+                    clr = Raphael.color(clr);
+                    vr.innerHTML = clr.r;
+                    vg.innerHTML = clr.g;
+                    vb.innerHTML = clr.b;
+                    vh.innerHTML = vh2.innerHTML = Math.round(clr.h * 360) + "°";
+                    vs.innerHTML = vs2.innerHTML = Math.round(clr.s * 100) + "%";
+                    vv.innerHTML = Math.round(clr.v * 100) + "%";
+                    vl.innerHTML = Math.round(clr.l * 100) + "%";
+
+                    //window.clearTimeout(timer);
+                    if (!timing){
+                        timing = true;
+                        timer = setTimeout(function(){
+                            timing = false;
+                            send(out.value);
+                        }, 100)
+                    }
+                };
+            };
+            cp.onchange = onchange(cp);
+        });
+
+    var mqtt;
+    var reconnectTimeout = 2000;
+
+    function MQTTconnect() {
+        mqtt = new Messaging.Client(
+                        host,
+                        port,
+                        "web_" + parseInt(Math.random() * 100,
+                        10));
+        var options = {
+            timeout: 3,
+            useSSL: useTLS,
+            cleanSession: cleansession,
+            onSuccess: onConnect,
+            onFailure: function (message) {
+                $('#status').val("Connection failed: " + message.errorMessage + "Retrying");
+                setTimeout(MQTTconnect, reconnectTimeout);
+            }
+        };
+
+        mqtt.onConnectionLost = onConnectionLost;
+        mqtt.onMessageArrived = onMessageArrived;
+
+        if (username != null) {
+            options.userName = username;
+            options.password = password;
+        }
+        console.log("Host="+ host + ", port=" + port + " TLS = " + useTLS + " username=" + username + " password=" + password);
+        mqtt.connect(options);
+    }
+
+    function onConnect() {
+        console.log('Connected to ' + host + ':' + port);
+        mqtt.subscribe(topic, {qos: 0});
+        console.log('topic: ' + topic);
+    }
+
+    function onConnectionLost(response) {
+        setTimeout(MQTTconnect, reconnectTimeout);
+        console.log("connection lost: " + response.errorMessage + ". Reconnecting");
+    };
+
+    function onMessageArrived(message) {
+        var topic = message.destinationName;
+        var payload = message.payloadString;
+
+        console.log('<li>' + topic + ' = ' + payload + '</li>');
+
+        window.clearTimeout(mqtt_timer);
+        mqtt_timer = setTimeout(function(){
+                console.log('.');
+                cp.color(payload);
+        }, 1000)
+        out.value = payload;
+    };
+
+    function send(data) {
+        message = new Messaging.Message(data);
+        message.destinationName = 'homeautomation/lighting/kitchen/worktop_1/set';  //topic;
+        message.qos = 0;
+        mqtt.send(message);
+    };
+
+//    $(document).ready(function() {
+        MQTTconnect();
+//    });
+
+        </script>
+    </head>
+    <body>
+        <div id="content">
+            <h1 id="h1">Color Picker</h1>
+            <table id="values">
+                <tr>
+                    <th>R</th>
+                    <td id="vr"></td>
+                    <th>H</th>
+                    <td id="vh"></td>
+                    <th>H</th>
+                    <td id="vh2"></td>
+                </tr>
+                <tr>
+                    <th>G</th>
+                    <td id="vg"></td>
+                    <th>S</th>
+                    <td id="vs"></td>
+                    <th>S</th>
+                    <td id="vs2"></td>
+                </tr>
+                <tr>
+                    <th>B</th>
+                    <td id="vb"></td>
+                    <th>B</th>
+                    <td id="vv"></td>
+                    <th>L</th>
+                    <td id="vl"></td>
+                </tr>
+            </table>
+            <input type="text" id="output" value="#eeeeee">
+            <p id="copy">
+                Powered by <a href="http://raphaeljs.com/">Raphaël</a>
+            </p>
+        </div>
+    </body>
+</html>

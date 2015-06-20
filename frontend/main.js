@@ -60,6 +60,8 @@ Mqtt.onConnect = function() {
   console.log('Connected to ' + host + ':' + port);
   Mqtt.broker.subscribe(topic, {qos: 0});
   console.log('Subscribed to topic: ' + topic);
+
+  Page.AppendToLog(Page.topics.solicit_all, 'RED');
   Mqtt.send('solicit all', Page.topics.solicit_all);
 }
 

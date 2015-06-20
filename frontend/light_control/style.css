@@ -1,0 +1,47 @@
+            body {
+                background: #333;
+                color: #999;
+                font: 300 100.01%/1.2 "Segoe UI", "Helvetica Neue", Helvetica, "Arial Unicode", Arial, sans-serif;
+                margin: 0 30px;
+            }
+            #content {
+                width: 640px;
+                height: 480px;
+                position: relative;
+            }
+            h1 {
+                font-weight: 300;
+                font-size: 3em;
+                position: absolute;
+                margin: 0;
+            }
+            p {
+                font-size: 2em;
+            }
+            #copy a {
+                color: #666;
+                text-decoration: none;
+            }
+            #output {
+                background: #eee;
+                position: absolute;
+                font-size: 30px;
+                top: 490px;
+                left: 0;
+                font-family: monospace;
+                margin-top: -20px;
+            }
+            #copy {
+                position: absolute;
+                right: 10px;
+                bottom: 10px;
+                margin: 0;
+                font-size: .6em;
+                color: #666;
+            }
+            #values {
+                position: absolute;
+                left: 20px;
+                top: 400px;
+                font-size: .7em;
+            }
