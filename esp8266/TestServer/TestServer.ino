@@ -4,11 +4,22 @@
 #include <ESP8266mDNS.h>
 #include <PubSubClient.h>
 #include <EEPROM.h>
+#include "ipv4_helpers.h"
+#include "secrets.h"
+#include "persist_data.h"
+#include "persist_data.cpp"   // WHY IS THIS NEEDED?? The linker can't find instances of Persistent.
 
+// Increase this if any changes are made to "struct Config".
 #define CONFIG_VERSION "001"
+
+// Remember this many MQTT brokers.
 #define MAX_BROKERS 16
 
-enum device_type {
+// Maximum number of devices connected to IO pins.
+#define MAX_DEVICES 8
+
+
+enum Io_Type {
   test,
   rgb,
   pwm,
@@ -18,7 +29,7 @@ enum device_type {
 typedef struct Connected_device {
   char unique_id[32];
   char room[32];
-  device_type type;
+  Io_Type io_type;
   int io_pins[4];
 } Connected_device;
 
@@ -26,101 +37,31 @@ struct Config {
   char hostname[32];
   IPAddress brokers[MAX_BROKERS];
   int port;
-  Connected_device devices[8];
+  Connected_device devices[MAX_DEVICES];
   char version_of_program[4];
+  // TODO: add WFI ssid and password.
 } config = {
   "esp8266",
   {IPAddress(192, 168, 192, 9)},
   1883,
   {},
-  "000"
+  CONFIG_VERSION
 };
 
-
-
-const char* ssid = "Pretty fly for a wifi";
-const char* password = "white1331";
 MDNSResponder mdns;
 String mac_address;
 const int led = 2;
 
 
-String ip_to_string(IPAddress ip){
-  String return_value;
-  for (byte thisByte = 0; thisByte < 4; thisByte++) {
-    return_value += ip[thisByte];
-    return_value += ".";
-  }
-  return return_value;
-}
-
-IPAddress string_to_ip(String ip_str){
-  uint8_t a, b, c, d, dot, last_dot = 0;
-
-  dot = ip_str.indexOf('.');
-  a = ip_str.substring(last_dot, dot).toInt();
-        
-  last_dot = dot +1;
-  dot = ip_str.indexOf('.', dot +1);
-  b = ip_str.substring(last_dot, dot).toInt();
-    
-  last_dot = dot +1;
-  dot = ip_str.indexOf('.', dot +1);
-  c = ip_str.substring(last_dot, dot).toInt();
-  
-  last_dot = dot +1;
-  d = ip_str.substring(last_dot).toInt();
-  
-  return IPAddress(a, b, c, d);
-}
-
-
-// Read/write config to EPROM.
-void epromSetup()
-{
-  EEPROM.begin(sizeof(config));
-}
-
-int readConfig() {
-  if (EEPROM.read(sizeof(config) - 1) == config.version_of_program[3] && // this is '\0'
-      EEPROM.read(sizeof(config) - 2) == config.version_of_program[2] &&
-      EEPROM.read(sizeof(config) - 3) == config.version_of_program[1] &&
-      EEPROM.read(sizeof(config) - 4) == config.version_of_program[0]) {
-    // config version matches.
-    for (unsigned int t = 0; t < sizeof(config); t++) {
-      *((char*)&config + t) = EEPROM.read(t);
-    }
-  } else {
-    Serial.println("");
-    Serial.print("Invalid config version:");
-    Serial.println(config.version_of_program);
-    Serial.println("Using defaults.");
-    return 0;
-  }
-  return 1;
-}
-
-int writeConfig() {
-  int return_value = 1;
-  for (unsigned int t = 0; t < sizeof(config); t++) {
-    EEPROM.write(t, *((char*)&config + t));
-    if (EEPROM.read(t) != *((char*)&config + t)){
-      Serial.print("Error writing config.");
-      return_value = 0;
-    }
-  }
-  EEPROM.commit();
-  return return_value;
-}
 
 // Configuration
-bool configAddBroker(String broker){
-  for (uint8_t b = 0; b < MAX_BROKERS; ++b){
-    if(config.brokers[b] == string_to_ip(broker)){
+bool configAddBroker(String broker) {
+  for (uint8_t b = 0; b < MAX_BROKERS; ++b) {
+    if (config.brokers[b] == string_to_ip(broker)) {
       // Already exists.
       return true;
     }
-    if(config.brokers[b] == IPAddress(0,0,0,0)){
+    if (config.brokers[b] == IPAddress(0, 0, 0, 0)) {
       // Empty slot so add the new one.
       config.brokers[b] = string_to_ip(broker);
       return true;
@@ -129,10 +70,10 @@ bool configAddBroker(String broker){
   return false;
 }
 
-bool configRemoveBroker(String broker){
-  for (uint8_t b = 0; b < MAX_BROKERS; ++b){
-    if(config.brokers[b] == string_to_ip(broker)){
-      config.brokers[b] == IPAddress(0,0,0,0);
+bool configRemoveBroker(String broker) {
+  for (uint8_t b = 0; b < MAX_BROKERS; ++b) {
+    if (config.brokers[b] == string_to_ip(broker)) {
+      config.brokers[b] == IPAddress(0, 0, 0, 0);
       return true;
     }
   }
@@ -141,7 +82,8 @@ bool configRemoveBroker(String broker){
 
 
 // MQTT
-IPAddress mqtt_broker(192, 168, 192, 9);
+IPAddress mqtt_broker_address(0, 0, 0, 0);
+PubSubClient mqtt_client(mqtt_broker_address);
 
 void mqtt_callback(const MQTT::Publish& pub) {
   Serial.print("MQTT callback");
@@ -150,7 +92,24 @@ void mqtt_callback(const MQTT::Publish& pub) {
   Serial.println(pub.payload_string());
 }
 
-PubSubClient mqtt_client(mqtt_broker);
+void mqtt_connect() {
+  for (uint8_t b = 0; b < MAX_BROKERS; ++b) {
+    if (config.brokers[b] != IPAddress(0, 0, 0, 0)) {
+      mqtt_client = PubSubClient(config.brokers[b]);
+
+      mqtt_client.set_callback(mqtt_callback);
+      if (mqtt_client.connect("esp8266")) {
+        mqtt_client.publish("homeautomation/announce/esp8266", mac_address);
+        mqtt_client.subscribe("homeautomation/configure/" + mac_address);
+      }
+      delay(10);
+      if (mqtt_client.connected()) {
+        break;
+      }
+    }
+  }
+}
+
 
 
 // HTTP
@@ -159,28 +118,32 @@ ESP8266WebServer http_server(80);
 void handleRoot() {
   digitalWrite(led, 1);
   int b;
-  
+
   String message = "hello from esp8266!\n";
 
-  for (b = 0; b < http_server.args(); ++b){
+  for (b = 0; b < http_server.args(); ++b) {
     message += "arg: " + http_server.argName(b) + " val: " + http_server.arg(b) + "\n";
   }
   message += "hostname: ";
   message += config.hostname;
   message += "\n";
-  
+
+  message += "mac_address: ";
+  message += mac_address;
+  message += "\n";
+
   message += "method: ";
   if ( http_server.method() == HTTP_GET) {
     message += "HTTP_GET";
-  } else if (http_server.method() == HTTP_POST){
+  } else if (http_server.method() == HTTP_POST) {
     message += "HTTP_POST";
   } else {
     message += "unknown";
   }
   message += "\n";
-  
+
   message += "brokers:\n";
-  for (b = 0; b < MAX_BROKERS; ++b){
+  for (b = 0; b < MAX_BROKERS; ++b) {
     message += " " + ip_to_string(config.brokers[b]);
     message += "\n";
   }
@@ -190,28 +153,34 @@ void handleRoot() {
   message += "\n";
   message += "version: ";
   message += config.version_of_program;
-  
+
+  message += "\n";
+  message += "<form action='/configure/'>";
+  message += "<input type='text' name='add_broker' pattern='\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}' value='0.0.0.0'>";
+  message += "<input type='submit' value='Add Broker'>";
+  message += "</form>";
+
   http_server.send(200, "text/plain", message);
   digitalWrite(led, 0);
 }
 
 void handleConfig() {
   String message = "";
-  if(http_server.hasArg("add_broker")){
-    if(configAddBroker(http_server.arg("add_broker"))){
+  if (http_server.hasArg("add_broker")) {
+    if (configAddBroker(http_server.arg("add_broker"))) {
       message += "Added broker: " + http_server.arg("add_broker") + "\n";
     } else {
       message += "Failed to add broker: " + http_server.arg("add_broker") + "\n";
     }
   }
-  if(http_server.hasArg("delete_broker")){
-    if(configRemoveBroker(http_server.arg("delete_broker")){
+  if (http_server.hasArg("delete_broker")) {
+    if (configRemoveBroker(http_server.arg("delete_broker"))) {
       message += "Deleted broker: " + http_server.arg("add_broker") + "\n";
     } else {
       message += "Failed to delete broker: " + http_server.arg("add_broker") + "\n";
     }
   }
-  
+
   http_server.send(200, "text/plain", message);
 }
 
@@ -230,19 +199,6 @@ void handleNotFound() {
   }
   http_server.send(404, "text/plain", message);
   digitalWrite(led, 0);
-}
-
-
-// ---------
-String macToStr(const uint8_t* mac)
-{
-  String result;
-  for (int i = 0; i < 6; ++i) {
-    result += String(mac[i], 16);
-    if (i < 5)
-      result += ':';
-  }
-  return result;
 }
 
 
@@ -270,23 +226,20 @@ void setup_network(void) {
   Serial.println("HTTP server started");
 
 
-  mqtt_client.set_callback(mqtt_callback);
-  if (mqtt_client.connect("esp8266")) {
-    mqtt_client.publish("homeautomation/announce/esp8266", mac_address);
-    mqtt_client.subscribe("homeautomation/configure/" + mac_address);
-  }    
+  mqtt_connect();
 }
 
 void setup(void) {
   pinMode(led, OUTPUT);
   digitalWrite(led, 0);
+
   Serial.begin(115200);
 
-  readConfig();
-  
+  Persist_Data::Persistent<Config> persist_config(CONFIG_VERSION, &config);
+  persist_config.readConfig();
+
   WiFi.begin(ssid, password);
   Serial.println("");
-
 
   uint8_t mac[6];
   WiFi.macAddress(mac);
@@ -301,5 +254,10 @@ void loop(void) {
 
   if (WiFi.status() != WL_CONNECTED) {
     setup_network();
+  }
+
+  if (!mqtt_client.connected()) {
+    Serial.println("MQTT disconnected.");
+    mqtt_connect();
   }
 }
