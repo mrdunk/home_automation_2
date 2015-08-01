@@ -4,11 +4,11 @@
   <service>
    <type>_mqtt_websocket._tcp</type>
    <port>18883</port>
-   <txt-record>info=eg: homeautomation/lighting/room/lampname</txt-record>
+   <txt-record>use=homeautomation</txt-record>
   </service>
   <service>
    <type>_mqtt._tcp</type>
    <port>1883</port>
-   <txt-record>info=eg: homeautomation/lighting/room/lampname</txt-record>
+   <txt-record>use=homeautomation</txt-record>
   </service>
 </service-group>
