@@ -9,9 +9,9 @@ namespace Persist_Data {
     private:
       T* p_persistent_data;
       static int initialised;
-      static char version_of_program[4];
+      static char config_version[4];
     public:
-      Persistent(char const* _version_of_program, T* _p_persistent_data);
+      Persistent(char const* _config_version, T* _p_persistent_data);
       int readConfig();
       int writeConfig();
   };
