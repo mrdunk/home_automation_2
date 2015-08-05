@@ -17,6 +17,9 @@
 // Maximum number of devices connected to IO pins.
 #define MAX_DEVICES 8
 
+// Length of name strings. (hostname, room names, lamp names, etc.)
+#define NAME_LEN 32
+
 
 enum Io_Type {
   test,
@@ -26,14 +29,14 @@ enum Io_Type {
 };
 
 typedef struct Connected_device {
-  char unique_id[32];
-  char room[32];
+  char name[NAME_LEN];
+  char room[NAME_LEN];
   Io_Type io_type;
   int io_pins[4];
 } Connected_device;
 
 struct Config {
-  char hostname[32];
+  char hostname[NAME_LEN];
   Connected_device devices[MAX_DEVICES];
   char config_version[4];
   // TODO: add WFI ssid and password.
@@ -48,11 +51,24 @@ const int led = 2;
 
 
 
+// Configuration
+void SetHostname(const char* new_hostname) {
+  strncpy(config.hostname, new_hostname, NAME_LEN);
+}
+
+void SetDevice(const unsigned int index, struct Connected_device device) {
+  if (index < MAX_DEVICES) {
+    memcpy(&(config.devices[index]), &device, sizeof(device));
+  }
+}
+
+
 // mDNS
-//extern String brokers[MAX_BROKERS][4];  // Array containing information about brokers received over mDNS.
 Brokers brokers(QUESTION_SERVICE);
 
-void answerCallback(const mdns::Answer* answer){ brokers.ParseMDnsAnswer(answer); }
+void answerCallback(const mdns::Answer* answer) {
+  brokers.ParseMDnsAnswer(answer);
+}
 mdns::MDns my_mdns(NULL, NULL, answerCallback);
 
 
@@ -126,6 +142,21 @@ void handleRoot() {
   message += config.config_version;
   message += "\n";
 
+  for(int i = 0; i < MAX_DEVICES; ++i){
+    message += i;
+    message += "  ";
+    message += config.devices[i].name;
+    message += "  ";
+    message += config.devices[i].room;
+    message += "  ";
+    message += config.devices[i].io_type + "  ";
+    message += config.devices[i].io_pins[0] + ",";
+    message += config.devices[i].io_pins[1] + ",";
+    message += config.devices[i].io_pins[2] + ",";
+    message += config.devices[i].io_pins[3];
+    message += "\n";
+  }
+
   message += brokers.Summary();
 
   http_server.send(200, "text/plain", message);
@@ -133,9 +164,46 @@ void handleRoot() {
 }
 
 void handleConfig() {
+  const unsigned int now = millis() / 1000;
+
   String message = "";
+
   if (http_server.hasArg("test_arg")) {
     message += "test_arg: " + http_server.arg("test_arg") + "\n";
+  }
+  if (http_server.hasArg("hostname")) {
+    char tmp_buffer[NAME_LEN];
+    http_server.arg("hostname").toCharArray(tmp_buffer, NAME_LEN);
+    SetHostname(tmp_buffer);
+    message += "hostname: " + http_server.arg("hostname") + "\n";
+  }
+  if (http_server.hasArg("device") and http_server.hasArg("name") and http_server.hasArg("room") and http_server.hasArg("io_type") and http_server.hasArg("io_pins")) {
+    unsigned int index = http_server.arg("device").toInt();
+    Connected_device device;
+    http_server.arg("name").toCharArray(device.name, NAME_LEN);
+    http_server.arg("room").toCharArray(device.room, NAME_LEN);
+    if (http_server.arg("io_type") == "test") {
+      device.io_type = Io_Type::test;
+    } else if (http_server.arg("io_type") == "rgb") {
+      device.io_type = Io_Type::rgb;
+    } else if (http_server.arg("io_type") == "pwm") {
+      device.io_type = Io_Type::pwm;
+    } else if (http_server.arg("io_type") == "onoff") {
+      device.io_type = Io_Type::onoff;
+    }
+    char tmp_buffer[NAME_LEN];
+    http_server.arg("io_pins").toCharArray(tmp_buffer, NAME_LEN);
+    char* pch = strtok (tmp_buffer, ",");
+    int i = 0;
+    while (pch != NULL and i < 4)
+    {
+      device.io_pins[i] = atoi(pch);
+      pch = strtok(NULL, ",");
+    }
+
+    SetDevice(index, device);
+
+    message += "device: " + http_server.arg("device") + "\n";
   }
 
   http_server.send(200, "text/plain", message);
@@ -215,5 +283,5 @@ void loop(void) {
   if (!mqtt_client.connected()) {
     Serial.println("MQTT disconnected.");
     mqtt_connect();
-  }  
+  }
 }
