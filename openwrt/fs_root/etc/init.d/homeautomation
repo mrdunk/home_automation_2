@@ -1,0 +1,24 @@
+#!/bin/sh /etc/rc.common
+START=99
+
+BIN=pubsub.lua
+RUN_D=/var/run/$BIN
+
+
+start() {
+        mkdir -p $RUN_D
+        echo "start $0"
+        start-stop-daemon -S -b -x $BIN
+}
+
+stop() {
+        echo "stop $0"
+        start-stop-daemon -K -n $BIN
+}
+
+restart() {
+        echo "restart $0"
+        stop
+        start
+}
+

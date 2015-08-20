@@ -2,7 +2,7 @@
 
 --[[ In an ideal world we would use the OpenWRT lua-mosquitto package.
     Unfortunately lua-mosquitto is only available on later versions of OpenWRT.
-    (Chaos Calmer and above.
+    (Chaos Calmer and above.)
 
     Since the Kankun sockets are only running Barrier Breaker by default,
     here we will call the command line Mosquitto client and parse the return from that. ]]--

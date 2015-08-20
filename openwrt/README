@@ -2,9 +2,11 @@
 Install packages.
 
 on a client:
+  lua  (Do this first. *Should* be there already but makes a mess if it's not.)
+  luci
   dbus
   avahi-utils
-  lua-mosquitto  (if possible)
+  lua-mosquitto  (if available)
   mosquitto-client (mosquitto-client-nossl if short on space.)
 
 on a server:
@@ -26,4 +28,17 @@ $ mosquitto_pub -h $MQTT_SERVER -t homeautomation/lighting/kitchen/all -m "#000"
 
 
 Uploading scripts
-$ scp fs_root/usr/share/homeautomation/homeautomation*.lua  root@192.168.192.9:/usr/share/homeautomation/ && scp fs_root/bin/pubsub.lua root@192.168.192.9:/bin/
+$ mkdir -p /usr/share/homeautomation/ && scp fs_root/usr/share/homeautomation/homeautomation*.lua  root@192.168.192.9:/usr/share/homeautomation/ && scp fs_root/bin/pubsub.lua root@192.168.192.9:/bin/
+
+TODO:
+  Script a solution to copying up files  in /etc/ without overwriting existing settings.
+  Modify /etc/mosquitto/mosquitto.conf to allow websockets on port 18883.
+
+  Document setting up OpenWRT.
+  Currently "Barrier Breaker" does not have recent enough mosquitto broker to do websockets.
+  "Chaos Calmer - trunk" currently has a broken mosquitto implementation.
+  https://github.com/openwrt/packages/issues/1692
+  To get it running on my GL.iNet board i have to build an image with the OpenWRT Image Generator.
+  http://wiki.openwrt.org/doc/howto/obtain.firmware.generate
+  Here's the Image Generator line:
+    $ make image PROFILE=GLINET PACKAGES="-ppp -ppp-mod-pppoe dbus avahi-utils lua-mosquitto mosquitto-client mosquitto luci"

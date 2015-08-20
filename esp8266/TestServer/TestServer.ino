@@ -32,7 +32,8 @@ typedef struct Connected_device {
   char name[NAME_LEN];
   char room[NAME_LEN];
   Io_Type io_type;
-  int io_pins[4];
+  int io_pins[3];
+  int io_value[3];
 } Connected_device;
 
 struct Config {
@@ -142,19 +143,36 @@ void handleRoot() {
   message += config.config_version;
   message += "\n";
 
-  for(int i = 0; i < MAX_DEVICES; ++i){
-    message += i;
-    message += "  ";
-    message += config.devices[i].name;
-    message += "  ";
-    message += config.devices[i].room;
-    message += "  ";
-    message += config.devices[i].io_type + "  ";
-    message += config.devices[i].io_pins[0] + ",";
-    message += config.devices[i].io_pins[1] + ",";
-    message += config.devices[i].io_pins[2] + ",";
-    message += config.devices[i].io_pins[3];
-    message += "\n";
+  for (int i = 0; i < MAX_DEVICES; ++i) {
+    if (strlen(config.devices[i].name)) {
+      message += i;
+      message += "  ";
+      message += config.devices[i].name;
+      message += "  ";
+      message += config.devices[i].room;
+      message += "  ";
+      if (config.devices[i].io_type == Io_Type::test) {
+        message += "test";
+      } else if (config.devices[i].io_type == Io_Type::rgb) {
+        message += "rgb";
+      } else if (config.devices[i].io_type == Io_Type::pwm) {
+        message += "pwm";
+      } else if (config.devices[i].io_type == Io_Type::onoff) {
+        message += "onoff";
+      }
+      message += "  ";
+      
+      for(int j = 0; j < 3; ++j){
+        if(config.devices[i].io_pins[0] >= 0){
+          if(j > 0){
+            message +=  ",";
+          }
+          message += config.devices[i].io_pins[0];
+        }
+      }
+      
+      message += "\n";
+    }
   }
 
   message += brokers.Summary();
@@ -177,6 +195,7 @@ void handleConfig() {
     SetHostname(tmp_buffer);
     message += "hostname: " + http_server.arg("hostname") + "\n";
   }
+  Serial.println("device");
   if (http_server.hasArg("device") and http_server.hasArg("name") and http_server.hasArg("room") and http_server.hasArg("io_type") and http_server.hasArg("io_pins")) {
     unsigned int index = http_server.arg("device").toInt();
     Connected_device device;
@@ -191,19 +210,41 @@ void handleConfig() {
     } else if (http_server.arg("io_type") == "onoff") {
       device.io_type = Io_Type::onoff;
     }
-    char tmp_buffer[NAME_LEN];
-    http_server.arg("io_pins").toCharArray(tmp_buffer, NAME_LEN);
-    char* pch = strtok (tmp_buffer, ",");
-    int i = 0;
-    while (pch != NULL and i < 4)
-    {
-      device.io_pins[i] = atoi(pch);
-      pch = strtok(NULL, ",");
+
+    // strtok() is broken in esp8266 Arduino so we must parse by hand.
+    char io_pins_buffer[NAME_LEN];
+    char pin_buffer[4];
+    http_server.arg("io_pins").toCharArray(io_pins_buffer, NAME_LEN);
+    if (strlen(io_pins_buffer) + 1 < NAME_LEN) {
+      io_pins_buffer[strlen(io_pins_buffer) + 1] = '\0';
+      io_pins_buffer[strlen(io_pins_buffer)] = ',';
     }
+
+    Serial.println(io_pins_buffer);
+    Serial.println();
+
+    unsigned int pin_num = 0, pin_buffer_pointer = 0;
+    memset(pin_buffer, '\0', 4);
+    for (unsigned int i = 0; i < strlen(io_pins_buffer); ++i) {
+      if (io_pins_buffer[i] == ',') {
+        Serial.println(pin_buffer);
+        device.io_pins[pin_num++] = atoi(pin_buffer);
+        memset(pin_buffer, '\0', 4);
+        pin_buffer_pointer = 0;
+      } else if (pin_buffer_pointer < 4) {
+        pin_buffer[pin_buffer_pointer++] = io_pins_buffer[i];
+      }
+      if(pin_num >= 3){
+        // Already have maximum number of pins that can be associated with a device.
+        break;
+      }
+    }
+    Serial.println();
 
     SetDevice(index, device);
 
     message += "device: " + http_server.arg("device") + "\n";
+    Serial.println(message);
   }
 
   http_server.send(200, "text/plain", message);
