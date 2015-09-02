@@ -202,8 +202,8 @@ xtag.register('light-switch', {
         }
       }
 
-      Mqtt.send(send_data, 'homeautomation/lighting/' + this.room + '/' + this.device + '/set');
-      Page.AppendToLog('homeautomation/lighting/' + this.room + '/' + this.device + '/set = ' + send_data, 'RED')
+      Mqtt.send(send_data, 'homeautomation/devices/lighting/' + this.room + '/' + this.device + '/set');
+      Page.AppendToLog('homeautomation/devices/lighting/' + this.room + '/' + this.device + '/set = ' + send_data, 'RED')
 
       this.switched = !this.on_off;  // To trigger accessors.switched.set.
     }

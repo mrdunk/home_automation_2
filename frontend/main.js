@@ -7,7 +7,7 @@ Page.init = function() {
   Page.fps_ = 10;
   Page.log_ = document.getElementById("log").getElementsByClassName("draw-elements")[0];
   Page.topics = {};
-  Page.topics.solicit_all = 'homeautomation/lighting/all/all/solicit';
+  Page.topics.solicit_all = 'homeautomation/devices/lighting/all/all/solicit';
 
   document.getElementById("log").getElementsByClassName("draw-name")[0].innerHTML = "Log";
 }

@@ -35,7 +35,15 @@ function mqtt:new()
   setmetatable(self, mqtt)
   self.connection = {}
   self.subscriptions = {}
+  self.subscribe_error = false;
+  self.loopcount = 0;
   return self
+end
+
+
+function mqtt.test(broker, port)
+  local command = mosquitto_pub .. ' -h ' .. broker .. ' -p ' .. port .. ' -t test/test -m test'
+  return os.execute(command) == 0
 end
 
 
@@ -43,21 +51,20 @@ function mqtt:connect(broker, port)
   self.connection.broker = broker
   self.connection.port = port
 
-  -- TODO check connection is posible
-  local command = mosquitto_pub .. ' -h ' .. self.connection.broker .. ' -p ' .. self.connection.port .. ' -t test/test -m test'
-  local return_value = os.execute(command)
+  local return_value = self.test(broker, port)
 
-  if return_value ~= 0 then
-    --print('Could not connect to:', self.connection.broker, self.connection.port)
+  if not return_value then
+    print('Could not connect to:', self.connection.broker, self.connection.port)
     return 0
   end
 
-  --print("Connected to: ", broker, port)
+  print("Connected to: ", broker, port)
 
   self.ON_CONNECT()
 
   return true
 end
+
 
 function mqtt:publish(topic, payload)
   local command = mosquitto_pub .. ' -h ' .. self.connection.broker .. ' -p ' .. self.connection.port .. ' -t ' .. topic .. ' -m ' .. payload
@@ -83,6 +90,7 @@ function mqtt:loop()
         local payload
         topic, payload = string.match(line, '^%s*([%w/+#]+)%s+([%w#%s]+)%s*$')
         self.ON_MESSAGE(0, topic, payload)
+        self.loopcount = 0
       else
         filesize = filehandle:seek("end")
       end
@@ -96,13 +104,24 @@ function mqtt:loop()
     end
   end
 
-  os.execute("sleep 1")
+  self.loopcount = self.loopcount +1
+  if self.loopcount > 60 then
+    -- Test if we can still contact broker after 60 seconds idle.
+    self.loopcount = 0
+    return self.test(self.connection.broker, self.connection.port)
+  end
 
-  return keep_looping
+  if self.loopcount > 0 then
+    os.execute("sleep 1")
+  end
+
+  return keep_looping and not self.subscribe_error
 end
 
 
 function mqtt:subscribe(topic)
+  self.subscribe_error = false
+
   local command = mosquitto_sub .. ' -v -h ' .. self.connection.broker .. ' -p ' .. self.connection.port .. ' -t ' .. topic
 
   -- See if we already have a subscription running and kill it if we do.
@@ -121,8 +140,8 @@ function mqtt:subscribe(topic)
   local return_value = os.execute(command .. redirect)
   if return_value ~= 0 then
     print('Problem starting "' .. command .. redirect .. '"')
-    -- TODO
-    os.exit()
+    self.subscribe_error = true
+    return
   end
   
   -- Build dict of filename : command.

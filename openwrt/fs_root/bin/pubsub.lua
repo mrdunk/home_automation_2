@@ -67,14 +67,14 @@ mqtt_client = mqtt.new()
 
 mqtt_client.ON_CONNECT = function()
   --print("mqtt_client.ON_CONNECT")
-  mqtt_client:subscribe("homeautomation/lighting/all/all/#")
+  mqtt_client:subscribe("homeautomation/+/lighting/all/all/#")
   for target_id, target_data in pairs(config.configuration) do
     if (target_id ~= 'avahi' and target_id ~= 'brokers') then
-      mqtt_client:subscribe("homeautomation/lighting/" .. target_data["room"] .. "/" .. target_id .. "/#")
-      mqtt_client:subscribe("homeautomation/lighting/" .. target_data["room"] .. "/all/#")
-      mqtt_client:subscribe("homeautomation/lighting/all/" .. target_id .. "/#")
+      mqtt_client:subscribe("homeautomation/+/lighting/" .. target_data["room"] .. "/" .. target_id .. "/#")
+      mqtt_client:subscribe("homeautomation/+/lighting/" .. target_data["room"] .. "/all/#")
+      mqtt_client:subscribe("homeautomation/+/lighting/all/" .. target_id .. "/#")
 
-      mqtt_client:publish("homeautomation/lighting/advertise", target_data["room"] .. "/" .. target_id .. "/" .. gpio.read(target_data.type, target_data.io))
+      mqtt_client:publish("homeautomation/devices/lighting/advertise", target_data["room"] .. "/" .. target_id .. "/" .. gpio.read(target_data.type, target_data.io))
     end
   end
 end
@@ -84,9 +84,9 @@ mqtt_client.ON_MESSAGE = function(mid, topic, payload)
 
   if topic == nil then return end
 
-  local room = string.match(topic, "^[%w_%-]+/[%w_%-]+/([%w_%-]+)")
-  local id = string.match(topic, "^[%w_%-]+/[%w_%-]+/[%w_%-]+/([%w_%-]+)")
-  local command = string.match(topic, "^[%w_%-]+/[%w_%-]+/[%w_%-]+/[%w_%-]+/([%w_%-]+)")
+  local room = string.match(topic, "^[%w_%-]+/[%w_%-]+/[%w_%-]+/([%w_%-]+)")
+  local id = string.match(topic, "^[%w_%-]+/[%w_%-]+/[%w_%-]+/[%w_%-]+/([%w_%-]+)")
+  local command = string.match(topic, "^[%w_%-]+/[%w_%-]+/[%w_%-]+/[%w_%-]+/[%w_%-]+/([%w_%-]+)")
 
   local target_id
   local target_data
@@ -97,14 +97,14 @@ mqtt_client.ON_MESSAGE = function(mid, topic, payload)
       -- Set lights on/off/etc.
       if(room == 'all' or room == target_data["room"]) and (id == 'all' or id == target_id) then
         gpio.set(target_data.type, target_data.io, payload)
-        mqtt_client:publish("homeautomation/lighting/advertise", target_data["room"] .. "/" .. target_id .. "/" .. gpio.read(target_data.type, target_data.io))
+        mqtt_client:publish("homeautomation/devices/lighting/advertise", target_data["room"] .. "/" .. target_id .. "/" .. gpio.read(target_data.type, target_data.io))
       end
     elseif command == 'solicit' then
       -- Someone out there wants to know about connected nodes.
       if(room == 'all' or room == target_data["room"]) and (id == 'all' or id == target_id) then
         local value  -- TODO Read current setting from gpio.
         print("I am ", target_data["room"], target_id, value)
-        mqtt_client:publish("homeautomation/lighting/advertise", target_data["room"] .. "/" .. target_id .. "/" .. gpio.read(target_data.type, target_data.io))
+        mqtt_client:publish("homeautomation/devices/lighting/advertise", target_data["room"] .. "/" .. target_id .. "/" .. gpio.read(target_data.type, target_data.io))
       end
     end
 
@@ -128,7 +128,7 @@ while run do
   end
 
   for key, value in pairs(config.configuration.brokers) do
-    -- Work through each posible broker in config.
+    -- Work through each possible broker in config.
     local broker = value.broker
     local port = value.port
     if(mqtt_client:connect(broker, port) == 0) then

@@ -1,5 +1,5 @@
 host='192.168.192.9';
-topic = 'homeautomation/lighting/advertise';
+topic = 'homeautomation/+/lighting/advertise';
 port=18883;
 useTLS=false;
 cleansession=true;
