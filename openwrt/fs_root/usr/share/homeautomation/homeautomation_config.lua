@@ -78,6 +78,7 @@ function homeautomation_config.read(file_name)
       homeautomation_config.configuration[current_id] = current_object
     end
 
+    config_file:close()
     return true
   end
   return false
