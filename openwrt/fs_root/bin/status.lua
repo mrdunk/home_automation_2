@@ -5,14 +5,16 @@
 ]]--
 
 
-local base_web_dir = '/www/'
 local web_dir = '/www/info/'
+local temp_dir = '/tmp/homeautomation/'
 local mosquitto_pub = '/usr/bin/mosquitto_pub'
+local mosquitto_conf = '/etc/mosquitto/mosquitto.conf'
 
 local info = {}
 info.processes = {['mosquitto'] = {}, 
                   ['avahi-daemon'] = {},
                   ['dropbear'] = {},
+                  ['uhttpd'] = {},
                   ['test'] = {}}
 info.brokers = {}
 info.config = {update_delay = 1,
@@ -32,6 +34,45 @@ end
 
 function match_file_or_dir(fn)
   return os.execute("[ -e  " .. fn .. " ]")
+end
+
+function initilize()
+  info.last_reloaded = 0
+
+  if not is_file_or_dir(web_dir) then
+    print('Creating ' .. web_dir)
+    mkdir(web_dir)
+  end
+
+  if not is_file_or_dir(temp_dir) then
+    print('Creating ' .. temp_dir)
+    mkdir(temp_dir)
+    mkdir(temp_dir .. 'mosquitto/')
+  end
+
+  if is_file_or_dir(web_dir) and is_file_or_dir(temp_dir) then
+    os.execute('ln -s ' .. temp_dir .. 'server.txt ' .. web_dir .. 'server.txt')
+  end
+
+  local file_handle = io.open(mosquitto_conf, "a+")
+  if file_handle then
+    local found = false
+    for line in file_handle:lines() do
+      if string.find(line, '^include_dir%s+' .. temp_dir .. 'mosquitto/') then
+        found = true
+      end
+    end
+
+    if found == false then
+      print('Adding "include_dir" directive to ' .. temp_dir .. 'mosquitto/')
+      file_handle:write('\n# =================================================================\n')
+      file_handle:write('# Appended by lua script.\n')  -- TODO get name of script programmatically.
+      file_handle:write('# =================================================================\n')
+      file_handle:write('include_dir ' .. temp_dir .. 'mosquitto/\n')
+    end
+
+    file_handle:close()
+  end
 end
 
 function hostname()
@@ -70,6 +111,7 @@ function process_list()
 end
 
 function broker_test(broker, port)
+  -- TODO swallow and trap "Error: Permission denied" here.
   local command = mosquitto_pub .. ' -h ' .. broker .. ' -p ' .. port .. ' -t test/test -m test'
   return os.execute(command) == 0
 end
@@ -156,18 +198,18 @@ function local_network()
 end
 
 function create_web_page()
-  if is_file_or_dir(base_web_dir) and not is_file_or_dir(web_dir) then
-    print('Creating ' .. web_dir)
-    mkdir(web_dir)
-  end
-
-  local handle = io.open(web_dir .. 'tmp.txt', "w") 
-  if handle then
-    handle:write(itterate_info(info, '', ''))
-    handle:close()
-    mv(web_dir .. 'tmp.txt', web_dir .. 'server.txt')
+  if info.processes.uhttpd.enabled == true then
+    local handle = io.open(temp_dir .. 'tmp.txt', "w") 
+    if handle then
+      handle:write(itterate_info(info, '', ''))
+      handle:close()
+      mv(temp_dir .. 'tmp.txt', temp_dir .. 'server.txt')
+    else
+      print("Couldn't create: " .. temp_dir .. 'tmp.txt\n')
+      print(itterate_info(info, '', ''))
+    end
   else
-    print("Couldn't open: " .. web_dir .. 'tmp.txt\n')
+    print("uhttpd not running.")
     print(itterate_info(info, '', ''))
   end
 end
@@ -192,6 +234,10 @@ function itterate_info(info_branch, key, output)
 end
 
 function update_mosquitto_config()
+  if info.processes['avahi-daemon'].enabled ~= true then
+    return
+  end
+
   local config = {}
 
   -- Parse existing config.
@@ -210,13 +256,11 @@ function update_mosquitto_config()
     file_handle:close()
   else
     print('No file: /tmp/mosquitto/bridges.conf')
-    mkdir("/tmp/mosquitto/")
   end
 
   -- Compare to detected brokers on network.
   local new_file = false
   for broker, connections in pairs(info.brokers) do
-    print(broker, connections)
     local reachable_connection, active_connection
     for connection_id, connection in pairs(connections) do
       if connection.reachable == true then
@@ -228,7 +272,6 @@ function update_mosquitto_config()
       else
         connection.active = false
       end
-      print("", broker, connection.address, config[connection.address], connection.port)
     end
 
     -- Since none of the connections are in the file, mark one of them active.
@@ -253,15 +296,17 @@ function update_mosquitto_config()
       end
       file_handle:close()
       mv("/tmp/mosquitto/tmp.conf", "/tmp/mosquitto/bridges.conf")
+      info.needs_reload = true
     end
   end
 end
 
 function main()
   run = true
+  initilize()
 
   while run do
-    print('tick')
+    print('tick', info.last_reloaded)
     hostname()
     process_list()
     local_network()
@@ -269,6 +314,7 @@ function main()
     create_web_page()
     update_mosquitto_config()
     os.execute("sleep " .. info.config.update_delay)
+    info.last_reloaded = info.last_reloaded + info.config.update_delay
   end
 end
 
