@@ -12,6 +12,8 @@
 
 ]]--
 
+local DEBUG = true
+
 package.path = package.path .. ';/usr/share/homeautomation/?.lua'
 
 
@@ -44,8 +46,7 @@ local info = {}
 info.processes = {['mosquitto'] = {}, 
                   ['avahi-daemon'] = {},
                   ['dropbear'] = {},
-                  ['uhttpd'] = {},
-                  ['test'] = {}}
+                  ['uhttpd'] = {}}
 info.brokers = {}
 info.clients = {}
 info.clients.device = {}
@@ -61,33 +62,93 @@ end
 
 function mqtt_client.ON_MESSAGE(mid, topic, payload)
   print(mid, topic, payload)
+
+  local unique_ID, broker_level, roll, address = string.match(topic, "^([%w_%-]+)/([%w_%-]+)/([%w_%-]+)/([%w_%-/]+)")
+  print(unique_ID, broker_level, roll, address)
+
+  local command = string.match(payload, "^command%s*:%s*(%w+)")
+
+  local topic_sections = {}
+  local topic_section_counter = 1
+  local topic_remainder = address
+  while topic_remainder ~= "" do
+    topic_sections[topic_section_counter], topic_remainder = string.match(topic_remainder, "([%w_%-]+)/?([%w_%-/]*)")
+    topic_section_counter = topic_section_counter +1
+  end
+
+  for index, device in pairs(info.clients.device) do
+    if device.role == roll and "homeautomation" == unique_ID then
+      local address_remainder = device.address
+      local address_section
+      local address_section_counter = 1
+      local match = true
+      while address_remainder ~= "" do
+        address_section, address_remainder = string.match(address_remainder, "([%w_%-]+)/?([%w_%-/]*)")
+        if topic_sections[address_section_counter] == "all" then
+          -- All child nodes match
+          break
+        elseif topic_sections[address_section_counter] ~= address_section then
+          match = false
+        end
+        address_section_counter = address_section_counter +1
+      end
+      if match == true then
+        print(device.address .. " matches " .. topic)
+        if command == "on" then
+          device_set_on(device)
+        elseif command == "off" then
+          device_set_off(device)
+        end
+      end
+    end
+  end
 end
 
 function mqtt_client.ON_CONNECT()
   print("mqtt_client.ON_CONNECT")
 
+  if DEBUG then
+    if not info.mqtt then
+      info.mqtt = {}
+    end
+    if not info.mqtt.subscriptions then
+      info.mqtt.subscriptions = {}
+    end
+    if not info.mqtt.last_announced then
+      info.mqtt.last_announced = {}
+    end
+    while #info.mqtt.subscriptions > 0 do
+      table.remove(info.mqtt.subscriptions, #info.mqtt.subscriptions)
+    end
+    while #info.mqtt.last_announced > 0 do
+      table.remove(info.mqtt.last_announced, #info.mqtt.last_announced)
+    end
+  end
+
+
   local subscribe_to = {}
-  local announce = {}
 
   for k, device in pairs(info.clients.device) do
-    print(k, "\"" .. device.address .. "\"")
     local subscription = "homeautomation/+/" .. device.role
     for address_section in string.gmatch(device.address, "[^/]+") do
       subscribe_to[subscription .. "/all"] = true
       subscription = subscription .. "/" .. address_section
     end
     subscribe_to[subscription] = true
-    announce[subscription] = device.role
   end
 
+  local debug_counter = 1
   for subscription, v in pairs(subscribe_to) do
     print("Subscribing to: " .. subscription)
     mqtt_client:subscribe(subscription)
+    if DEBUG then
+      info.mqtt.subscriptions[debug_counter] = subscription
+      debug_counter = debug_counter +1
+    end
   end
 
-  for announcer, role in pairs(announce) do
-    print("Announcing: " .. announcer)
-    mqtt_client:publish("homeautomation/0/" .. role .. "/announce", announcer .. " : " .. "TODO get device value.")
+  for k, device in pairs(info.clients.device) do
+    device_announce(device)
   end
 end
 
@@ -106,6 +167,50 @@ end
 
 function match_file_or_dir(fn)
   return os.execute("[ -e  " .. fn .. " ]")
+end
+
+function device_get_value(device)
+  -- TODO limit executable code in device.command.query to shell scripts in a limited directory.
+  local handle = io.popen(device.command.query)
+  if not handle then
+    return nil
+  end
+  local ret_val = handle:read("*all")
+  handle:close()
+
+  return ret_val:match "^%s*(.-)%s*$"
+end
+
+function device_set_on(device)
+  print("device_set_on: " .. device.address)
+  local ret_val = os.execute(device.command.on)
+  device_announce(device)
+  return ret_val
+end
+
+function device_set_off(device)
+  print("device_set_off: " .. device.address)
+  local ret_val =  os.execute(device.command.off)
+  device_announce(device)
+  return ret_val
+end
+
+function device_announce(device)
+  local value = device_get_value(device)
+  print("Announcing: " .. device.role .. "/" .. device.address .. "  value: " .. value)
+  mqtt_client:publish("homeautomation/0/" .. device.role .. "/announce", device.role .. "/" .. device.address .. " : " .. value)
+  if DEBUG then
+    local found_match
+    for k, v in pairs(info.mqtt.last_announced) do
+      if string.match(info.mqtt.last_announced[k], device.address .. " : ") then
+        found_match = true
+        info.mqtt.last_announced[k] = device.role .. "/" .. device.address .. " : " .. os.time()
+      end
+    end
+    if not found_match then
+      table.insert(info.mqtt.last_announced, device.role .. "/" .. device.address .. " : " .. os.time())
+    end
+  end
 end
 
 function initilize()
@@ -156,7 +261,7 @@ end
 
 function process_list()
     for process, value in pairs(info.processes) do
-      local pid_command = "pgrep " .. process
+      local pid_command = "pgrep /" .. process .. "$"
       local handle = io.popen(pid_command)
       local result = handle:read("*line")
       local results = ''
@@ -188,12 +293,6 @@ function broker_test(broker, port)
 end
 
 function broker_list()
-  for hostname in pairs(info.brokers) do
-    for address_index in pairs(info.brokers[hostname]) do
-      info.brokers[hostname][address_index].last_updated = info.brokers[hostname][address_index].last_updated + info.config.update_delay
-    end
-  end
-
   local have_active
 
   -- Make localhost a broker if appropriate.
@@ -207,7 +306,7 @@ function broker_list()
       if existing_address.address == "127.0.0.1" then
         found_address = true
         info.brokers.localhost[address_index].port = 1883
-        info.brokers.localhost[address_index].last_updated = 0
+        info.brokers.localhost[address_index].last_updated = os.time()
         info.brokers.localhost[address_index].reachable = broker_test("localhost", 1883)
         info.brokers.localhost[address_index].active = info.brokers.localhost[address_index].reachable
         have_active = info.brokers.localhost[address_index].reachable
@@ -216,7 +315,8 @@ function broker_list()
 
     if not found_address then
       local reachable = broker_test("127.0.0.1", 1883)
-      info.brokers.localhost[#info.brokers.localhost +1] = {address = "127.0.0.1", port = 1883, last_updated = 0, reachable = reachable, active = reachable}
+      info.brokers.localhost[#info.brokers.localhost +1] = {address = "127.0.0.1", port = 1883, last_updated = os.time(), reachable = reachable, active = reachable}
+      have_active = reachable
     end
   end
 
@@ -233,12 +333,13 @@ function broker_list()
       
       if reachable_broker == nil and connection.reachable then
         reachable_broker = connection
+        if have_active == nil then
+          print("Make this the active broker: ", connection.address)
+          have_active = true
+          connection.active = true
+        end
       end
     end
-  end
-  if have_active == nil and reachable_broker then
-    print("Make this the active broker: ", reachable_broker.address)
-    reachable_broker.active = true
   end
 
   -- TODO Investigate ways of speeding up the avahi-browse.
@@ -257,14 +358,14 @@ function broker_list()
       for address_index, existing_address in ipairs(info.brokers[hostname]) do
         if existing_address.address == address then
           info.brokers[hostname][address_index].port = port
-          info.brokers[hostname][address_index].last_updated = 0
+          info.brokers[hostname][address_index].last_updated = os.time()
           info.brokers[hostname][address_index].reachable = broker_test(address, port)
           found_address = true
           break
         end
       end
       if not found_address then
-        info.brokers[hostname][#info.brokers[hostname] +1] = {address = address, port = port, last_updated = 0, reachable = broker_test(address, port)}
+        info.brokers[hostname][#info.brokers[hostname] +1] = {address = address, port = port, last_updated = os.time(), reachable = broker_test(address, port)}
       end
     end
     result = handle:read("*line")
@@ -421,14 +522,18 @@ function update_mosquitto_config()
   end
 end
 
+local read_client_config_first_loop = true
 function read_client_config()
   local client_config = "/etc/homeautomation/client_devices.conf"
   if not is_file_or_dir(client_config) then
-    print(client_config .. " does not exist. No client configuration.")
+    if read_client_config_first_loop == true then
+      print(client_config .. " does not exist. No client configuration.")
+      read_client_config_first_loop = nil
+    end
     return
   end
 
-  info.clients.last_updated = info.last_updated
+  info.clients.last_updated = os.time()
   for k in next,info.clients.device do info.clients.device[k] = nil end -- Clear table.
 
   -- TODO only need to do this if file has been modified since last read.
@@ -484,9 +589,15 @@ function poll_mosquitto(stop_at)
       for broker, connections in pairs(info.brokers) do
         for connection_id, connection in pairs(connections) do
           if connection.active then
-            mqtt_client:connect(connection.address, connection.port)
+            loop_value = mqtt_client:connect(connection.address, connection.port)
+            break
           end
         end
+      end
+      if loop_value ~= true then
+        -- Still not true which means no connections are marked active or connection.active is not actually active.
+        print("Error: No active broker found.")
+        return
       end
     end
   until os.time() >= stop_at
@@ -504,8 +615,8 @@ function main()
     broker_list()
     read_client_config()
 
-    create_web_page()
     update_mosquitto_config()
+    create_web_page()
     
     poll_mosquitto(info.last_updated + info.config.update_delay)
     info.last_updated = os.time()

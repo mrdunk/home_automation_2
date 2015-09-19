@@ -17,16 +17,16 @@ local topic_log = '/tmp/mqtt_topic.log'
 local max_filesize = 100000
 
 function mqtt.ON_CONNECT()
-  print("Default mqtt.ON_CONNECT")
+  --print("Default mqtt.ON_CONNECT")
 end
 
 
 function mqtt.ON_MESSAGE(mid, topic, payload)
-  print("Default mqtt.ON_MESSAGE", mid, topic, payload)
+  --print("Default mqtt.ON_MESSAGE", mid, topic, payload)
 end
 
 function mqtt.ON_PUBLISH()
-  print("Default mqtt.ON_PUBLISH")
+  --print("Default mqtt.ON_PUBLISH")
 end
 
 
@@ -42,8 +42,11 @@ end
 
 
 function mqtt.test(broker, port)
-  local command = mosquitto_pub .. ' -h ' .. broker .. ' -p ' .. port .. ' -t test/test -m test'
-  return os.execute(command) == 0
+  if broker and port then
+    local command = mosquitto_pub .. ' -h ' .. broker .. ' -p ' .. port .. ' -t test/test -m test 2> /dev/null'
+    return os.execute(command) == 0
+  end
+  return nil
 end
 
 
@@ -54,11 +57,11 @@ function mqtt:connect(broker, port)
   local return_value = self.test(broker, port)
 
   if not return_value then
-    print('Could not connect to:', self.connection.broker, self.connection.port)
-    return 0
+    --print('Could not connect to:', self.connection.broker, self.connection.port)
+    return nil
   end
 
-  print("Connected to: ", broker, port)
+  --print("Connected to: ", broker, port)
 
   self.ON_CONNECT()
 
