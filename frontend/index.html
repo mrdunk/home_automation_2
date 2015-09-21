@@ -16,35 +16,35 @@
   </head>
   <body>
     <div id="content">
+      <ha-container id="ha-container-lighting"></ha-container>
     </div>
-    <draw-container id="log"></draw-container>
+    <ha-container id="ha-container-log"></ha-container>
   </body>
 </html>
 
 
-<template id="button-show-content">
-  <div class="button-show-content-show"><i class="fa fa-plus-circle fa-3x"></i></div>
-  <div class="button-show-content-hide" style="display:none;"><i class="fa fa-minus-circle fa-3x"></i></div>
-</template>
 
-<template id="draw-container">
-  <div class="draw-header">
-    <button-show-content></button-show-content>
-    <div class="draw-name"></div>
-    <light-switch></light-switch>
+<template id="ha-container">
+  <div class="ha-container-header draw-header">
+    <ha-button-show-children></ha-button-show-children>
+    <div class="ha-container-name draw-name"></div>
+    <div class="ha-device-icon"></div>
   </div>
-  <div class="draw-elements" style="display:none;"></div>
+  <div class="ha-container-children draw-elements" style="display:none;"></div>
 </template>
 
-<template id="draw-element">
+<template id="ha-device">
   <div class="draw-element-content">
     <div class="element-name element-content"></div>
     <div class="element-value element-content"></div>
-    <light-switch></light-switch>
   </div>
 </template>
 
-<template id="light-switch">
-  <i class="fa fa-lightbulb-o fa-3x"></i>
+<template id="ha-button-show-children">
+  <div class="ha-button-show-children-show button-show-children-show"><i class="fa fa-plus-circle fa-3x"></i></div>
+  <div class="ha-button-show-children-hide button-show-children-hide" style="display:none;"><i class="fa fa-minus-circle fa-3x"></i></div>
 </template>
 
+<template id="ha-light-binary">
+  <i class="fa fa-lightbulb-o fa-3x"></i>
+</template>

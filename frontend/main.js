@@ -5,11 +5,9 @@ var Page = {}
 Page.init = function() {
   Page.running_ = true;
   Page.fps_ = 10;
-  Page.log_ = document.getElementById("log").getElementsByClassName("draw-elements")[0];
+  Page.log_ = document.getElementById("ha-container-log").getElementsByClassName("draw-elements")[0];
   Page.topics = {};
-  Page.topics.solicit_all = 'homeautomation/devices/lighting/all/all/solicit';
-
-  document.getElementById("log").getElementsByClassName("draw-name")[0].innerHTML = "Log";
+  Page.topics.all_devices = 'homeautomation/0/all/all';
 }
 
 Page.run = function() {
@@ -33,11 +31,11 @@ var Mqtt = {}
 Mqtt.reconnectTimeout = 2000;
 
 Mqtt.MQTTconnect = function() {
-  Mqtt.broker = new Messaging.Client( host, port, "web_" + parseInt(Math.random() * 100, 10));
+  Mqtt.broker = new Messaging.Client( BROKER_ADDRESS, BROKER_PORT, "web_" + parseInt(Math.random() * 100, 10));
   var options = {
       timeout: 3,
-      useSSL: useTLS,
-      cleanSession: cleansession,
+      useSSL: USE_TLS,
+      cleanSession: CLEANSESSION,
       onSuccess: Mqtt.onConnect,
       onFailure: function (message) {
                  console.log("Connection failed: " + message.errorMessage + "Retrying");
@@ -52,17 +50,18 @@ Mqtt.MQTTconnect = function() {
     options.userName = username;
     options.password = password;
   }
-  console.log("Host="+ host + ", port=" + port + " TLS = " + useTLS + " username=" + username + " password=" + password);
+  console.log("Host="+ BROKER_ADDRESS + ", port=" + BROKER_PORT + " TLS = " + USE_TLS + " username=" + username + " password=" + password);
   Mqtt.broker.connect(options);
 }
 
 Mqtt.onConnect = function() {
-  console.log('Connected to ' + host + ':' + port);
-  Mqtt.broker.subscribe(topic, {qos: 0});
-  console.log('Subscribed to topic: ' + topic);
+  console.log('Connected to ' + BROKER_ADDRESS + ':' + BROKER_PORT);
+  Mqtt.broker.subscribe(ANNOUNCE_SUBSCRIPTION, {qos: 0});
+  console.log('Subscribed to topic: ' + ANNOUNCE_SUBSCRIPTION);
 
-  Page.AppendToLog(Page.topics.solicit_all, 'RED');
-  Mqtt.send('solicit all', Page.topics.solicit_all);
+  Page.AppendToLog(Page.topics.all_devices + " = command:solicit", 'RED');
+  Mqtt.send(Page.topics.all_devices, "command:solicit");
+
 }
 
 Mqtt.onConnectionLost = function(response) {
@@ -72,33 +71,18 @@ Mqtt.onConnectionLost = function(response) {
 
 Mqtt.onMessageArrived = function(message) {
   var topic = message.destinationName;
-  var payload = message.payloadString;
 
-  Page.AppendToLog(topic + ' = ' + payload)
+  // Make sure only valid characters are in payload with "match()".
+  var regex = /^([\w/]+)\s*:\s*(\w+)\s*$/
+  var regex_results = regex.exec(message.payloadString)
 
-  var room = payload.split("/")[0]
-  var device = payload.split("/")[1]
-  var value = payload.split("/")[2]
+  Page.AppendToLog(topic + ' = ' + message.payloadString)
 
-
-  var rooms = document.body.getElementsByClassName("__rooms");
-  var found_room = false;
-  var found_device = false;
-  var content_element = document.getElementById("content");
-  for (var i=0, room_element; room_element = rooms[i]; i++) {
-    if (xtag.hasClass(room_element, room)){
-      found_room = room;
-      
-      room_element.setElement(device, Mqtt.ParsePayload(value));
-      break;
-    }
-  }
-  if (found_room === false) {
-    var new_room = document.createElement('draw-container');
-    content_element.appendChild(new_room);
-    new_room.draw_name = room;
-
-    new_room.setElement(device, Mqtt.ParsePayload(value));
+  if(regex_results !== null && regex_results[0] === message.payloadString){
+    var address = regex_results[1] 
+    var command = regex_results[2]
+    Page.AppendToLog("  payload parsed as: {address: " + address + ", command: " + command + "}", "yellow")
+    document.getElementById('ha-container-lighting').addChild(address, command)
   }
 };
 
@@ -136,7 +120,7 @@ Mqtt.ParsePayload = function(payload) {
   return return_value;
 }
 
-Mqtt.send = function(data, send_topic) {
+Mqtt.send = function(send_topic, data) {
   message = new Messaging.Message(data);
   message.destinationName = send_topic;
   message.qos = 0;
@@ -148,4 +132,5 @@ window.onload = function() {
   Page.init();
   Page._intervalId_ = setInterval(Page.run, 1000 / Page.fps_);
   Mqtt.MQTTconnect();
+  console.log("done window.onload")
 };

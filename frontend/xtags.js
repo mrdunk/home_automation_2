@@ -1,91 +1,65 @@
 
-xtag.register('button-show-content', {
-  expanded: false,
+xtag.register('ha-container', {
   lifecycle:{
     created: function(){
-      // fired once at the time a component
-      // is initially created or parsed
-      console.log("button-show-content.lifecycle.created");
-      var template = document.getElementById('button-show-content').content;
-      this.appendChild(template.cloneNode(true));
-    },
-    inserted: function(){
-      // fired each time a component
-      // is inserted into the DOM
-      console.log("button-show-content.lifecycle.inserted");
-    }
-  },
-  events: {
-    'click': function(){
-      console.log("button-show-content.events.click");
-      this.expanded = !this.expanded;
-      if(this.expanded === false){
-        this.getElementsByClassName("button-show-content-show")[0].style.display = "block";
-        this.getElementsByClassName("button-show-content-hide")[0].style.display = "none";
-      } else {
-        this.getElementsByClassName("button-show-content-show")[0].style.display = "none";
-        this.getElementsByClassName("button-show-content-hide")[0].style.display = "block";
-      }
-    }
-  }
-});
-
-xtag.register('draw-container', {
-  lifecycle:{
-    created: function(){
-      // fired once at the time a component
-      // is initially created or parsed
-      console.log("draw-container.lifecycle.created");
-      var template = document.getElementById('draw-container').innerHTML;
+      console.log("ha-container.created");
+      var template = document.getElementById('ha-container').innerHTML;
       xtag.innerHTML(this, template);
 
-      this.getElement = function(element_name){
-        var elements = this.getElementsByTagName('draw-element');
-        for(var i=0; i < elements.length; i++){
-          if(xtag.hasClass(elements[i], element_name)){
-            return elements[i];
+      // this.id probably isn't set yet for all aecept the root node.
+      this.address = this.id.substr("ha-container-".length)
+      this.name = this.address.split('/')[0]
+
+      this.device_icon = document.createElement("ha-light")
+      this.getElementsByClassName("ha-device-icon")[0].appendChild(this.device_icon)
+      this.device_icon.id = "ha-light-" + this.name
+      
+      this.addChild = function(child_address, child_value){
+        console.log("addChild:", child_address, child_value)
+        if(child_address !== this.address && child_address.search(this.address) === 0){
+          // Since "this" has children, make the button to expand it visible.
+          this.getElementsByTagName("ha-button-show-children")[0].style.display = 'block'
+
+          var child_address_diff = child_address.slice(this.address.length +1)
+
+          var immediate_child_name = child_address_diff.split("/")[0]
+          var immediate_child_address = this.address + "/" + immediate_child_name
+          var immediate_child = this.getChild(immediate_child_address)
+
+          if(immediate_child === undefined){
+            immediate_child = document.createElement("ha-container")
+            this.getElementsByClassName("ha-container-children")[0].appendChild(immediate_child)
+
+            immediate_child.getElementsByTagName("ha-button-show-children")[0].style.display = 'none'
+
+            immediate_child.name = immediate_child_name
+            immediate_child.address = immediate_child_address
+            immediate_child.id = "ha-container-" + immediate_child_address
+
+            immediate_child.device_icon.id = "ha-light-" + immediate_child_address
           }
+          immediate_child.addChild(child_address, child_value)
+
+        } else {
+          console.log("Unable to add " + child_address + " to " + this.address)
         }
       }
 
-      this.setElement = function(element_name, element_value){
-        console.log(element_value);
-        var element = this.getElement(element_name);
-        if(element){
-          // already exists.
-        } else{
-          var element = document.createElement('draw-element');
-          this.getElementsByClassName("draw-elements")[0].appendChild(element);
-          element.element_name = element_name;
-          element.element_parent = this;
-        }
-        element.element_value = element_value;
-
-        element.switch = false;
-        for(var k in element_value){
-          // If any color is switched on...
-          if(element_value[k]){
-            // display the switch in the "on" position for this element
-            element.switch = true;
-          }
-        }
-        // Now make sure the parent's switch is displayed correctly...
-        element.parentElement.parentElement.switch = false;
-        var peer_switches = this.getElementsByClassName('draw-elements')[0].getElementsByTagName("light-switch");
-        for(var i = 0; i < peer_switches.length; i++){
-          if(peer_switches[i].on_off){
-            element.parentElement.parentElement.switch = true;
+      this.getChild = function(child_address){
+        var children = this.getElementsByClassName("ha-container-children")[0].childNodes
+        for(var i = 0; i < children.length; i++){
+          if(children[i].address === child_address){
+            return children[i]
           }
         }
       }
     }
   },
   events: {
-    'click:delegate(button-show-content)': function(){
-      
-      // Because this is a delgated function, it runs in the context of button-show-content,
-      // therfore we must use the .parentElement.
-      var contents = this.parentElement.parentElement.getElementsByClassName("draw-elements")[0];
+    'click:delegate(ha-button-show-children)': function(){
+      // Because this is a delegated function, it runs in the context of button-show-children,
+      // therefore we must use the .parentElement.
+      var contents = this.parentElement.parentElement.getElementsByClassName("ha-container-children")[0];
       if(this.expanded){
         contents.style.display = "block";
       } else {
@@ -94,90 +68,109 @@ xtag.register('draw-container', {
     }
   },
   accessors: {
-    'draw_name': {
-      set: function(name){
-             xtag.addClass(this, "__rooms");
-             xtag.addClass(this, name);
-             this.getElementsByClassName("draw-name")[0].innerHTML = name;
-             this.title = name;
-      }
-    },
-    'switch': {
-      set: function(state){
-        var switchIcon = this.getElementsByClassName('draw-header')[0].getElementsByTagName("light-switch")[0];
-        if(switchIcon){
-          switchIcon.switched = state;
-        }
-      //},
-      //get: function(){
-      //  console.log('&&&&');
+    'name': {
+      set: function(value){
+        console.log("accessors:name:set:", value)
+        this.getElementsByClassName("ha-container-name")[0].innerHTML = value
+        this._name = value
+      },
+      get: function(){
+        return this._name
       }
     }
   }
 });
 
-xtag.register('draw-element', {
-  element_value: "",
-  //element_parent: null,
+xtag.register('ha-button-show-children', {
+  expanded: false,
   lifecycle:{
     created: function(){
       // fired once at the time a component
       // is initially created or parsed
-      console.log("draw-element.lifecycle.created");
-      var template = document.getElementById('draw-element').innerHTML;
-      xtag.innerHTML(this, template);
-
-      this.element_parent = null;
+      console.log("ha-button-show-children.created");
+      var template = document.getElementById('ha-button-show-children').content;
+      this.appendChild(template.cloneNode(true));
+    },
+    inserted: function(){
+      // fired each time a component
+      // is inserted into the DOM
+      console.log("ha-button-show-children.inserted");
     }
   },
-  accessors: {
-    'element_value': {
-      set: function(value){
-        this.getElementsByClassName("element-value")[0].innerHTML = JSON.stringify(value);
-      }
-    },
-    'element_name': {
-      set: function(name){
-        this.getElementsByClassName("element-name")[0].innerHTML = name;
-        xtag.addClass(this, "__device");
-        xtag.addClass(this, name);
-        this.title = name;
-      }
-    },
-    'switch': {
-      set: function(state){
-        var switchIcon = this.getElementsByTagName("light-switch")[0];
-        switchIcon.switched = state;
+  events: {
+    'click': function(){
+      console.log("ha-button-show-children.events.click");
+      this.expanded = !this.expanded;
+      if(this.expanded === false){
+        this.getElementsByClassName("ha-button-show-children-show")[0].style.display = "block";
+        this.getElementsByClassName("ha-button-show-children-hide")[0].style.display = "none";
+      } else {
+        this.getElementsByClassName("ha-button-show-children-show")[0].style.display = "none";
+        this.getElementsByClassName("ha-button-show-children-hide")[0].style.display = "block";
       }
     }
   }
 });
 
-xtag.register('light-switch', {
+xtag.register('ha-light', {
   on_off: false,
   lifecycle:{
     created: function(){
-      var template = document.getElementById('light-switch').innerHTML;
+      var template = document.getElementById('ha-light-binary').innerHTML;
       xtag.innerHTML(this, template);
-
-      if (this.parentElement.parentElement.element_name){
-        console.log("device:", this.parentElement.parentElement.element_name);
-      } else if (this.parentElement.parentElement.draw_name){
-        console.log("room:", this.parentElement.parentElement.draw_name);
-      } else {
-        console.log("room:", this.parentElement.parentElement.draw_name);
-      }
     }
   },
   accessors: {
     'switched': {
       set: function(value){
+        console.log('switched:', value)
+        this.displayed = value
+
+        // Now do the same for all children.
+        var address = this.id.substr("ha-light-".length)
+
+        var children = document.getElementById("ha-container-" + address).getElementsByClassName("ha-container-children")[0].childNodes
+        for(var i = 0; i < children.length; i++){
+            document.getElementById("ha-light-" + children[i].address).switched = value
+        }
+      },
+      get: function(){
+        return this.on_off
+      }
+    },
+    'displayed': {
+      set: function(value){
         this.on_off = value;
-        if (this.on_off) {
+        if (this.on_off) { 
           this.style.color = "#ffb";
         } else {
           this.style.color = "#bbb";
         }
+      }
+    }
+  },
+  methods: {
+    // Make sure Parent icons are displayed correctly.
+    tidyParent: function(){
+      var address = this.id.substr("ha-light-".length)
+      var parent_address = address.substr(0, address.lastIndexOf("/"))
+      if(parent_address ===""){
+        return
+      }
+
+      var at_least_one_peer_on = false
+      var peers = document.getElementById("ha-container-" + parent_address).getElementsByClassName("ha-container-children")[0].childNodes
+      for(var i = 0; i < peers.length; i++){
+        if(document.getElementById("ha-light-" + peers[i].address).switched === true){
+          at_least_one_peer_on = true
+        }
+      }
+      console.log(address, parent_address, at_least_one_peer_on)
+      document.getElementById("ha-light-" + parent_address).displayed = at_least_one_peer_on
+
+      while(parent_address.length){
+        document.getElementById("ha-light-" + parent_address).tidyParent()
+        parent_address = parent_address.substr(0, parent_address.lastIndexOf("/"))
       }
     }
   },
@@ -191,21 +184,21 @@ xtag.register('light-switch', {
         // Currently off. will be turning on.
         send_data = 'on';
       }
-
-      if(!this.room){
-        if(this.parentElement.parentElement.localName === "draw-container"){
-          this.room = this.parentElement.parentElement.title;
-          this.device = "all";
-        } else if(this.parentElement.parentElement.localName === "draw-element"){
-          this.room = this.parentElement.parentElement.parentElement.parentElement.title;
-          this.device = this.parentElement.parentElement.title;
-        }
-      }
-
-      Mqtt.send(send_data, 'homeautomation/devices/lighting/' + this.room + '/' + this.device + '/set');
-      Page.AppendToLog('homeautomation/devices/lighting/' + this.room + '/' + this.device + '/set = ' + send_data, 'RED')
+      console.log("click:", send_data)
 
       this.switched = !this.on_off;  // To trigger accessors.switched.set.
+      this.tidyParent()
+
+      var address = this.id.substr("ha-light-".length)
+      var children = document.getElementById("ha-container-" + address).getElementsByClassName("ha-container-children")[0].childNodes
+      if(children.length > 0){
+        Mqtt.send("homeautomation/0/" + address + "/all", "command:" + send_data)
+        Page.AppendToLog("homeautomation/0/" + address + "/all = command:" + send_data, "red")
+      } else {
+        Mqtt.send("homeautomation/0/" + address, "command:" + send_data) 
+        Page.AppendToLog("homeautomation/0/" + address + " = command:" + send_data, "red")
+      }
+
     }
-  }
+          }
 });

@@ -5,7 +5,7 @@
   Topic format:
     unique_ID/broker_level/roll/address_1[/address_2[/address_3[...] ] ]
   where:
-    unique_ID is an identifier unique to this instilation.
+    unique_ID is an identifier unique to this instillation.
     broker_level == 0 for a client, broker_level == 1 for a broker. Further values may be used for further levels of broker recursion in the future.
     roll is an identifier for the type of operation this topic describes. eg. "lighting" or "heating".
     address_X describe the actual equipment being addressed by the Topic. eg. "dunks_house/kitchen/worktop/left" or "dunks_house/workshop/desk_lamp".
@@ -37,36 +37,30 @@ if found == false then
 end
 
 
-local web_dir = '/www/info/'
-local temp_dir = '/tmp/homeautomation/'
-local mosquitto_pub = '/usr/bin/mosquitto_pub'
-local mosquitto_conf = '/etc/mosquitto/mosquitto.conf'
+-- Constants
+local WEB_DIR = '/www/info/'
+local TEMP_DIR = '/tmp/homeautomation/'
+local MOSQUITTO_CONF = '/etc/mosquitto/mosquitto.conf'
 
+-- Globals
 local info = {}
-info.processes = {['mosquitto'] = {}, 
-                  ['avahi-daemon'] = {},
-                  ['dropbear'] = {},
-                  ['uhttpd'] = {}}
-info.brokers = {}
-info.clients = {}
-info.clients.device = {}
-info.config = {update_delay = 10,
-               interfaces = {}}
-
-
 local mqtt_client = mqtt.new()
 
+
 function mqtt_client.ON_PUBLISH()
-  print("mqtt_client.ON_PUBLISH")
+  --print("mqtt_client.ON_PUBLISH")
 end
 
 function mqtt_client.ON_MESSAGE(mid, topic, payload)
   print(mid, topic, payload)
 
+  -- Only match alphanumeric characters and a very limited range of special characters here to prevent easy injection type attacks.
   local unique_ID, broker_level, roll, address = string.match(topic, "^([%w_%-]+)/([%w_%-]+)/([%w_%-]+)/([%w_%-/]+)")
-  print(unique_ID, broker_level, roll, address)
-
   local command = string.match(payload, "^command%s*:%s*(%w+)")
+
+  -- Now we have parsed topic and payload, lets remove the temptation to use them again.
+  topic = nil
+  payload = nil
 
   local topic_sections = {}
   local topic_section_counter = 1
@@ -76,8 +70,8 @@ function mqtt_client.ON_MESSAGE(mid, topic, payload)
     topic_section_counter = topic_section_counter +1
   end
 
-  for index, device in pairs(info.clients.device) do
-    if device.role == roll and "homeautomation" == unique_ID then
+  for index, device in pairs(info.devices) do
+    if (device.role == roll or "all" == roll) and "homeautomation" == unique_ID then
       local address_remainder = device.address
       local address_section
       local address_section_counter = 1
@@ -93,11 +87,13 @@ function mqtt_client.ON_MESSAGE(mid, topic, payload)
         address_section_counter = address_section_counter +1
       end
       if match == true then
-        print(device.address .. " matches " .. topic)
+        print(device.address .. " matches " .. address)
         if command == "on" then
           device_set_on(device)
         elseif command == "off" then
           device_set_off(device)
+        elseif command == "solicit" then
+          device_announce(device)
         end
       end
     end
@@ -105,18 +101,8 @@ function mqtt_client.ON_MESSAGE(mid, topic, payload)
 end
 
 function mqtt_client.ON_CONNECT()
-  print("mqtt_client.ON_CONNECT")
-
+  --print("mqtt_client.ON_CONNECT")
   if DEBUG then
-    if not info.mqtt then
-      info.mqtt = {}
-    end
-    if not info.mqtt.subscriptions then
-      info.mqtt.subscriptions = {}
-    end
-    if not info.mqtt.last_announced then
-      info.mqtt.last_announced = {}
-    end
     while #info.mqtt.subscriptions > 0 do
       table.remove(info.mqtt.subscriptions, #info.mqtt.subscriptions)
     end
@@ -125,16 +111,18 @@ function mqtt_client.ON_CONNECT()
     end
   end
 
-
   local subscribe_to = {}
 
-  for k, device in pairs(info.clients.device) do
-    local subscription = "homeautomation/+/" .. device.role
+  for k, device in pairs(info.devices) do
+    --local subscription = "homeautomation/+/" .. device.role
+    local subscription = ""
     for address_section in string.gmatch(device.address, "[^/]+") do
-      subscribe_to[subscription .. "/all"] = true
+      subscribe_to["homeautomation/+/" .. device.role .. subscription .. "/all"] = true
+      subscribe_to["homeautomation/+/all" .. subscription .. "/all"] = true
       subscription = subscription .. "/" .. address_section
     end
-    subscribe_to[subscription] = true
+    subscribe_to["homeautomation/+/" .. device.role .. subscription] = true
+    subscribe_to["homeautomation/+/all" .. subscription] = true
   end
 
   local debug_counter = 1
@@ -147,12 +135,13 @@ function mqtt_client.ON_CONNECT()
     end
   end
 
-  for k, device in pairs(info.clients.device) do
+  for k, device in pairs(info.devices) do
     device_announce(device)
   end
 end
 
 
+-- Test if a path exists on the file system.
 function is_file_or_dir(fn)
     return os.rename(fn, fn)
 end
@@ -161,14 +150,19 @@ function mkdir(dir)
   return os.execute("mkdir -p " .. dir)
 end
 
+-- Move a file or directory.
 function mv(source, dest)
   return os.rename(source, dest)
 end
 
+-- Test if a path exists on the file system. Wild cards can be used.
 function match_file_or_dir(fn)
   return os.execute("[ -e  " .. fn .. " ]")
 end
 
+-- Get the value a particular device is set to. eg. "on" or "off".
+-- Works by calling a bash program that contains the necessary code to perform the operation.
+-- The name of this bash program can be set in the main configuration file.
 function device_get_value(device)
   -- TODO limit executable code in device.command.query to shell scripts in a limited directory.
   local handle = io.popen(device.command.query)
@@ -181,6 +175,9 @@ function device_get_value(device)
   return ret_val:match "^%s*(.-)%s*$"
 end
 
+-- Set a power management device to the "on" state.
+-- Works by calling a bash program that contains the necessary code to perform the operation.
+-- The name of this bash program can be set in the main configuration file.
 function device_set_on(device)
   print("device_set_on: " .. device.address)
   local ret_val = os.execute(device.command.on)
@@ -188,6 +185,9 @@ function device_set_on(device)
   return ret_val
 end
 
+-- Set a power management device to the "off" state.
+-- Works by calling a bash program that contains the necessary code to perform the operation.
+-- The name of this bash program can be set in the main configuration file.
 function device_set_off(device)
   print("device_set_off: " .. device.address)
   local ret_val =  os.execute(device.command.off)
@@ -195,6 +195,7 @@ function device_set_off(device)
   return ret_val
 end
 
+-- Advertise the existence of a device over the message bus.
 function device_announce(device)
   local value = device_get_value(device)
   print("Announcing: " .. device.role .. "/" .. device.address .. "  value: " .. value)
@@ -213,54 +214,89 @@ function device_announce(device)
   end
 end
 
+-- To be called first.
+-- Initialize everything needed to run this program.
 function initilize()
+  -- The global "info" is the main data structure and contains all data
+  -- which is to be passed from one iteration of this code to the next.
+  -- The full contents of "info" are displayed on a webpage for debugging:
+  -- http://$HOSTNAME/info/server.txt
+  info = {}
+  info.brokers = {}
+  info.devices = {}
+  info.host = {interfaces = {},
+               processes = {}}
+  info.host.processes = {['mosquitto'] = {},
+                         ['avahi-daemon'] = {},
+                         ['dropbear'] = {},
+                         ['uhttpd'] = {}}
+  info.config = {update_delay = 10}
   info.last_updated = os.time()
 
-  if not is_file_or_dir(web_dir) then
-    print('Creating ' .. web_dir)
-    mkdir(web_dir)
+  -- The following data is not strictly required but is useful to know when debugging.
+  if DEBUG then
+    if not info.mqtt then
+      info.mqtt = {}
+    end
+    if not info.mqtt.subscriptions then
+      info.mqtt.subscriptions = {}
+    end
+    if not info.mqtt.last_announced then
+      info.mqtt.last_announced = {}
+    end
   end
 
-  if not is_file_or_dir(temp_dir) then
-    print('Creating ' .. temp_dir)
-    mkdir(temp_dir)
-    mkdir(temp_dir .. 'mosquitto/')
+  -- Set required files and directories.
+  if not is_file_or_dir(WEB_DIR) then
+    print('Creating ' .. WEB_DIR)
+    mkdir(WEB_DIR)
   end
 
-  if is_file_or_dir(web_dir) and is_file_or_dir(temp_dir) then
-    os.execute('ln -s ' .. temp_dir .. 'server.txt ' .. web_dir .. 'server.txt')
+  if not is_file_or_dir(TEMP_DIR) then
+    print('Creating ' .. TEMP_DIR)
+    mkdir(TEMP_DIR)
+    mkdir(TEMP_DIR .. 'mosquitto/')
   end
 
-  local file_handle = io.open(mosquitto_conf, "a+")
+  if is_file_or_dir(WEB_DIR) and is_file_or_dir(TEMP_DIR) then
+    os.execute('ln -s ' .. TEMP_DIR .. 'server.txt ' .. WEB_DIR .. 'server.txt')
+  end
+
+  -- Make sure the mosquitto.conf file has the required options set.
+  -- TODO Enable websockets.
+  local file_handle = io.open(MOSQUITTO_CONF, "a+")
   if file_handle then
     local found = false
     for line in file_handle:lines() do
-      if string.find(line, '^include_dir%s+' .. temp_dir .. 'mosquitto/') then
+      if string.find(line, '^include_dir%s+' .. TEMP_DIR .. 'mosquitto/') then
         found = true
       end
     end
 
     if found == false then
-      print('Adding "include_dir" directive to ' .. temp_dir .. 'mosquitto/')
+      print('Adding "include_dir" directive to ' .. TEMP_DIR .. 'mosquitto/')
       file_handle:write('\n# =================================================================\n')
       file_handle:write('# Appended by lua script.\n')  -- TODO get name of script programmatically.
       file_handle:write('# =================================================================\n')
-      file_handle:write('include_dir ' .. temp_dir .. 'mosquitto/\n')
+      file_handle:write('include_dir ' .. TEMP_DIR .. 'mosquitto/\n')
     end
 
     file_handle:close()
   end
 end
 
+-- Return hostname of the host running this code.
 function hostname()
-    local handle = io.popen("uname -snr")
-    local uname = handle:read("*line")
-    handle:close()
-    info.hostname = string.match(uname, "[%w]+[%s]([%w%p]+)[%s][%w%p]+")
+  local handle = io.popen("uname -snr")
+  local uname = handle:read("*line")
+  handle:close()
+  info.host.hostname = string.match(uname, "[%w]+[%s]([%w%p]+)[%s][%w%p]+")
 end
 
+-- This code needs to know if certain processes are running.
+-- eg. Whether mosquitto is running will affect whether this code can use localhost as a broker or if it must look elsewhere.
 function process_list()
-    for process, value in pairs(info.processes) do
+    for process, value in pairs(info.host.processes) do
       local pid_command = "pgrep /" .. process .. "$"
       local handle = io.popen(pid_command)
       local result = handle:read("*line")
@@ -274,29 +310,32 @@ function process_list()
       end
       handle:close()
 
-      info.processes[process].pid = results
-      if info.processes[process].pid == nil then
-        info.processes[process].pid = false
+      info.host.processes[process].pid = results
+      if info.host.processes[process].pid == nil then
+        info.host.processes[process].pid = false
       end
 
       if match_file_or_dir('/etc/rc.d/S??' .. process) == 0 then
-        info.processes[process].enabled = true
+        info.host.processes[process].enabled = true
       else
-        info.processes[process].enabled = false
+        info.host.processes[process].enabled = false
       end
     end
 end
 
+-- Test if an address and port points to a valid MQTT broker.
 function broker_test(broker, port)
   local test_mqtt_client = mqtt.new()
   return test_mqtt_client:connect(broker, port)
 end
 
+-- Discover and test functionality of everything we suspect to be a Broker.
+-- Ultimately choose a reachable Broker and mark it the active one.
 function broker_list()
   local have_active
 
   -- Make localhost a broker if appropriate.
-  if info.processes.mosquitto.enabled == true and info.processes.mosquitto.pid ~= "" then
+  if info.host.processes.mosquitto.enabled == true and info.host.processes.mosquitto.pid ~= "" then
     if not info.brokers.localhost then
       info.brokers.localhost = {}
     end
@@ -349,7 +388,7 @@ function broker_list()
   local result = handle:read("*line")
   while result do
     local hostname, address, port = string.match(result, "^([%a%d-.]+).local;([%da-f:.]+);(%d+)$")
-    if hostname ~= info.hostname then
+    if hostname ~= info.host.hostname then
       if not info.brokers[hostname] then
         info.brokers[hostname] = {}
       end
@@ -373,42 +412,43 @@ function broker_list()
   handle:close()
 end
 
+-- Get a list of network interfaces and addresses configured.
 function local_network()
   local proc_handle = io.input('/proc/net/route')
   if proc_handle then
     for line in io.lines() do
       line = string.match(line, "^([%a%d-.]+)%s")
       if line and line ~= 'Iface' then    -- 'Iface' is the human readable label on the top line of /proc/net/route
-        if not info.config.interfaces[line] then
-          info.config.interfaces[line] = {}
+        if not info.host.interfaces[line] then
+          info.host.interfaces[line] = {}
         end
       end
     end
     proc_handle:close()
 
-    for interface in pairs(info.config.interfaces) do
+    for interface in pairs(info.host.interfaces) do
       local ifconfig_command = 'ifconfig ' .. interface .. ' | grep "HWaddr\\|inet"'
       local ifconfig_handle = io.popen(ifconfig_command)
       local result = ifconfig_handle:read("*line")
       while result do
         local mac = string.match(result, "HWaddr%s([A-F%d:]+)")
         if mac then
-          info.config.interfaces[interface].mac = mac
+          info.host.interfaces[interface].mac = mac
         end
 
         local ip = string.match(result, "inet6? addr:%s?([%da-f:.]+)")
-        if not info.config.interfaces[interface].addresses then
-          info.config.interfaces[interface].addresses = {}
+        if not info.host.interfaces[interface].addresses then
+          info.host.interfaces[interface].addresses = {}
         end
         local found_ip = false
-        for i,a in ipairs(info.config.interfaces[interface].addresses) do
+        for i,a in ipairs(info.host.interfaces[interface].addresses) do
           if a == ip then
             found_ip = true
             break
           end
         end
         if not found_ip then
-          info.config.interfaces[interface].addresses[#info.config.interfaces[interface].addresses +1] = ip
+          info.host.interfaces[interface].addresses[#info.host.interfaces[interface].addresses +1] = ip
         end
         result = ifconfig_handle:read("*line")
       end
@@ -418,24 +458,26 @@ function local_network()
   end
 end
 
+-- Create a webpage of all the information contained in "info".
+-- Currently used as a debugging aid but may be used later so we can create dashboards without access to MQTT.
 function create_web_page()
-  if info.processes.uhttpd.enabled == true then
-    local handle = io.open(temp_dir .. 'tmp.txt', "w") 
+  if info.host.processes.uhttpd.enabled == true then
+    local handle = io.open(TEMP_DIR .. 'tmp.txt', "w") 
     if handle then
-      handle:write(itterate_info(info, '', ''))
+      handle:write(_itterate_info(info, '', ''))
       handle:close()
-      mv(temp_dir .. 'tmp.txt', temp_dir .. 'server.txt')
+      mv(TEMP_DIR .. 'tmp.txt', TEMP_DIR .. 'server.txt')
     else
-      print("Couldn't create: " .. temp_dir .. 'tmp.txt\n')
-      print(itterate_info(info, '', ''))
+      print("Couldn't create: " .. TEMP_DIR .. 'tmp.txt\n')
+      print(_itterate_info(info, '', ''))
     end
   else
     print("uhttpd not running.")
-    print(itterate_info(info, '', ''))
+    print(_itterate_info(info, '', ''))
   end
 end
 
-function itterate_info(info_branch, key, output)
+function _itterate_info(info_branch, key, output)
   if type(info_branch) == 'number' or type(info_branch) == 'boolean' then
     output = output .. key .. ' : ' .. tostring(info_branch) .. '\r\n'
   elseif type(info_branch) == 'string' then
@@ -445,17 +487,21 @@ function itterate_info(info_branch, key, output)
   else
     for name, value in pairs(info_branch) do
       if key ~= '' then
-        output = itterate_info(value, key .. '.' .. name, output)
+        output = _itterate_info(value, key .. '.' .. name, output)
       else
-        output = itterate_info(value, name, output)
+        output = _itterate_info(value, name, output)
       end
     end
   end
   return output
 end
 
+-- Create a mosquitto config file with information about other brokers we intend to form bridges with.
 function update_mosquitto_config()
-  if info.processes['avahi-daemon'].enabled ~= true then
+  if info.host.processes['avahi-daemon'].enabled ~= true then
+    return
+  end
+  if info.host.processes.mosquitto.enabled ~= true then
     return
   end
 
@@ -508,7 +554,7 @@ function update_mosquitto_config()
       for broker, connections in pairs(info.brokers) do
         for connection_id, connection in pairs(connections) do
           if connection.reachable == true then
-            file_handle:write('connection ' .. info.hostname .. '_to_' .. broker .. '\n')
+            file_handle:write('connection ' .. info.host.hostname .. '_to_' .. broker .. '\n')
             file_handle:write('address ' .. connection.address .. ':' .. connection.port .. '\n')
             file_handle:write('topic # in 1 homeautomation/bridges/ homeautomation/devices/ \n\n')
             break
@@ -522,6 +568,7 @@ function update_mosquitto_config()
   end
 end
 
+-- Read the configuration file for connected devices.
 local read_client_config_first_loop = true
 function read_client_config()
   local client_config = "/etc/homeautomation/client_devices.conf"
@@ -533,8 +580,8 @@ function read_client_config()
     return
   end
 
-  info.clients.last_updated = os.time()
-  for k in next,info.clients.device do info.clients.device[k] = nil end -- Clear table.
+  info.devices.last_updated = os.time()
+  for k in next,info.devices do info.devices[k] = nil end -- Clear table.
 
   -- TODO only need to do this if file has been modified since last read.
   -- TODO Need to change subscriptions if anything has changed.
@@ -548,7 +595,7 @@ function read_client_config()
       if tmp then
         if dev_address and dev_role then
           -- Save previous record
-          info.clients.device[#info.clients.device +1] = {address = dev_address, role = dev_role, command = dev_command}
+          info.devices[#info.devices +1] = {address = dev_address, role = dev_role, command = dev_command}
         end
         dev_address = tmp
         dev_role = nil
@@ -577,11 +624,13 @@ function read_client_config()
     end
     file_handle:close()
     if dev_address and dev_role then
-      info.clients.device[#info.clients.device +1] = {address = dev_address, role = dev_role, command = dev_command}
+      info.devices[#info.devices +1] = {address = dev_address, role = dev_role, command = dev_command}
     end
   end
 end
 
+-- Monitor the message bus.
+-- Periodically return so we can perform other housekeeping duties before re-running this.
 function poll_mosquitto(stop_at)
   repeat
     local loop_value = mqtt_client:loop()
@@ -603,6 +652,7 @@ function poll_mosquitto(stop_at)
   until os.time() >= stop_at
 end
 
+-- Main program loop.
 function main()
   run = true
   initilize()

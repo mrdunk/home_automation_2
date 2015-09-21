@@ -10,11 +10,16 @@ button-show-content {
   margin: 0.3em;
 }
 
+ha-button-show-children {
+  float: left;
+  margin: 0.3em;
+}
+
 .fa {
   vertical-align: middle;
 }
 
-light-switch {
+.ha-device-icon {
   float: right;
   vertical-align: middle;
   margin: 0.3em;
@@ -33,12 +38,10 @@ light-switch {
 }
 
 .draw-elements {
-  width: 96%;
-  max-height: 200px;
-  background: #444;
   margin-top: 0;
   margin-left: 3em;
   overflow-y: auto;
+  overflow: hidden;
 }
 
 draw-container {
@@ -59,7 +62,7 @@ draw-container {
   margin: 0.3em;
 }
 
-#log {
+#ha-container-log {
   position: absolute;
   bottom: 0;
 }

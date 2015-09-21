@@ -1,7 +1,7 @@
-host='192.168.192.9';
-topic = 'homeautomation/+/lighting/advertise';
-port=18883;
-useTLS=false;
-cleansession=true;
+BROKER_ADDRESS='192.168.192.9';
+BROKER_PORT=18883;
+ANNOUNCE_SUBSCRIPTION='homeautomation/+/+/announce';
+USE_TLS=false;
+CLEANSESSION=true;
 username=null;
 password=null;
