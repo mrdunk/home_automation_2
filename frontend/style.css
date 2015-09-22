@@ -5,11 +5,6 @@ body {
   margin: 0 2%;
 }
 
-button-show-content {
-  float: left;
-  margin: 0.3em;
-}
-
 ha-button-show-children {
   float: left;
   margin: 0.3em;
@@ -25,39 +20,26 @@ ha-button-show-children {
   margin: 0.3em;
 }
 
-.draw-header {
+.ha-container-header {
   background: #444;
   overflow: hidden;
   border: 1px solid;
   margin-bottom: 0;
 }
 
-.draw-name {
+.ha-container-name {
   float: left;
   margin: 0.3em;
 }
 
-.draw-elements {
+.ha-container-children {
   margin-top: 0;
   margin-left: 3em;
   overflow-y: auto;
   overflow: hidden;
 }
 
-draw-container {
-  background: #333;
-  width: 96%;
-  display: block;
-  float: left;
-  clear: both;
-}
-
-.draw-element-content {
-  border: 1px solid;
-  overflow: hidden;
-}
-
-.element-content {
+.ha-device-content {
   float: left;
   margin: 0.3em;
 }
@@ -65,6 +47,16 @@ draw-container {
 #ha-container-log {
   position: absolute;
   bottom: 0;
+  width: 90%;
+}
+
+.ha-container-log-content {
+  background: #555;
+  border: 1px solid;
+  padding: 0.3em;
+  overflow-y: scroll;
+  max-height: 100px;
+  font-size: 75%;
 }
 
 draw-element {

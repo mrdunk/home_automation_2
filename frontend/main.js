@@ -5,7 +5,8 @@ var Page = {}
 Page.init = function() {
   Page.running_ = true;
   Page.fps_ = 10;
-  Page.log_ = document.getElementById("ha-container-log").getElementsByClassName("draw-elements")[0];
+  Page.log_ = document.getElementById("ha-container-log").getElementsByClassName("ha-container-children")[0];
+  Page.log_.className = Page.log_.className + " ha-container-log-content"
   Page.topics = {};
   Page.topics.all_devices = 'homeautomation/0/all/all';
 }

@@ -25,19 +25,12 @@
 
 
 <template id="ha-container">
-  <div class="ha-container-header draw-header">
+  <div class="ha-container-header">
     <ha-button-show-children></ha-button-show-children>
-    <div class="ha-container-name draw-name"></div>
+    <div class="ha-container-name"></div>
     <div class="ha-device-icon"></div>
   </div>
-  <div class="ha-container-children draw-elements" style="display:none;"></div>
-</template>
-
-<template id="ha-device">
-  <div class="draw-element-content">
-    <div class="element-name element-content"></div>
-    <div class="element-value element-content"></div>
-  </div>
+  <div class="ha-container-children" style="display:none;"></div>
 </template>
 
 <template id="ha-button-show-children">
@@ -47,4 +40,8 @@
 
 <template id="ha-light-binary">
   <i class="fa fa-lightbulb-o fa-3x"></i>
+</template>
+
+<template id="ha-log">
+  <i class="fa fa-file-text-o fa-3x"></i>
 </template>

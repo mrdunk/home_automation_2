@@ -6,51 +6,81 @@ xtag.register('ha-container', {
       var template = document.getElementById('ha-container').innerHTML;
       xtag.innerHTML(this, template);
 
-      // this.id probably isn't set yet for all aecept the root node.
+      // this.id probably isn't set yet for all except the root node.
       this.address = this.id.substr("ha-container-".length)
       this.name = this.address.split('/')[0]
 
-      this.device_icon = document.createElement("ha-light")
-      this.getElementsByClassName("ha-device-icon")[0].appendChild(this.device_icon)
-      this.device_icon.id = "ha-light-" + this.name
-      
-      this.addChild = function(child_address, child_value){
-        console.log("addChild:", child_address, child_value)
-        if(child_address !== this.address && child_address.search(this.address) === 0){
-          // Since "this" has children, make the button to expand it visible.
-          this.getElementsByTagName("ha-button-show-children")[0].style.display = 'block'
-
-          var child_address_diff = child_address.slice(this.address.length +1)
-
-          var immediate_child_name = child_address_diff.split("/")[0]
-          var immediate_child_address = this.address + "/" + immediate_child_name
-          var immediate_child = this.getChild(immediate_child_address)
-
-          if(immediate_child === undefined){
-            immediate_child = document.createElement("ha-container")
-            this.getElementsByClassName("ha-container-children")[0].appendChild(immediate_child)
-
-            immediate_child.getElementsByTagName("ha-button-show-children")[0].style.display = 'none'
-
-            immediate_child.name = immediate_child_name
-            immediate_child.address = immediate_child_address
-            immediate_child.id = "ha-container-" + immediate_child_address
-
-            immediate_child.device_icon.id = "ha-light-" + immediate_child_address
-          }
-          immediate_child.addChild(child_address, child_value)
-
-        } else {
-          console.log("Unable to add " + child_address + " to " + this.address)
-        }
+      this.addIcon(this.name)
+    }
+  },
+  methods: {
+    // Add the icon button to an element.
+    addIcon: function(type){
+      if(type === undefined){
+        return
       }
 
-      this.getChild = function(child_address){
-        var children = this.getElementsByClassName("ha-container-children")[0].childNodes
-        for(var i = 0; i < children.length; i++){
-          if(children[i].address === child_address){
-            return children[i]
+      if(type === "lighting"){
+        this.device_icon = document.createElement("ha-light")
+        this.getElementsByClassName("ha-device-icon")[0].appendChild(this.device_icon)
+        this.device_icon.id = "ha-light-" + this.address
+      } else if(type === "log"){
+        this.device_icon = document.createElement("ha-log")
+        this.getElementsByClassName("ha-device-icon")[0].appendChild(this.device_icon)
+        this.device_icon.id = "ha-log-" + this.address
+      }
+    },
+    // Add a child element to this element.
+    // Will add recursive layers of elements to account for the requested child being many layers deeper than the current.
+    addChild: function(child_address, child_value){
+      console.log("addChild:", child_address, child_value)
+        
+      if(child_address !== this.address && child_address.search(this.address) === 0){
+        // Since "this" has children, make the button to expand it visible.
+        this.getElementsByTagName("ha-button-show-children")[0].style.display = 'block'
+
+        var child_address_diff = child_address.slice(this.address.length +1)
+
+        var immediate_child_name = child_address_diff.split("/")[0]
+        var immediate_child_address = this.address + "/" + immediate_child_name
+        var immediate_child = this.getChild(immediate_child_address)
+
+        if(immediate_child === undefined){
+          immediate_child = document.createElement("ha-container")
+          this.getElementsByClassName("ha-container-children")[0].appendChild(immediate_child)
+
+          immediate_child.getElementsByTagName("ha-button-show-children")[0].style.display = 'none'
+
+          immediate_child.name = immediate_child_name
+          immediate_child.address = immediate_child_address
+          immediate_child.id = "ha-container-" + immediate_child_address
+
+          var root_name = immediate_child.address.split('/')[0]
+          immediate_child.addIcon(root_name)
+
+          if(immediate_child.device_icon){
+            immediate_child.device_icon.id = "ha-light-" + immediate_child_address
           }
+        }
+
+        immediate_child.addChild(child_address, child_value)
+
+      } else {
+        var child_value_bool = false
+        if(child_value === "on"){
+          child_value_bool = true
+        }
+        if(this.device_icon){
+          this.device_icon.displayed = child_value_bool
+          this.device_icon.tidyParent()
+        }
+      }
+    },
+    getChild: function(child_address){
+      var children = this.getElementsByClassName("ha-container-children")[0].childNodes
+      for(var i = 0; i < children.length; i++){
+        if(children[i].address === child_address){
+          return children[i]
         }
       }
     }
@@ -165,7 +195,6 @@ xtag.register('ha-light', {
           at_least_one_peer_on = true
         }
       }
-      console.log(address, parent_address, at_least_one_peer_on)
       document.getElementById("ha-light-" + parent_address).displayed = at_least_one_peer_on
 
       while(parent_address.length){
@@ -200,5 +229,14 @@ xtag.register('ha-light', {
       }
 
     }
-          }
+  }
+});
+
+xtag.register('ha-log', {
+  lifecycle:{
+    created: function(){
+      var template = document.getElementById('ha-log').innerHTML;
+      xtag.innerHTML(this, template);
+    }
+  },
 });

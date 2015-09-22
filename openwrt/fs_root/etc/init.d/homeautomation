@@ -1,7 +1,7 @@
 #!/bin/sh /etc/rc.common
 START=99
 
-BIN=pubsub.lua
+BIN=homeautomation.lua
 RUN_D=/var/run/$BIN
 
 

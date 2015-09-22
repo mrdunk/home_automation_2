@@ -16,6 +16,8 @@ local DEBUG = true
 
 package.path = package.path .. ';/usr/share/homeautomation/?.lua'
 
+require 'os'
+
 
 -- Load lua-mosquitto module if possible.
 local found = false
@@ -114,7 +116,6 @@ function mqtt_client.ON_CONNECT()
   local subscribe_to = {}
 
   for k, device in pairs(info.devices) do
-    --local subscription = "homeautomation/+/" .. device.role
     local subscription = ""
     for address_section in string.gmatch(device.address, "[^/]+") do
       subscribe_to["homeautomation/+/" .. device.role .. subscription .. "/all"] = true
@@ -283,6 +284,10 @@ function initilize()
 
     file_handle:close()
   end
+
+  -- Need to make sure there is a config file in /tmp/homeautomation/mosquitto/ or mosquitto won't start.
+  os.execute("touch /tmp/homeautomation/mosquitto/bridges.conf")
+  os.execute("/etc/init.d/mosquitto start")
 end
 
 -- Return hostname of the host running this code.
@@ -530,7 +535,7 @@ function update_mosquitto_config()
   for broker, connections in pairs(info.brokers) do
     local reachable_connection, in_file
     for connection_id, connection in pairs(connections) do
-      if connection.reachable == true then
+      if connection.reachable == true and broker ~= "localhost" then
         reachable_connection = connection
         if config[connection.address] == connection.port then
           -- Is already in file.
@@ -553,10 +558,10 @@ function update_mosquitto_config()
     if file_handle then
       for broker, connections in pairs(info.brokers) do
         for connection_id, connection in pairs(connections) do
-          if connection.reachable == true then
+          if connection.reachable == true and broker ~= "localhost" then
             file_handle:write('connection ' .. info.host.hostname .. '_to_' .. broker .. '\n')
             file_handle:write('address ' .. connection.address .. ':' .. connection.port .. '\n')
-            file_handle:write('topic # in 1 homeautomation/bridges/ homeautomation/devices/ \n\n')
+            file_handle:write('topic # in 1 homeautomation/1/ homeautomation/0/ \n\n')
             break
           end
         end
@@ -564,6 +569,12 @@ function update_mosquitto_config()
       file_handle:close()
       mv("/tmp/homeautomation/mosquitto/tmp.conf", "/tmp/homeautomation/mosquitto/bridges.conf")
       info.needs_reload = true
+    end
+
+    -- And restart mosquitto.
+    if info.needs_reload == true then
+      print("restarting mosquitto")
+      info.needs_reload = os.execute("/etc/init.d/mosquitto restart") ~= 0
     end
   end
 end
