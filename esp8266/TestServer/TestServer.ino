@@ -11,6 +11,7 @@
 #include "persist_data.cpp"   // WHY IS THIS NEEDED?? The linker can't find instances of Persistent.
 #include "Brokers.h"
 
+
 // Increase this if any changes are made to "struct Config".
 #define CONFIG_VERSION "001"
 
@@ -297,6 +298,10 @@ void setup(void) {
   digitalWrite(led, 0);
 
   Serial.begin(115200);
+
+  
+  Serial.print("VCC:");
+  Serial.println(analogRead(A0));
 
   Persist_Data::Persistent<Config> persist_config(CONFIG_VERSION, &config);
   persist_config.readConfig();

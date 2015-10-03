@@ -70,7 +70,7 @@ end
 
 
 function mqtt:publish(topic, payload)
-  local command = mosquitto_pub .. ' -h ' .. self.connection.broker .. ' -p ' .. self.connection.port .. ' -t ' .. topic .. ' -m ' .. payload
+  local command = mosquitto_pub .. ' -h ' .. self.connection.broker .. ' -p ' .. self.connection.port .. ' -t ' .. topic .. ' -m "' .. payload .. '"'
   local return_value = os.execute(command)
 
   self.ON_PUBLISH()
@@ -91,7 +91,7 @@ function mqtt:loop()
       if line then 
         local topic
         local payload
-        topic, payload = string.match(line, '^%s*([%w/+#]+)%s+([%w#%s]+)%s*$')
+        topic, payload = string.match(line, '^%s*([%w_%-/]+)%s+(.+)%s*$')
         self.ON_MESSAGE(0, topic, payload)
         self.loopcount = 0
       else

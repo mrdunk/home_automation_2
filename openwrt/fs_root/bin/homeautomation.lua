@@ -43,9 +43,10 @@ end
 local WEB_DIR = '/www/info/'
 local TEMP_DIR = '/tmp/homeautomation/'
 local MOSQUITTO_CONF = '/etc/mosquitto/mosquitto.conf'
+local POWER_SCRIPT_DIR = '/usr/share/homeautomation/power_commands/'
 
 -- Globals
-local info = {}
+info = {}
 local mqtt_client = mqtt.new()
 
 
@@ -54,7 +55,9 @@ function mqtt_client.ON_PUBLISH()
 end
 
 function mqtt_client.ON_MESSAGE(mid, topic, payload)
-  print(mid, topic, payload)
+  if topic == nil or payload == nil then
+    return
+  end
 
   -- Only match alphanumeric characters and a very limited range of special characters here to prevent easy injection type attacks.
   local unique_ID, broker_level, roll, address = string.match(topic, "^([%w_%-]+)/([%w_%-]+)/([%w_%-]+)/([%w_%-/]+)")
@@ -103,7 +106,7 @@ function mqtt_client.ON_MESSAGE(mid, topic, payload)
 end
 
 function mqtt_client.ON_CONNECT()
-  --print("mqtt_client.ON_CONNECT")
+  print("mqtt_client.ON_CONNECT")
   if DEBUG then
     while #info.mqtt.subscriptions > 0 do
       table.remove(info.mqtt.subscriptions, #info.mqtt.subscriptions)
@@ -161,12 +164,20 @@ function match_file_or_dir(fn)
   return os.execute("[ -e  " .. fn .. " ]")
 end
 
+
+local trigger_dhcp
+if is_file_or_dir('/usr/share/homeautomation/trigger_dhcp.lua') then
+  trigger_dhcp = require 'trigger_dhcp'
+end
+
+
 -- Get the value a particular device is set to. eg. "on" or "off".
 -- Works by calling a bash program that contains the necessary code to perform the operation.
 -- The name of this bash program can be set in the main configuration file.
 function device_get_value(device)
   -- TODO limit executable code in device.command.query to shell scripts in a limited directory.
-  local handle = io.popen(device.command.query)
+  local device_tmp_filename = string.gsub(device.address, "/", "__")
+  local handle = io.popen(POWER_SCRIPT_DIR .. device.command .. " " .. device_tmp_filename .. " query")
   if not handle then
     return nil
   end
@@ -181,7 +192,8 @@ end
 -- The name of this bash program can be set in the main configuration file.
 function device_set_on(device)
   print("device_set_on: " .. device.address)
-  local ret_val = os.execute(device.command.on)
+  local device_tmp_filename = string.gsub(device.address, "/", "__")
+  local ret_val = os.execute(POWER_SCRIPT_DIR .. device.command .. " " .. device_tmp_filename .. " on")
   device_announce(device)
   return ret_val
 end
@@ -191,7 +203,8 @@ end
 -- The name of this bash program can be set in the main configuration file.
 function device_set_off(device)
   print("device_set_off: " .. device.address)
-  local ret_val =  os.execute(device.command.off)
+  local device_tmp_filename = string.gsub(device.address, "/", "__")
+  local ret_val = os.execute(POWER_SCRIPT_DIR .. device.command .. " " .. device_tmp_filename .. " off")
   device_announce(device)
   return ret_val
 end
@@ -199,7 +212,7 @@ end
 -- Advertise the existence of a device over the message bus.
 function device_announce(device)
   local value = device_get_value(device)
-  print("Announcing: " .. device.role .. "/" .. device.address .. "  value: " .. value)
+  print("Announcing: homeautomation/0/" .. device.role .. "/announce", device.role .. "/" .. device.address .. " : " .. value)
   mqtt_client:publish("homeautomation/0/" .. device.role .. "/announce", device.role .. "/" .. device.address .. " : " .. value)
   if DEBUG then
     local found_match
@@ -610,7 +623,6 @@ function read_client_config()
         end
         dev_address = tmp
         dev_role = nil
-        dev_command = {}
       end
       tmp = string.match(line, "^%s*client\.device\.role%s*:%s*(.+)%s*$")
       if tmp then
@@ -620,7 +632,7 @@ function read_client_config()
         end
         dev_role = tmp
       end
-      tmp, tmp2 = string.match(line, "^%s*client\.device\.command\.(.+)%s*:%s*(.+)%s*$")
+      tmp = string.match(line, "^%s*client\.device\.command%s*:%s*(.+)%s*$")
       if tmp then
         if not dev_address then
           print("Error in " .. client_config .. ". client.device.address not specified before \"" .. line .. "\"")
@@ -630,7 +642,7 @@ function read_client_config()
           print("Error in " .. client_config .. ". client.device.role not specified before \"" .. line .. "\"")
           return
         end
-        dev_command[tmp] = tmp2
+        dev_command = tmp
       end
     end
     file_handle:close()
@@ -678,6 +690,10 @@ function main()
 
     update_mosquitto_config()
     create_web_page()
+
+    if trigger_dhcp ~= nil then
+      read_dhcp()
+    end
     
     poll_mosquitto(info.last_updated + info.config.update_delay)
     info.last_updated = os.time()
