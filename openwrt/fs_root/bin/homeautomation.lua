@@ -12,12 +12,24 @@
 
 ]]--
 
+-- Globals
+info = {}
+info.config = {}
+info.config.component = {}
 local DEBUG = true
 
 package.path = package.path .. ';/usr/share/homeautomation/?.lua'
 
 require 'os'
+require 'file_utils'
 
+if is_file_or_dir('/usr/share/homeautomation/trigger_dhcp.lua') then
+  info.config.component.trigger_dhcp = require 'trigger_dhcp'
+end
+
+if is_file_or_dir('/usr/share/homeautomation/mosquitto_update.lua') then
+  info.config.component.mosquitto_update = require 'mosquitto_update'
+end
 
 -- Load lua-mosquitto module if possible.
 local found = false
@@ -38,16 +50,13 @@ if found == false then
   mqtt = require 'homeautomation_mqtt'
 end
 
+local mqtt_client = mqtt.new()
 
 -- Constants
 local WEB_DIR = '/www/info/'
 local TEMP_DIR = '/tmp/homeautomation/'
 local MOSQUITTO_CONF = '/etc/mosquitto/mosquitto.conf'
 local POWER_SCRIPT_DIR = '/usr/share/homeautomation/power_commands/'
-
--- Globals
-info = {}
-local mqtt_client = mqtt.new()
 
 
 function mqtt_client.ON_PUBLISH()
@@ -145,32 +154,6 @@ function mqtt_client.ON_CONNECT()
 end
 
 
--- Test if a path exists on the file system.
-function is_file_or_dir(fn)
-    return os.rename(fn, fn)
-end
-
-function mkdir(dir)
-  return os.execute("mkdir -p " .. dir)
-end
-
--- Move a file or directory.
-function mv(source, dest)
-  return os.rename(source, dest)
-end
-
--- Test if a path exists on the file system. Wild cards can be used.
-function match_file_or_dir(fn)
-  return os.execute("[ -e  " .. fn .. " ]")
-end
-
-
-local trigger_dhcp
-if is_file_or_dir('/usr/share/homeautomation/trigger_dhcp.lua') then
-  trigger_dhcp = require 'trigger_dhcp'
-end
-
-
 -- Get the value a particular device is set to. eg. "on" or "off".
 -- Works by calling a bash program that contains the necessary code to perform the operation.
 -- The name of this bash program can be set in the main configuration file.
@@ -235,7 +218,6 @@ function initilize()
   -- which is to be passed from one iteration of this code to the next.
   -- The full contents of "info" are displayed on a webpage for debugging:
   -- http://$HOSTNAME/info/server.txt
-  info = {}
   info.brokers = {}
   info.devices = {}
   info.host = {interfaces = {},
@@ -244,8 +226,9 @@ function initilize()
                          ['avahi-daemon'] = {},
                          ['dropbear'] = {},
                          ['uhttpd'] = {}}
-  info.config = {update_delay = 10}
-  info.last_updated = os.time()
+  info.config.update_delay = 10
+  info.config.last_updated = os.time()
+  info.host.hostname = hostname()
 
   -- The following data is not strictly required but is useful to know when debugging.
   if DEBUG then
@@ -303,13 +286,6 @@ function initilize()
   os.execute("/etc/init.d/mosquitto start")
 end
 
--- Return hostname of the host running this code.
-function hostname()
-  local handle = io.popen("uname -snr")
-  local uname = handle:read("*line")
-  handle:close()
-  info.host.hostname = string.match(uname, "[%w]+[%s]([%w%p]+)[%s][%w%p]+")
-end
 
 -- This code needs to know if certain processes are running.
 -- eg. Whether mosquitto is running will affect whether this code can use localhost as a broker or if it must look elsewhere.
@@ -353,7 +329,7 @@ function broker_list()
   local have_active
 
   -- Make localhost a broker if appropriate.
-  if info.host.processes.mosquitto.enabled == true and info.host.processes.mosquitto.pid ~= "" then
+  if info.host.processes.mosquitto.enabled == true and info.host.processes.mosquitto.pid ~= "" and info.config.component.mosquitto_update then
     if not info.brokers.localhost then
       info.brokers.localhost = {}
     end
@@ -381,19 +357,21 @@ function broker_list()
   -- Do this now so we don't change brokers as we learn about more.
   local reachable_broker
   for broker, connections in pairs(info.brokers) do
-    for index, connection in ipairs(connections) do
-      if connection.active then
-        connection.reachable = broker_test(connection.address, connection.port)
-        connection.active = connection.reachable
-        have_active = connection.reachable
-      end
+    if type(connections) == 'table' then
+      for index, connection in ipairs(connections) do
+        if connection.active then
+          connection.reachable = broker_test(connection.address, connection.port)
+          connection.active = connection.reachable
+          have_active = connection.reachable
+        end
       
-      if reachable_broker == nil and connection.reachable then
-        reachable_broker = connection
-        if have_active == nil then
-          print("Make this the active broker: ", connection.address)
-          have_active = true
-          connection.active = true
+        if reachable_broker == nil and connection.reachable then
+          reachable_broker = connection
+          if have_active == nil then
+            print("Make this the active broker: ", connection.address)
+            have_active = true
+            connection.active = true
+          end
         end
       end
     end
@@ -514,84 +492,6 @@ function _itterate_info(info_branch, key, output)
   return output
 end
 
--- Create a mosquitto config file with information about other brokers we intend to form bridges with.
-function update_mosquitto_config()
-  if info.host.processes['avahi-daemon'].enabled ~= true then
-    return
-  end
-  if info.host.processes.mosquitto.enabled ~= true then
-    return
-  end
-
-  local config = {}
-
-  -- Parse existing config.
-  local file_handle = io.open("/tmp/homeautomation/mosquitto/bridges.conf", "r")
-  if file_handle then
-    for line in file_handle:lines() do
-      local key, content = string.match(line, "^(%a+)%s+(.+)%s*$")
-      if key == 'address' then
-        local address, port = string.match(content, "^([%da-f:.]+):(%d+)%s*$")
-        if port == nil then 
-          port = '1883'
-        end
-        config[address] = port
-      end
-    end
-    file_handle:close()
-  else
-    print('No file: /tmp/homeautomation/mosquitto/bridges.conf')
-  end
-
-  -- Compare to detected brokers on network.
-  local new_file = false
-  for broker, connections in pairs(info.brokers) do
-    local reachable_connection, in_file
-    for connection_id, connection in pairs(connections) do
-      if connection.reachable == true and broker ~= "localhost" then
-        reachable_connection = connection
-        if config[connection.address] == connection.port then
-          -- Is already in file.
-          in_file = true
-          break
-        end
-      end
-    end
-
-    if reachable_connection and not in_file then
-      -- Since none of the connections are in the file, it needs updated.
-      new_file = true
-    end
-  
-  end
-
-  -- Write a new file if it needs done.
-  if new_file == true then
-    file_handle = io.open("/tmp/homeautomation/mosquitto/tmp.conf", "w")
-    if file_handle then
-      for broker, connections in pairs(info.brokers) do
-        for connection_id, connection in pairs(connections) do
-          if connection.reachable == true and broker ~= "localhost" then
-            file_handle:write('connection ' .. info.host.hostname .. '_to_' .. broker .. '\n')
-            file_handle:write('address ' .. connection.address .. ':' .. connection.port .. '\n')
-            file_handle:write('topic # in 1 homeautomation/1/ homeautomation/0/ \n\n')
-            break
-          end
-        end
-      end
-      file_handle:close()
-      mv("/tmp/homeautomation/mosquitto/tmp.conf", "/tmp/homeautomation/mosquitto/bridges.conf")
-      info.needs_reload = true
-    end
-
-    -- And restart mosquitto.
-    if info.needs_reload == true then
-      print("restarting mosquitto")
-      info.needs_reload = os.execute("/etc/init.d/mosquitto restart") ~= 0
-    end
-  end
-end
-
 -- Read the configuration file for connected devices.
 local read_client_config_first_loop = true
 function read_client_config()
@@ -659,17 +559,22 @@ function poll_mosquitto(stop_at)
     local loop_value = mqtt_client:loop()
     if loop_value ~= true then
       for broker, connections in pairs(info.brokers) do
-        for connection_id, connection in pairs(connections) do
-          if connection.active then
-            loop_value = mqtt_client:connect(connection.address, connection.port)
-            break
+        if type(connections) == 'table' then
+          for connection_id, connection in pairs(connections) do
+            if connection.active then
+              loop_value = mqtt_client:connect(connection.address, connection.port)
+              break
+            end
           end
         end
       end
       if loop_value ~= true then
         -- Still not true which means no connections are marked active or connection.active is not actually active.
+        info.brokers.ERROR = "No active broker found."
         print("Error: No active broker found.")
         return
+      else
+        info.brokers.ERROR = nil
       end
     end
   until os.time() >= stop_at
@@ -681,22 +586,23 @@ function main()
   initilize()
 
   while run do
-    print('tick', info.last_updated)
-    hostname()
+    print('tick', info.config.last_updated)
     process_list()
     local_network()
     broker_list()
     read_client_config()
 
-    update_mosquitto_config()
-    create_web_page()
-
-    if trigger_dhcp ~= nil then
+    if info.config.component.mosquitto_update then
+      update_mosquitto_config()
+    end
+    if info.config.component.trigger_dhcp then
       read_dhcp()
     end
+
+    create_web_page()
     
-    poll_mosquitto(info.last_updated + info.config.update_delay)
-    info.last_updated = os.time()
+    poll_mosquitto(info.config.last_updated + info.config.update_delay)
+    info.config.last_updated = os.time()
   end
 end
 
