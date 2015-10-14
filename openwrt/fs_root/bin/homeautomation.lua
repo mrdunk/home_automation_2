@@ -3,11 +3,11 @@
 --[[
 
   Topic format:
-    unique_ID/broker_level/roll/address_1[/address_2[/address_3[...] ] ]
+    unique_ID/broker_level/role/address_1[/address_2[/address_3[...] ] ]
   where:
     unique_ID is an identifier unique to this instillation.
     broker_level == 0 for a client, broker_level == 1 for a broker. Further values may be used for further levels of broker recursion in the future.
-    roll is an identifier for the type of operation this topic describes. eg. "lighting" or "heating".
+    role is an identifier for the type of operation this topic describes. eg. "lighting" or "heating".
     address_X describe the actual equipment being addressed by the Topic. eg. "dunks_house/kitchen/worktop/left" or "dunks_house/workshop/desk_lamp".
 
 ]]--
@@ -16,7 +16,8 @@
 info = {}
 info.config = {}
 info.config.component = {}
-local DEBUG = true
+mqtt_client = {}
+DEBUG = true
 
 package.path = package.path .. ';/usr/share/homeautomation/?.lua'
 
@@ -50,13 +51,16 @@ if found == false then
   mqtt = require 'homeautomation_mqtt'
 end
 
-local mqtt_client = mqtt.new()
+mqtt_client = mqtt.new()
+
+
 
 -- Constants
 local WEB_DIR = '/www/info/'
 local TEMP_DIR = '/tmp/homeautomation/'
 local MOSQUITTO_CONF = '/etc/mosquitto/mosquitto.conf'
 local POWER_SCRIPT_DIR = '/usr/share/homeautomation/power_commands/'
+
 
 
 function mqtt_client.ON_PUBLISH()
@@ -69,45 +73,52 @@ function mqtt_client.ON_MESSAGE(mid, topic, payload)
   end
 
   -- Only match alphanumeric characters and a very limited range of special characters here to prevent easy injection type attacks.
-  local unique_ID, broker_level, roll, address = string.match(topic, "^([%w_%-]+)/([%w_%-]+)/([%w_%-]+)/([%w_%-/]+)")
-  local command = string.match(payload, "^command%s*:%s*(%w+)")
+  local unique_ID, incoming_broker_level, incoming_role, incoming_address = string.match(topic, "^([%w_%-]+)/([%w_%-]+)/([%w_%-]+)/([%w_%-/]+)")
+  local incoming_command = string.match(payload, "^command%s*:%s*(%w+)")
 
   -- Now we have parsed topic and payload, lets remove the temptation to use them again.
   topic = nil
   payload = nil
 
+  -- Split incoming topic into atoms.
   local topic_sections = {}
   local topic_section_counter = 1
-  local topic_remainder = address
+  local topic_remainder = incoming_address
   while topic_remainder ~= "" do
     topic_sections[topic_section_counter], topic_remainder = string.match(topic_remainder, "([%w_%-]+)/?([%w_%-/]*)")
     topic_section_counter = topic_section_counter +1
   end
 
-  for index, device in pairs(info.devices) do
-    if (device.role == roll or "all" == roll) and "homeautomation" == unique_ID then
-      local address_remainder = device.address
-      local address_section
-      local address_section_counter = 1
-      local match = true
-      while address_remainder ~= "" do
-        address_section, address_remainder = string.match(address_remainder, "([%w_%-]+)/?([%w_%-/]*)")
-        if topic_sections[address_section_counter] == "all" then
-          -- All child nodes match
-          break
-        elseif topic_sections[address_section_counter] ~= address_section then
-          match = false
+  -- See which of our info.io things the incoming topic matches.
+  for role, things in pairs(info.io) do
+    if incoming_role == role or incoming_role == "all" then
+      for address, thing in pairs(things) do
+        local address_remainder = address
+        local address_section
+        local address_section_counter = 1
+        local match = true
+        while address_remainder ~= "" do
+          address_section, address_remainder = string.match(address_remainder, "([%w_%-]+)/?([%w_%-/]*)")
+          print(incoming_role, role, topic_sections[address_section_counter], address_section)
+          if topic_sections[address_section_counter] == "all" then
+            -- All child nodes match
+            break
+          elseif topic_sections[address_section_counter] ~= address_section then
+            match = false
+            break
+          end
+          address_section_counter = address_section_counter +1
         end
-        address_section_counter = address_section_counter +1
-      end
-      if match == true then
-        print(device.address .. " matches " .. address)
-        if command == "on" then
-          device_set_on(device)
-        elseif command == "off" then
-          device_set_off(device)
-        elseif command == "solicit" then
-          device_announce(device)
+        if match == true then
+          -- TODO Replace this section with callbacks.
+          print("* match:", incoming_role, incoming_address, "=", role, address)
+          if incoming_command == "on" then
+            device_set_on(role, address, thing.command)
+          elseif incoming_command == "off" then
+            device_set_off(role, address, thing.command)
+          elseif incoming_command == "solicit" then
+            device_announce(role, address, thing.command)
+          end
         end
       end
     end
@@ -126,16 +137,8 @@ function mqtt_client.ON_CONNECT()
   end
 
   local subscribe_to = {}
-
-  for k, device in pairs(info.devices) do
-    local subscription = ""
-    for address_section in string.gmatch(device.address, "[^/]+") do
-      subscribe_to["homeautomation/+/" .. device.role .. subscription .. "/all"] = true
-      subscribe_to["homeautomation/+/all" .. subscription .. "/all"] = true
-      subscription = subscription .. "/" .. address_section
-    end
-    subscribe_to["homeautomation/+/" .. device.role .. subscription] = true
-    subscribe_to["homeautomation/+/all" .. subscription] = true
+  for _, loader in pairs(info.mqtt.subscription_loaders) do
+    subscribe_to = loader(subscribe_to)
   end
 
   local debug_counter = 1
@@ -148,19 +151,47 @@ function mqtt_client.ON_CONNECT()
     end
   end
 
-  for k, device in pairs(info.devices) do
-    device_announce(device)
+  for _, loader in pairs(info.mqtt.announcer_loaders) do
+    loader()
   end
 end
 
 
+function subscribe_lighting(subscribe_to)
+  if info.io.lighting == nil then
+    return subscribe_to
+  end
+  for address, device in pairs(info.io.lighting) do
+    local subscription = ""
+    for address_section in string.gmatch(address, "[^/]+") do
+      subscribe_to["homeautomation/+/lighting" .. subscription .. "/all"] = true
+      subscribe_to["homeautomation/+/all" .. subscription .. "/all"] = true
+
+      subscription = subscription .. "/" .. address_section
+    end
+    subscribe_to["homeautomation/+/lighting" .. subscription] = true
+    subscribe_to["homeautomation/+/all" .. subscription] = true
+  end
+
+  return subscribe_to
+end
+
+function announce_lighting()
+  if info.io.lighting == nil then
+    return
+  end
+  for address, device in pairs(info.io.lighting) do
+    device_announce("lighting", address, device.command)
+  end
+end
+
 -- Get the value a particular device is set to. eg. "on" or "off".
 -- Works by calling a bash program that contains the necessary code to perform the operation.
 -- The name of this bash program can be set in the main configuration file.
-function device_get_value(device)
+function device_get_value(role, address, command)
   -- TODO limit executable code in device.command.query to shell scripts in a limited directory.
-  local device_tmp_filename = string.gsub(device.address, "/", "__")
-  local handle = io.popen(POWER_SCRIPT_DIR .. device.command .. " " .. device_tmp_filename .. " query")
+  local device_tmp_filename = string.gsub(address, "/", "__")
+  local handle = io.popen(POWER_SCRIPT_DIR .. command .. " " .. device_tmp_filename .. " query")
   if not handle then
     return nil
   end
@@ -173,40 +204,40 @@ end
 -- Set a power management device to the "on" state.
 -- Works by calling a bash program that contains the necessary code to perform the operation.
 -- The name of this bash program can be set in the main configuration file.
-function device_set_on(device)
-  print("device_set_on: " .. device.address)
-  local device_tmp_filename = string.gsub(device.address, "/", "__")
-  local ret_val = os.execute(POWER_SCRIPT_DIR .. device.command .. " " .. device_tmp_filename .. " on")
-  device_announce(device)
+function device_set_on(role, address, command)
+  print("device_set_on: " .. address)
+  local device_tmp_filename = string.gsub(address, "/", "__")
+  local ret_val = os.execute(POWER_SCRIPT_DIR .. command .. " " .. device_tmp_filename .. " on")
+  device_announce(role, address, command)
   return ret_val
 end
 
 -- Set a power management device to the "off" state.
 -- Works by calling a bash program that contains the necessary code to perform the operation.
 -- The name of this bash program can be set in the main configuration file.
-function device_set_off(device)
-  print("device_set_off: " .. device.address)
-  local device_tmp_filename = string.gsub(device.address, "/", "__")
-  local ret_val = os.execute(POWER_SCRIPT_DIR .. device.command .. " " .. device_tmp_filename .. " off")
-  device_announce(device)
+function device_set_off(role, address, command)
+  print("device_set_off: " .. address)
+  local device_tmp_filename = string.gsub(address, "/", "__")
+  local ret_val = os.execute(POWER_SCRIPT_DIR .. command .. " " .. device_tmp_filename .. " off")
+  device_announce(role, address, command)
   return ret_val
 end
 
 -- Advertise the existence of a device over the message bus.
-function device_announce(device)
-  local value = device_get_value(device)
-  print("Announcing: homeautomation/0/" .. device.role .. "/announce", device.role .. "/" .. device.address .. " : " .. value)
-  mqtt_client:publish("homeautomation/0/" .. device.role .. "/announce", device.role .. "/" .. device.address .. " : " .. value)
+function device_announce(role, address, command)
+  local value = device_get_value(role, address, command)
+  print("Announcing: homeautomation/0/" .. role .. "/announce", role .. "/" .. address .. " : " .. value)
+  mqtt_client:publish("homeautomation/0/" .. role .. "/announce", role .. "/" .. address .. " : " .. value)
   if DEBUG then
     local found_match
     for k, v in pairs(info.mqtt.last_announced) do
-      if string.match(info.mqtt.last_announced[k], device.address .. " : ") then
+      if string.match(info.mqtt.last_announced[k], address .. " : ") then
         found_match = true
-        info.mqtt.last_announced[k] = device.role .. "/" .. device.address .. " : " .. os.time()
+        info.mqtt.last_announced[k] = role .. "/" .. address .. " : " .. os.time()
       end
     end
     if not found_match then
-      table.insert(info.mqtt.last_announced, device.role .. "/" .. device.address .. " : " .. os.time())
+      table.insert(info.mqtt.last_announced, role .. "/" .. address .. " : " .. os.time())
     end
   end
 end
@@ -219,7 +250,7 @@ function initilize()
   -- The full contents of "info" are displayed on a webpage for debugging:
   -- http://$HOSTNAME/info/server.txt
   info.brokers = {}
-  info.devices = {}
+  info.io = {}
   info.host = {interfaces = {},
                processes = {}}
   info.host.processes = {['mosquitto'] = {},
@@ -230,11 +261,17 @@ function initilize()
   info.config.last_updated = os.time()
   info.host.hostname = hostname()
 
+  info.mqtt = {}
+  info.mqtt.subscription_loaders = {devices = subscribe_lighting}
+  info.mqtt.announcer_loaders = {devices = announce_lighting}
+
+  if info.config.component.trigger_dhcp then
+    info.mqtt.subscription_loaders['dhcp'] = subscribe_dhcp
+    info.mqtt.announcer_loaders['dhcp'] = announce_dhcp
+  end
+
   -- The following data is not strictly required but is useful to know when debugging.
   if DEBUG then
-    if not info.mqtt then
-      info.mqtt = {}
-    end
     if not info.mqtt.subscriptions then
       info.mqtt.subscriptions = {}
     end
@@ -291,7 +328,7 @@ end
 -- eg. Whether mosquitto is running will affect whether this code can use localhost as a broker or if it must look elsewhere.
 function process_list()
     for process, value in pairs(info.host.processes) do
-      local pid_command = "pgrep /" .. process .. "$"
+      local pid_command = "pgrep -f \"\\b" .. process .. "\\b\""  -- "\b" matches a word boundary.
       local handle = io.popen(pid_command)
       local result = handle:read("*line")
       local results = ''
@@ -379,7 +416,7 @@ function broker_list()
 
   -- TODO Investigate ways of speeding up the avahi-browse.
   -- It currently blocks for a second. Forking and writing the output to a file periodically..?
-  local avahi_command = 'avahi-browse -rtp _mqtt._tcp | grep ^= | cut -d";" -f7,8,9'
+  local avahi_command = 'avahi-browse -rtp _mqtt._tcp 2> /dev/null | grep ^= | cut -d";" -f7,8,9'
   local handle = io.popen(avahi_command)
   local result = handle:read("*line")
   while result do
@@ -480,6 +517,8 @@ function _itterate_info(info_branch, key, output)
     if info_branch ~= '' then
       output = output .. key .. ' : ' .. info_branch .. '\r\n'
     end
+  elseif type(info_branch) == 'function' then
+     output = output .. key .. ' : function()\r\n'
   else
     for name, value in pairs(info_branch) do
       if key ~= '' then
@@ -493,61 +532,60 @@ function _itterate_info(info_branch, key, output)
 end
 
 -- Read the configuration file for connected devices.
-local read_client_config_first_loop = true
-function read_client_config()
-  local client_config = "/etc/homeautomation/client_devices.conf"
+local read_periferals_config_first_loop = true
+function read_periferals_config()
+  local client_config = "/etc/homeautomation/client_devices.conf"   -- TODO Think about the name of this file and the labeling of the elements within.
   if not is_file_or_dir(client_config) then
-    if read_client_config_first_loop == true then
+    if read_periferals_config_first_loop == true then
       print(client_config .. " does not exist. No client configuration.")
-      read_client_config_first_loop = nil
+      read_periferals_config_first_loop = nil
     end
     return
   end
-
-  info.devices.last_updated = os.time()
-  for k in next,info.devices do info.devices[k] = nil end -- Clear table.
 
   -- TODO only need to do this if file has been modified since last read.
   -- TODO Need to change subscriptions if anything has changed.
 
   local file_handle = io.open(client_config, "r")
   if file_handle then
-    local dev_role, dev_address, dev_command
+    local key, value, address, role, command
     for line in file_handle:lines() do
-      local tmp, tmp2
-      tmp = string.match(line, "^%s*client\.device\.address%s*:%s*(.+)%s*$")
-      if tmp then
-        if dev_address and dev_role then
-          -- Save previous record
-          info.devices[#info.devices +1] = {address = dev_address, role = dev_role, command = dev_command}
-        end
-        dev_address = tmp
-        dev_role = nil
+      key, value = string.match(line, "^%s*client\.device\.(.+)%s*:%s*(.+)%s*$")
+      if key == "address" and address == nil then
+        address = value
+      elseif key == "role" and role == nil then
+        role = value
+      elseif key == "command" and command == nil then
+        command = value
+      elseif key == nil then
+        -- pass
+      else
+        print("Error in " .. client_config .. " at \"" .. key .. " : " .. value .. "\"")
+        file_handle:close()
+        return
       end
-      tmp = string.match(line, "^%s*client\.device\.role%s*:%s*(.+)%s*$")
-      if tmp then
-        if not dev_address then
-          print("Error in " .. client_config .. ". client.device.address not specified before \"" .. line .. "\"")
-          return
+
+      if address and role and command then
+        --print("Storing: ", address, role, command)
+        if info.io[role] == nil then
+          info.io[role] = {}
         end
-        dev_role = tmp
-      end
-      tmp = string.match(line, "^%s*client\.device\.command%s*:%s*(.+)%s*$")
-      if tmp then
-        if not dev_address then
-          print("Error in " .. client_config .. ". client.device.address not specified before \"" .. line .. "\"")
-          return
-        end
-        if not dev_role then
-          print("Error in " .. client_config .. ". client.device.role not specified before \"" .. line .. "\"")
-          return
-        end
-        dev_command = tmp
+        info.io[role][address] = {valid_until = os.time() + info.config.update_delay, command = command}
+        address = nil
+        role = nil
+        command = nil
       end
     end
     file_handle:close()
-    if dev_address and dev_role then
-      info.devices[#info.devices +1] = {address = dev_address, role = dev_role, command = dev_command}
+  end
+
+  -- Clean up any that have expired.
+  -- TODO Move this to a cleanup function so it can be shared between all info.io elements. 
+  for role in next, info.io do
+    for address in next, info.io[role] do
+      if info.io[role][address].last_updated and info.io[role][address].valid_until < os.time() then
+        info.io[role][address] = nil
+      end
     end
   end
 end
@@ -590,7 +628,7 @@ function main()
     process_list()
     local_network()
     broker_list()
-    read_client_config()
+    read_periferals_config()
 
     if info.config.component.mosquitto_update then
       update_mosquitto_config()
