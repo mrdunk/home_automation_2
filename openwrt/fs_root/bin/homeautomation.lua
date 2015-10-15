@@ -17,6 +17,7 @@ info = {}
 info.config = {}
 info.config.component = {}
 mqtt_client = {}
+dhcp_instance = {}
 DEBUG = true
 
 package.path = package.path .. ';/usr/share/homeautomation/?.lua'
@@ -24,8 +25,14 @@ package.path = package.path .. ';/usr/share/homeautomation/?.lua'
 require 'os'
 require 'file_utils'
 
-if is_file_or_dir('/usr/share/homeautomation/trigger_dhcp.lua') then
-  info.config.component.trigger_dhcp = require 'trigger_dhcp'
+if is_file_or_dir('/usr/share/homeautomation/parse_dhcp.lua') then
+  --info.config.component.parse_dhcp = require 'parse_dhcp'
+  --info.config.component.dhcp_parser = info.config.component.parse_dhcp.new()
+  dhcp_class = require 'parse_dhcp'
+  if dhcp_class then
+    info.config.component.parse_dhcp = true
+    dhcp_instance = dhcp_class.new()
+  end
 end
 
 if is_file_or_dir('/usr/share/homeautomation/mosquitto_update.lua') then
@@ -249,8 +256,10 @@ function initilize()
   -- which is to be passed from one iteration of this code to the next.
   -- The full contents of "info" are displayed on a webpage for debugging:
   -- http://$HOSTNAME/info/server.txt
+  if info.io == nil then
+    info.io = {}
+  end
   info.brokers = {}
-  info.io = {}
   info.host = {interfaces = {},
                processes = {}}
   info.host.processes = {['mosquitto'] = {},
@@ -265,10 +274,6 @@ function initilize()
   info.mqtt.subscription_loaders = {devices = subscribe_lighting}
   info.mqtt.announcer_loaders = {devices = announce_lighting}
 
-  if info.config.component.trigger_dhcp then
-    info.mqtt.subscription_loaders['dhcp'] = subscribe_dhcp
-    info.mqtt.announcer_loaders['dhcp'] = announce_dhcp
-  end
 
   -- The following data is not strictly required but is useful to know when debugging.
   if DEBUG then
@@ -633,8 +638,8 @@ function main()
     if info.config.component.mosquitto_update then
       update_mosquitto_config()
     end
-    if info.config.component.trigger_dhcp then
-      read_dhcp()
+    if info.config.component.parse_dhcp then
+      dhcp_instance:read_dhcp()
     end
 
     create_web_page()

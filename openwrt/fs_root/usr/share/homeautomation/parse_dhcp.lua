@@ -5,14 +5,40 @@
 local DEVICE_CONFIG = '/etc/homeautomation/trigger_dhcp.conf'
 local DHCP_FILE = '/tmp/dhcp.leases'
 
+local dhcp_parser = {test = 0}
+dhcp_parser.__index = dhcp_parser
 
-function read_dhcp()
-  -- TODO Determine if files have changed before going to this effort.
 
-  -- TODO put this in init function.
+function dhcp_parser.new()
+  print("dhcp_parser.new()")
+
+  local self = setmetatable({}, dhcp_parser)
+  
+
+  if info.io == nil then
+    info.io = {}
+  end
   if info.io.dhcp == nil then
     info.io.dhcp = {}
   end
+  if info.mqtt == nil then
+    info.mqtt = {}
+  end
+  if info.mqtt.subscription_loaders == nil then
+    info.mqtt.subscription_loaders = {}
+  end
+  if info.mqtt.announcer_loaders == nil then
+    info.mqtt.announcer_loaders = {}
+  end
+
+  info.mqtt.subscription_loaders['dhcp'] = self.subscribe_dhcp
+  info.mqtt.announcer_loaders['dhcp'] = self.announce_dhcp
+
+  return self
+end
+
+function dhcp_parser.read_dhcp(self)
+  -- TODO Determine if files have changed before going to this effort.
 
   -- Read dhcp config file to find which devices we care about.
   local file_handle = io.open(DEVICE_CONFIG, "r")
@@ -100,14 +126,14 @@ function read_dhcp()
 
   if update then
     print("update")
-    colapse_user_tree()
-    publish_users()
+    self.colapse_user_tree()
+    self.publish_users()
   end
 
   return
 end
 
-function colapse_user_tree()
+function dhcp_parser:colapse_user_tree()
   -- TODO put this in init function.
   if info.io.users == nil then
     info.io.users = {}
@@ -131,7 +157,7 @@ function colapse_user_tree()
   end
 end
 
-function publish_users()
+function dhcp_parser:publish_users()
   local topic, payload
 
   for google_id, user in  pairs(info.io.users) do
@@ -148,11 +174,12 @@ function publish_users()
 
 end
 
-function subscribe_dhcp(subscribe_to)
+function dhcp_parser:subscribe_dhcp(subscribe_to)
   --subscribe_to["homeautomation/+/all"] = true
   return subscribe_to
 end
 
-function announce_dhcp()
+function dhcp_parser:announce_dhcp()
 end
 
+return dhcp_parser
