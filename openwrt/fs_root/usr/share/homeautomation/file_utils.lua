@@ -28,4 +28,25 @@ function hostname()
   return string.match(uname, "[%w]+[%s]([%w%p]+)[%s][%w%p]+")
 end
 
+-- Return last modification time of a file
+function file_mod_time(filename)
+  local handle = io.popen("date -r " .. filename)
+  if handle then
+    local output = handle:read("*line")
+    handle:close()
+    return output
+  end
+  return
+end
 
+function sanitize_text(text)
+end
+
+function sanitize_fliename(filename)
+end
+
+function sanitize_mac_address(mac)
+end
+
+function sanitize_url(url)
+end

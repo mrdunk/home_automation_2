@@ -12,55 +12,19 @@
 
 ]]--
 
+-- Load libraries
+package.path = package.path .. ';/usr/share/homeautomation/?.lua'
+require 'os'
+require 'file_utils'
+
 -- Globals
 info = {}
 info.config = {}
 info.config.component = {}
-mqtt_client = {}
-dhcp_instance = {}
+mqtt_instance = {}            -- Will get assigned mqtt instance during initilize() function.
+dhcp_instance = {}          -- Will get assigned parse_dhcp instance during initilize() function.
+outlets_instance = {}       -- Will get assigned outlets instance during initilize() function.
 DEBUG = true
-
-package.path = package.path .. ';/usr/share/homeautomation/?.lua'
-
-require 'os'
-require 'file_utils'
-
-if is_file_or_dir('/usr/share/homeautomation/parse_dhcp.lua') then
-  --info.config.component.parse_dhcp = require 'parse_dhcp'
-  --info.config.component.dhcp_parser = info.config.component.parse_dhcp.new()
-  dhcp_class = require 'parse_dhcp'
-  if dhcp_class then
-    info.config.component.parse_dhcp = true
-    dhcp_instance = dhcp_class.new()
-  end
-end
-
-if is_file_or_dir('/usr/share/homeautomation/mosquitto_update.lua') then
-  info.config.component.mosquitto_update = require 'mosquitto_update'
-end
-
--- Load lua-mosquitto module if possible.
-local found = false
-for _, searcher in ipairs(package.searchers or package.loaders) do
-  local loader = searcher('mosquitto')
-  if type(loader) == 'function' then
-    print('Using lua-mosquitto')
-    found = true
-    package.preload['mosquitto'] = loader
-    mqtt = require "mosquitto"
-    break
-  end
-end
-
--- Otherwise use our bash wrapper.
-if found == false then
-  print('Using homeautomation_mqtt')
-  mqtt = require 'homeautomation_mqtt'
-end
-
-mqtt_client = mqtt.new()
-
-
 
 -- Constants
 local WEB_DIR = '/www/info/'
@@ -70,11 +34,13 @@ local POWER_SCRIPT_DIR = '/usr/share/homeautomation/power_commands/'
 
 
 
-function mqtt_client.ON_PUBLISH()
-  --print("mqtt_client.ON_PUBLISH")
+function mqtt_instance_ON_PUBLISH()
+  --print(" ** mqtt_instance.ON_PUBLISH")
 end
 
-function mqtt_client.ON_MESSAGE(mid, topic, payload)
+function mqtt_instance_ON_MESSAGE(mid, topic, payload)
+  --print(" ** mqtt_instance.ON_MESSAGE")
+
   if topic == nil or payload == nil then
     return
   end
@@ -106,7 +72,6 @@ function mqtt_client.ON_MESSAGE(mid, topic, payload)
         local match = true
         while address_remainder ~= "" do
           address_section, address_remainder = string.match(address_remainder, "([%w_%-]+)/?([%w_%-/]*)")
-          print(incoming_role, role, topic_sections[address_section_counter], address_section)
           if topic_sections[address_section_counter] == "all" then
             -- All child nodes match
             break
@@ -132,8 +97,9 @@ function mqtt_client.ON_MESSAGE(mid, topic, payload)
   end
 end
 
-function mqtt_client.ON_CONNECT()
-  print("mqtt_client.ON_CONNECT")
+function mqtt_instance_ON_CONNECT()
+  print(" ** mqtt_instance.ON_CONNECT")
+
   if DEBUG then
     while #info.mqtt.subscriptions > 0 do
       table.remove(info.mqtt.subscriptions, #info.mqtt.subscriptions)
@@ -145,13 +111,13 @@ function mqtt_client.ON_CONNECT()
 
   local subscribe_to = {}
   for _, loader in pairs(info.mqtt.subscription_loaders) do
-    subscribe_to = loader(subscribe_to)
+    subscribe_to = loader(loader, subscribe_to)
   end
 
   local debug_counter = 1
   for subscription, v in pairs(subscribe_to) do
     print("Subscribing to: " .. subscription)
-    mqtt_client:subscribe(subscription)
+    mqtt_instance:subscribe(subscription)
     if DEBUG then
       info.mqtt.subscriptions[debug_counter] = subscription
       debug_counter = debug_counter +1
@@ -160,35 +126,6 @@ function mqtt_client.ON_CONNECT()
 
   for _, loader in pairs(info.mqtt.announcer_loaders) do
     loader()
-  end
-end
-
-
-function subscribe_lighting(subscribe_to)
-  if info.io.lighting == nil then
-    return subscribe_to
-  end
-  for address, device in pairs(info.io.lighting) do
-    local subscription = ""
-    for address_section in string.gmatch(address, "[^/]+") do
-      subscribe_to["homeautomation/+/lighting" .. subscription .. "/all"] = true
-      subscribe_to["homeautomation/+/all" .. subscription .. "/all"] = true
-
-      subscription = subscription .. "/" .. address_section
-    end
-    subscribe_to["homeautomation/+/lighting" .. subscription] = true
-    subscribe_to["homeautomation/+/all" .. subscription] = true
-  end
-
-  return subscribe_to
-end
-
-function announce_lighting()
-  if info.io.lighting == nil then
-    return
-  end
-  for address, device in pairs(info.io.lighting) do
-    device_announce("lighting", address, device.command)
   end
 end
 
@@ -234,7 +171,7 @@ end
 function device_announce(role, address, command)
   local value = device_get_value(role, address, command)
   print("Announcing: homeautomation/0/" .. role .. "/announce", role .. "/" .. address .. " : " .. value)
-  mqtt_client:publish("homeautomation/0/" .. role .. "/announce", role .. "/" .. address .. " : " .. value)
+  mqtt_instance:publish("homeautomation/0/" .. role .. "/announce", role .. "/" .. address .. " : " .. value)
   if DEBUG then
     local found_match
     for k, v in pairs(info.mqtt.last_announced) do
@@ -271,8 +208,8 @@ function initilize()
   info.host.hostname = hostname()
 
   info.mqtt = {}
-  info.mqtt.subscription_loaders = {devices = subscribe_lighting}
-  info.mqtt.announcer_loaders = {devices = announce_lighting}
+  info.mqtt.subscription_loaders = {}
+  info.mqtt.announcer_loaders = {}
 
 
   -- The following data is not strictly required but is useful to know when debugging.
@@ -284,6 +221,51 @@ function initilize()
       info.mqtt.last_announced = {}
     end
   end
+
+
+  if is_file_or_dir('/usr/share/homeautomation/parse_dhcp.lua') then
+    local dhcp_class = require 'parse_dhcp'
+    if dhcp_class then
+      info.config.component.parse_dhcp = true
+      dhcp_instance = dhcp_class.new()
+    end
+  end
+
+  if is_file_or_dir('/usr/share/homeautomation/outlets.lua') then
+    local outlets_class = require 'outlets'
+    if outlets_class then
+      info.config.component.outlets = true
+      outlets_instance = outlets_class.new()
+    end
+  end
+
+  if is_file_or_dir('/usr/share/homeautomation/mosquitto_update.lua') then
+    info.config.component.mosquitto_update = require 'mosquitto_update'
+  end
+
+  -- Load lua-mosquitto module if possible.
+  local found = false
+  for _, searcher in ipairs(package.searchers or package.loaders) do
+    local loader = searcher('mosquitto')
+    if type(loader) == 'function' then
+      print('Using lua-mosquitto')
+      found = true
+      package.preload['mosquitto'] = loader
+      mqtt_class = require "mosquitto"
+      break
+    end
+  end
+  -- Otherwise use our bash wrapper.
+  if found == false then
+    print('Using homeautomation_mqtt')
+    mqtt_class = require 'homeautomation_mqtt'
+  end
+
+  mqtt_instance = mqtt_class.new()
+  mqtt_instance.ON_CONNECT = mqtt_instance_ON_CONNECT
+  mqtt_instance.ON_PUBLISH = mqtt_instance_ON_PUBLISH
+  mqtt_instance.ON_MESSAGE = mqtt_instance_ON_MESSAGE
+
 
   -- Set required files and directories.
   if not is_file_or_dir(WEB_DIR) then
@@ -361,8 +343,10 @@ end
 
 -- Test if an address and port points to a valid MQTT broker.
 function broker_test(broker, port)
-  local test_mqtt_client = mqtt.new()
-  return test_mqtt_client:connect(broker, port)
+  local test_mqtt_instance = mqtt_class.new()
+  local return_value = test_mqtt_instance:connect(broker, port)
+  test_mqtt_instance:disconnect()
+  return return_value
 end
 
 -- Discover and test functionality of everything we suspect to be a Broker.
@@ -536,76 +520,17 @@ function _itterate_info(info_branch, key, output)
   return output
 end
 
--- Read the configuration file for connected devices.
-local read_periferals_config_first_loop = true
-function read_periferals_config()
-  local client_config = "/etc/homeautomation/client_devices.conf"   -- TODO Think about the name of this file and the labeling of the elements within.
-  if not is_file_or_dir(client_config) then
-    if read_periferals_config_first_loop == true then
-      print(client_config .. " does not exist. No client configuration.")
-      read_periferals_config_first_loop = nil
-    end
-    return
-  end
-
-  -- TODO only need to do this if file has been modified since last read.
-  -- TODO Need to change subscriptions if anything has changed.
-
-  local file_handle = io.open(client_config, "r")
-  if file_handle then
-    local key, value, address, role, command
-    for line in file_handle:lines() do
-      key, value = string.match(line, "^%s*client\.device\.(.+)%s*:%s*(.+)%s*$")
-      if key == "address" and address == nil then
-        address = value
-      elseif key == "role" and role == nil then
-        role = value
-      elseif key == "command" and command == nil then
-        command = value
-      elseif key == nil then
-        -- pass
-      else
-        print("Error in " .. client_config .. " at \"" .. key .. " : " .. value .. "\"")
-        file_handle:close()
-        return
-      end
-
-      if address and role and command then
-        --print("Storing: ", address, role, command)
-        if info.io[role] == nil then
-          info.io[role] = {}
-        end
-        info.io[role][address] = {valid_until = os.time() + info.config.update_delay, command = command}
-        address = nil
-        role = nil
-        command = nil
-      end
-    end
-    file_handle:close()
-  end
-
-  -- Clean up any that have expired.
-  -- TODO Move this to a cleanup function so it can be shared between all info.io elements. 
-  for role in next, info.io do
-    for address in next, info.io[role] do
-      if info.io[role][address].last_updated and info.io[role][address].valid_until < os.time() then
-        info.io[role][address] = nil
-      end
-    end
-  end
-end
-
 -- Monitor the message bus.
 -- Periodically return so we can perform other housekeeping duties before re-running this.
 function poll_mosquitto(stop_at)
   repeat
-    local loop_value = mqtt_client:loop()
+    local loop_value = mqtt_instance:loop()
     if loop_value ~= true then
       for broker, connections in pairs(info.brokers) do
         if type(connections) == 'table' then
           for connection_id, connection in pairs(connections) do
             if connection.active then
-              loop_value = mqtt_client:connect(connection.address, connection.port)
+              loop_value = mqtt_instance:connect(connection.address, connection.port)
               break
             end
           end
@@ -633,11 +558,15 @@ function main()
     process_list()
     local_network()
     broker_list()
-    read_periferals_config()
+
+    if info.config.component.outlets ~= nil then
+      outlets_instance:read_config()
+    end
 
     if info.config.component.mosquitto_update then
       update_mosquitto_config()
     end
+    
     if info.config.component.parse_dhcp then
       dhcp_instance:read_dhcp()
     end
