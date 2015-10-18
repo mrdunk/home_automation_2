@@ -1,17 +1,17 @@
 #!/usr/bin/lua
 
---[[ ]]--
+--[[ Allows control of power outlets. ]]--
 
 local CONFIG_FILE =  "/etc/homeautomation/client_devices.conf"
 
-local outlets = {test = 0}
-outlets.__index = outlets
+local outlets = {}
 
-
-function outlets.new()
+function outlets:new(o)
   print("outlets.new()")
 
-  local self = setmetatable({}, outlets)
+  o = o or {}
+  setmetatable(o, self)
+  self.__index = self
 
   if info.io == nil then
     info.io = {}
@@ -20,13 +20,10 @@ function outlets.new()
     info.io.lighting = {}
   end
 
-  info.mqtt.subscription_loaders['outlets'] = self.subscribe
-  info.mqtt.announcer_loaders['outlets'] = self.announce
-
   -- Keep a copy of everything entered into info.io by this class so future iterations know what they should be updating.
   self.io_local_copy = {}
 
-  return self
+  return o
 end
 
 -- Test if an outlet has been previously assigned by this class.
@@ -79,11 +76,11 @@ function outlets:read_config()
     for line in file_handle:lines() do
       key, value = string.match(line, "^%s*client\.device\.(.+)%s*:%s*(.+)%s*$")
       if key == "address" and address == nil then
-        address = value
+        address = sanitize_topic(value)
       elseif key == "role" and role == nil then
-        role = value
+        role = sanitize_topic_atom(value)
       elseif key == "command" and command == nil then
-        command = value
+        command = sanitize_filename(value)
       elseif key == nil then
         -- pass
       else
@@ -128,22 +125,16 @@ function outlets:read_config()
 
 end
 
-function outlets:subscribe(subscribe_to)
-  for address, device in pairs(info.io.lighting) do
-    if type(device) == 'table' then
-      local subscription = ""
-      for address_section in string.gmatch(address, "[^/]+") do
-        subscribe_to["homeautomation/+/lighting" .. subscription .. "/all"] = true
-        subscribe_to["homeautomation/+/all" .. subscription .. "/all"] = true
-
-        subscription = subscription .. "/" .. address_section
+function outlets:subscribe()
+  local subscritions = {}
+  for role, things in pairs(self.io_local_copy) do
+    if type(things) == 'table' then
+      for address, thing in pairs(things) do
+        subscritions[#subscritions +1] = {role = role, address = address}
       end
-      subscribe_to["homeautomation/+/lighting" .. subscription] = true
-      subscribe_to["homeautomation/+/all" .. subscription] = true
     end
   end
-
-  return subscribe_to
+  return subscritions
 end
 
 function outlets:announce()
@@ -151,6 +142,24 @@ function outlets:announce()
     if type(device) == 'table' then
       device_announce("lighting", address, device.command)
     end
+  end
+end
+
+function outlets:callback(path, incoming_data)
+  path = var_to_path(path)
+  local incoming_command = incoming_data.command
+  local role, address = path:match('(.-)/(.+)')
+  if self.io_local_copy[role] and self.io_local_copy[role][address] then
+    local command = info.io[role][address].command
+    
+    if incoming_command == "on" then
+      device_set_on(role, address, command)
+    elseif incoming_command == "off" then
+      device_set_off(role, address, command)
+    elseif incoming_command == "solicit" then
+      device_announce(role, address, command)
+    end
+
   end
 end
 

@@ -35,11 +35,11 @@ local POWER_SCRIPT_DIR = '/usr/share/homeautomation/power_commands/'
 
 
 function mqtt_instance_ON_PUBLISH()
-  --print(" ** mqtt_instance.ON_PUBLISH")
+  --print(" ** mqtt_instance_ON_PUBLISH")
 end
 
 function mqtt_instance_ON_MESSAGE(mid, topic, payload)
-  --print(" ** mqtt_instance.ON_MESSAGE")
+  --print(" ** mqtt_instance_ON_MESSAGE")
 
   if topic == nil or payload == nil then
     return
@@ -47,50 +47,21 @@ function mqtt_instance_ON_MESSAGE(mid, topic, payload)
 
   -- Only match alphanumeric characters and a very limited range of special characters here to prevent easy injection type attacks.
   local unique_ID, incoming_broker_level, incoming_role, incoming_address = string.match(topic, "^([%w_%-]+)/([%w_%-]+)/([%w_%-]+)/([%w_%-/]+)")
-  local incoming_command = string.match(payload, "^command%s*:%s*(%w+)")
+  --local incoming_data = string.match(payload, "^command%s*:%s*(%w+)")
+  local incoming_data = parse_incoming_data(payload)
 
   -- Now we have parsed topic and payload, lets remove the temptation to use them again.
   topic = nil
   payload = nil
 
-  -- Split incoming topic into atoms.
-  local topic_sections = {}
-  local topic_section_counter = 1
-  local topic_remainder = incoming_address
-  while topic_remainder ~= "" do
-    topic_sections[topic_section_counter], topic_remainder = string.match(topic_remainder, "([%w_%-]+)/?([%w_%-/]*)")
-    topic_section_counter = topic_section_counter +1
-  end
-
   -- See which of our info.io things the incoming topic matches.
-  for role, things in pairs(info.io) do
-    if incoming_role == role or incoming_role == "all" then
-      for address, thing in pairs(things) do
-        local address_remainder = address
-        local address_section
-        local address_section_counter = 1
-        local match = true
-        while address_remainder ~= "" do
-          address_section, address_remainder = string.match(address_remainder, "([%w_%-]+)/?([%w_%-/]*)")
-          if topic_sections[address_section_counter] == "all" then
-            -- All child nodes match
-            break
-          elseif topic_sections[address_section_counter] ~= address_section then
-            match = false
-            break
-          end
-          address_section_counter = address_section_counter +1
-        end
-        if match == true then
-          -- TODO Replace this section with callbacks.
-          print("* match:", incoming_role, incoming_address, "=", role, address)
-          if incoming_command == "on" then
-            device_set_on(role, address, thing.command)
-          elseif incoming_command == "off" then
-            device_set_off(role, address, thing.command)
-          elseif incoming_command == "solicit" then
-            device_announce(role, address, thing.command)
-          end
+  local incoming_path = incoming_role .. '/' .. incoming_address
+  for _, class_instance in pairs(info.mqtt.callbacks) do
+    if class_instance.subscribe then
+      for _, subscription in pairs(class_instance:subscribe()) do
+        if match_paths(incoming_path, subscription.role .. '/' .. subscription.address) then
+          -- Only do callback if it's one of the class_instance's inputs.
+          class_instance:callback(subscription.role .. '/' .. subscription.address, incoming_data)
         end
       end
     end
@@ -98,35 +69,93 @@ function mqtt_instance_ON_MESSAGE(mid, topic, payload)
 end
 
 function mqtt_instance_ON_CONNECT()
-  print(" ** mqtt_instance.ON_CONNECT")
+  print(" ** mqtt_instance_ON_CONNECT")
 
-  if DEBUG then
-    while #info.mqtt.subscriptions > 0 do
-      table.remove(info.mqtt.subscriptions, #info.mqtt.subscriptions)
+  while #info.mqtt.subscriptions > 0 do
+    table.remove(info.mqtt.subscriptions, #info.mqtt.subscriptions)
+  end
+  while #info.mqtt.last_announced > 0 do
+    table.remove(info.mqtt.last_announced, #info.mqtt.last_announced)
+  end
+
+  for _, loader in pairs(info.mqtt.callbacks) do
+    local subscribtions = {}
+    if loader.subscribe then
+      subscribtions = loader:subscribe()
     end
-    while #info.mqtt.last_announced > 0 do
-      table.remove(info.mqtt.last_announced, #info.mqtt.last_announced)
+    for _, subscrition in pairs(subscribtions) do
+      local address_partial = ''
+      for address_section in string.gmatch(subscrition.address, "[^/]+") do
+        subscribe_to(subscrition.role, subscrition.address, subscrition.role .. address_partial .. '/all')
+        subscribe_to(subscrition.role, subscrition.address, 'all' .. address_partial .. '/all')
+        address_partial = address_partial .. '/' .. address_section
+      end
+      subscribe_to(subscrition.role, subscrition.address, subscrition.role .. address_partial)
+      subscribe_to(subscrition.role, subscrition.address, 'all' .. address_partial)
     end
   end
 
-  local subscribe_to = {}
-  for _, loader in pairs(info.mqtt.subscription_loaders) do
-    subscribe_to = loader(loader, subscribe_to)
-  end
-
-  local debug_counter = 1
-  for subscription, v in pairs(subscribe_to) do
-    print("Subscribing to: " .. subscription)
-    mqtt_instance:subscribe(subscription)
-    if DEBUG then
-      info.mqtt.subscriptions[debug_counter] = subscription
-      debug_counter = debug_counter +1
+  for _, loader in pairs(info.mqtt.callbacks) do
+    if loader.announce then
+      loader:announce()
     end
   end
+end
 
-  for _, loader in pairs(info.mqtt.announcer_loaders) do
-    loader()
+function parse_incoming_data(data)
+  local return_table = {}
+  local atoms = split(data, ',')
+  for _, atom in pairs(atoms) do
+    local key, value = atom:match("^%s*([%w_]+)%s*:%s*([%w_]+)")
+    return_table[key] = value
   end
+  return return_table
+end
+
+function subscribe_to(role, address, subscription)
+  print('Subscribing to: homeautomation/+/' .. subscription)
+  mqtt_instance:subscribe('homeautomation/+/' .. subscription)
+  info.mqtt.subscriptions[path_to_var(subscription)] = true
+end
+
+function match_paths(path_one, path_two)
+  local role_one, address_one = path_one:match('(.-)/(.+)')
+  local role_two, address_two = path_two:match('(.-)/(.+)')
+
+  if role_one ~= 'all' and role_two ~= 'all' and role_one ~= role_two then
+    return
+  end
+
+  local atoms_one = split(address_one, '/')
+  local atoms_two = split(address_two, '/')
+  
+  for i=1,#atoms_one,1 do
+    if atoms_one[i] == 'all' or atoms_two[i] == 'all' or atoms_one[i] == '#' or atoms_two[i] == '#' then
+      break
+    end
+    if atoms_one[i] ~= atoms_two[i] then
+      return
+    end
+  end
+  print("Match:", path_one, path_two)
+  return true
+end
+
+function split(path, deliminator)
+  local return_list={} ; i=1
+  for str in path:gmatch("([^" .. deliminator .. "]+)") do
+    return_list[i] = str
+    i = i + 1
+  end
+  return return_list
+end
+
+function path_to_var(path)
+  return path:gsub('/', '__')
+end
+
+function var_to_path(var)
+  return var:gsub('__', '/')
 end
 
 -- Get the value a particular device is set to. eg. "on" or "off".
@@ -208,8 +237,7 @@ function initilize()
   info.host.hostname = hostname()
 
   info.mqtt = {}
-  info.mqtt.subscription_loaders = {}
-  info.mqtt.announcer_loaders = {}
+  info.mqtt.callbacks = {}
 
 
   -- The following data is not strictly required but is useful to know when debugging.
@@ -235,7 +263,8 @@ function initilize()
     local outlets_class = require 'outlets'
     if outlets_class then
       info.config.component.outlets = true
-      outlets_instance = outlets_class.new()
+      outlets_instance = outlets_class:new()
+      info.mqtt.callbacks['outlets'] = outlets_instance
     end
   end
 
@@ -266,6 +295,30 @@ function initilize()
   mqtt_instance.ON_PUBLISH = mqtt_instance_ON_PUBLISH
   mqtt_instance.ON_MESSAGE = mqtt_instance_ON_MESSAGE
 
+
+  if is_file_or_dir('/usr/share/homeautomation/outlets.lua') then
+    local control_class = require 'control'
+    
+    --local c1 = component:new()
+    --c1:setup('c1')
+    
+    local c2 = component_mqtt_listener:new()
+    c2:setup('c2')
+
+    local c3 = component_cache:new()
+    c3:setup('c3')
+
+    c2:add_output(c3)
+    c2:add_input('user/#')
+
+    --c1:display()
+    c2:display()
+    c3:display()
+
+    print('----------')
+    --c1:send_output()
+    print('----------')
+  end
 
   -- Set required files and directories.
   if not is_file_or_dir(WEB_DIR) then
@@ -303,11 +356,11 @@ function initilize()
     end
 
     file_handle:close()
-  end
 
-  -- Need to make sure there is a config file in /tmp/homeautomation/mosquitto/ or mosquitto won't start.
-  os.execute("touch /tmp/homeautomation/mosquitto/bridges.conf")
-  os.execute("/etc/init.d/mosquitto start")
+    -- Need to make sure there is a config file in /tmp/homeautomation/mosquitto/ or mosquitto won't start.
+    os.execute("touch /tmp/homeautomation/mosquitto/bridges.conf")
+    os.execute("/etc/init.d/mosquitto start")
+  end
 end
 
 
@@ -500,22 +553,21 @@ function create_web_page()
 end
 
 function _itterate_info(info_branch, key, output)
-  if type(info_branch) == 'number' or type(info_branch) == 'boolean' then
-    output = output .. key .. ' : ' .. tostring(info_branch) .. '\r\n'
-  elseif type(info_branch) == 'string' then
-    if info_branch ~= '' then
-      output = output .. key .. ' : ' .. info_branch .. '\r\n'
-    end
-  elseif type(info_branch) == 'function' then
-     output = output .. key .. ' : function()\r\n'
-  else
+  if type(info_branch) == 'table' then
+    local table_populated
     for name, value in pairs(info_branch) do
+      table_populated = true
       if key ~= '' then
         output = _itterate_info(value, key .. '.' .. name, output)
       else
         output = _itterate_info(value, name, output)
       end
     end
+    if table_populated == nil then
+      output = output .. key .. ' : ' .. tostring(info_branch) .. '\r\n'
+    end
+  else
+    output = output .. key .. ' : ' .. tostring(info_branch) .. '\r\n'
   end
   return output
 end

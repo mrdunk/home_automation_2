@@ -11,7 +11,6 @@ function update_mosquitto_config()
     return
   end
 
-  info.brokers.DEBUG = ''
   local config = {}
 
   -- Parse existing config.
@@ -25,16 +24,13 @@ function update_mosquitto_config()
           port = '1883'
         end
         config[address] = port
-        info.brokers.DEBUG = info.brokers.DEBUG .. " " .. address .. ":" .. port
       end
     end
     file_handle:close()
   else
     print('No file: /tmp/homeautomation/mosquitto/bridges.conf')
-    info.brokers.DEBUG = info.brokers.DEBUG .. " No file."
   end
 
-  info.brokers.DEBUG = info.brokers.DEBUG .. " | "
 
   -- Compare to detected brokers on network.
   local new_file = false
@@ -47,26 +43,21 @@ function update_mosquitto_config()
           if config[connection.address] ~= nil and config[connection.address] == connection.port then
             -- Is already in file.
             in_file = true
-            info.brokers.DEBUG = info.brokers.DEBUG .. " in_file:" .. connection.address
             break
           end
         end
       end
-      info.brokers.DEBUG = info.brokers.DEBUG .. " not in_file"
 
       if reachable_connection and not in_file then
         -- Since none of the connections are in the file, it needs updated.
         new_file = true
-        info.brokers.DEBUG = info.brokers.DEBUG .. " reachable"
       end
     end
   end
 
-  info.brokers.DEBUG = info.brokers.DEBUG .. " | "
 
   -- Write a new file if it needs done.
   if new_file == true then
-    info.brokers.DEBUG = info.brokers.DEBUG .. " writing "
 
     file_handle = io.open("/tmp/homeautomation/mosquitto/bridges.tmp", "w")
     if file_handle then
@@ -89,7 +80,6 @@ function update_mosquitto_config()
 
     -- And restart mosquitto.
     if info.needs_reload == true then
-      info.brokers.DEBUG = info.brokers.DEBUG .. " restarting mosquitto "
       print("restarting mosquitto")
       info.needs_reload = os.execute("/etc/init.d/mosquitto restart") ~= 0
     end

@@ -34,8 +34,8 @@ function dhcp_parser.new()
     info.mqtt.announcer_loaders = {}
   end
 
-  info.mqtt.subscription_loaders['dhcp'] = self.subscribe_dhcp
-  info.mqtt.announcer_loaders['dhcp'] = self.announce_dhcp
+  info.mqtt.subscription_loaders['dhcp'] = self.subscribe
+  info.mqtt.announcer_loaders['dhcp'] = self.announce
 
   return self
 end
@@ -72,13 +72,13 @@ function dhcp_parser.read_dhcp(self)
       key, value = string.match(line, "^%s*trigger_dhcp\.([%a_]+)%s*:%s*(.+)%s*$")
       if key then
         if key == 'mac' then
-          mac = value
+          mac = sanitize_mac_address(value)
         elseif key == 'google_id' then
-          google_id = value
+          google_id = sanitize_digits(value)
         elseif key == 'display_name' then
-         display_name = value
+         display_name = sanitize_text(value)
         elseif key == 'image' then
-          image = value
+          image = sanitize_url(value)
         else
           print ('Error: unknown key: ' .. key)
         end
@@ -117,9 +117,9 @@ function dhcp_parser.read_dhcp(self)
   if file_handle then
     for line in file_handle:lines() do
       local mac, address, name = string.match(line, "^%s*%d+%s+([%x:]+)%s+([%d\.]+)%s+([%w_-%*]+)")
-      if name == '*' then
-        name = ''
-      end
+      mac = sanitize_mac_address(mac)
+      address = sanitize_network_address(address)
+      name = sanitize_text(name)
       
       for stored_mac, device in pairs(info.io.dhcp) do
         if stored_mac == mac then
@@ -194,13 +194,13 @@ function dhcp_parser:publish_users()
 
 end
 
-function dhcp_parser:subscribe_dhcp(subscribe_to)
+function dhcp_parser:subscribe(subscribe_to)
   -- TODO Subscribe to updates from other DHCP servers on the network.
   --   subscribe_to["homeautomation/+/dhcp"] = true
   return subscribe_to
 end
 
-function dhcp_parser:announce_dhcp()
+function dhcp_parser:announce()
 end
 
 return dhcp_parser

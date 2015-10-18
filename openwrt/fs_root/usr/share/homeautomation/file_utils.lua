@@ -39,14 +39,58 @@ function file_mod_time(filename)
   return
 end
 
+
 function sanitize_text(text)
+  return text:gsub('[^%.%-_%w%s:]','')
 end
 
-function sanitize_fliename(filename)
+function sanitize_filename(filename)
+  if filename:gsub('[%._%w]','') == '' then
+    return filename
+  end
+  return ''
 end
 
 function sanitize_mac_address(mac)
+  return mac:match('(%x%x:%x%x:%x%x:%x%x:%x%x:%x%x)')
 end
 
 function sanitize_url(url)
+  -- TODO
+  return url
 end
+
+function sanitize_digits(digits)
+  if digits:gsub('%d', '') == '' then
+    return digits
+  end
+  return ''
+end
+
+function sanitize_network_address(address)
+  -- IPv4
+  if address:match('(%d+%.%d+%.%d+%.%d+)') ~= '' then
+    return address
+  end
+
+  -- IPv6
+  if address:gsub('[%x:]' , '') == '' then
+    return address
+  end
+  return ''
+end
+
+function sanitize_topic(topic)
+  if topic:gsub('[%w%-_/]' , '') == '' then
+    return topic
+  end
+  return ''
+end
+
+function sanitize_topic_atom(topic)
+  if topic:gsub('[%w%-_]' , '') == '' then
+    return topic
+  end
+  return ''
+end
+

@@ -68,6 +68,9 @@ function mqtt:connect(broker, port)
   return true
 end
 
+function mqtt:disconnect()
+  -- Nothing to do.
+end
 
 function mqtt:publish(topic, payload)
   local command = mosquitto_pub .. ' -h ' .. self.connection.broker .. ' -p ' .. self.connection.port .. ' -t ' .. topic .. ' -m "' .. payload .. '"'
