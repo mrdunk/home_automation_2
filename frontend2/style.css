@@ -1,0 +1,14 @@
+html,body {
+  height:100%;
+}
+
+#ha-control-heading {
+  background: grey;
+}
+
+#ha-control-paper {
+  border-style: solid;
+  border-width: 1px;
+  height: 100%;
+  width: 100%;
+}
