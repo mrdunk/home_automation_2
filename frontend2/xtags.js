@@ -1,7 +1,7 @@
 var PORT_SIZE = 10;
 
 var objectTypes = {'alarm':          {'color':'blue', 'action':'new'},
-                   'cloud-download': {'color':'red', 'action':'new', callback: function(paper, sidebar, sharedData, shape){FlowObjectActiveUser(paper, sidebar, sharedData, shape);}},
+                   'cloud-download': {'color':'red', 'action':'new', callback: function(paper, sidebar, sharedData, shape){FlowObjectMqttSubscribe(paper, sidebar, sharedData, shape);}},
                    'content-copy':   {'color':'green', 'action':'new'},
                    'redo':           {'action':'join'},
                    'settings':       {'action':'edit'}
@@ -64,11 +64,12 @@ xtag.register('ha-control', {
       console.log(object_type);
       if(object_type.callback){
         console.log(object_type.callback);
-        shape = new FlowObjectActiveUser(this.paper, this.sidebar, this.sharedData, this.paper.box(0, 0, 50, 50, 2, 3, object_type.color));
+        shape = new FlowObjectMqttSubscribe(this.paper, this.sidebar, this.sharedData);
       } else {
         shape = new FlowObject(this.paper, this.sidebar, this.sharedData, this.paper.box(0, 0, 50, 50, 2, 3, object_type.color));
       }
       shape.setPosition(100,100);
+      shape.displaySideBar();
       this.shapes.push(shape);
       if(this.shapes.length >= 2){
         this.paper.arrow(this.shapes[this.shapes.length -2], this.shapes[this.shapes.length -1], 'black');
@@ -94,7 +95,7 @@ xtag.register('ha-control', {
 var FlowObject = function(paper, sidebar, sharedData, shape){
   console.log('FlowObject');
 
-  this.data = {name: 'FlowObject'};
+  this.data = {object_name: 'FlowObject'};
   this.sidebar = sidebar;
   this.sharedData = sharedData;
   this.shape = shape || paper.rect(0, 0, 30, 30, 5);
@@ -129,11 +130,22 @@ FlowObject.prototype.setPosition = function(x, y){
   this.shape[0].setPosition(x, y);
 }
 
-FlowObject.prototype.editProperties = function(id){
-  console.log('FlowObject.editProperties()', id);
+FlowObject.prototype.displaySideBar = function(){
+  console.log('FlowObject.displaySideBar()');
+
+  // Header
   var header = this.sidebar.getElementsByClassName('sidebar-header')[0];
-  header.getElementsByClassName('text')[0].textContent = this.data.name;
+  if(this.data.instance_name === '' || this.data.instance_name === undefined){
+    header.getElementsByClassName('text')[0].textContent = this.data.object_name;
+    header.getElementsByClassName('object-color')[0].style.height = '1em';
+  } else {
+    header.getElementsByClassName('text')[0].innerHTML = this.data.object_name + '<br/>' + this.data.instance_name;
+    header.getElementsByClassName('object-color')[0].style.height = '2em';
+  }
   header.getElementsByClassName('object-color')[0].style.background = this.getColor();
+
+  // Content
+
 }
 
 FlowObject.prototype.onmove = function(dx, dy){
@@ -150,7 +162,7 @@ FlowObject.prototype.onmove = function(dx, dy){
 FlowObject.prototype.onstart = function(mouseEvent){
   console.log('FlowObject.onstart()', this, this.data('parent'));
   
-  this.data('parent').editProperties(this.id);
+  this.data('parent').displaySideBar();
 
   if(this.data('parent').sharedData.mode === 'default'){
     if(this.id === this.data('myset')[0].id){
@@ -195,16 +207,20 @@ var inheritsFrom = function (child, parent) {
 
 
 
-var FlowObjectActiveUser = function(paper, sidebar, sharedData, shape){
-  console.log("FlowObjectActiveUser");
+var FlowObjectMqttSubscribe = function(paper, sidebar, sharedData, shape){
+  console.log("FlowObjectMqttSubscribe");
+
+  var shape = paper.box(0, 0, 150, 50, 2, 3, 'seagreen');
 
   FlowObject.prototype.constructor.call(this, paper, sidebar, sharedData, shape);
-  this.data = { name: 'Active User',
-                description: 'A user who\' device is active on the network.',
+  this.data = { object_name: 'MQTT Subscription',
+                instance_name: 'unset',
+                description: 'Monitor MQTT for a specific topic.',
                 value: ''};
+  this.shape.setContents(this.data);
 }
 
-inheritsFrom(FlowObjectActiveUser, FlowObject);
+inheritsFrom(FlowObjectMqttSubscribe, FlowObject);
 
 
 
@@ -225,6 +241,14 @@ Raphael.fn.box = function(x, y, width, height, input_count, output_count, color)
   shape.x_offset = 0;
   shape.y_offset = 0;
   set_main.push(shape);
+
+  var set_content = this.set();
+  shape = this.text(x + 5, y, "Test Text").attr({font: "12px Fontin-Sans, Arial", fill: "#fff", "text-anchor": "start"});
+  shape.x_offset = 5;
+  shape.y_offset = 8;
+  set_content.push(shape);
+  set_content.label = 'contents';
+  set_main.push(set_content);
 
   var set_inputs = this.set();
   for(var i = 0; i < input_count; i++){
@@ -251,6 +275,32 @@ Raphael.fn.box = function(x, y, width, height, input_count, output_count, color)
 
   set_main.attr({"fill": color, "stroke": "#000"});
   return set_main;
+}
+
+Raphael.st.setContents = function(content){
+  if(this.type === "set"){
+    var pos = this.items[0].getPosition();  // item 0 is the parent shape.
+    var x = pos.x;
+    var y = pos.y;
+    for(var i = 0; i < this.items.length; i++){
+      if(this.items[i].label === 'contents'){
+        var node;
+        while(node = this.items[i].pop()){
+          node.remove();
+        }
+        var shape = this.paper.text(x + 5, y, content.object_name).attr({font: "12px Fontin-Sans, Arial", fill: "black", "text-anchor": "start"});
+        shape.x_offset = 5;
+        shape.y_offset = 8;
+        this.items[i].push(shape);
+        shape = this.paper.text(0, 0, content.instance_name).attr({font: "12px Fontin-Sans, Arial", fill: "black", "text-anchor": "start"});
+        shape.x_offset = 5;
+        shape.y_offset = 22;
+        this.items[i].push(shape);
+        // For some reason new shapes added to a set do not appear until they are moved.
+        setPosition(this.items[i], x, y);
+      }
+    }
+  }
 }
 
 Raphael.st.setInputs = function(input_count){
@@ -315,12 +365,12 @@ Raphael.el.setPosition = function(x, y){
 }
 
 var setPosition = function(component, x, y){
-  if(component.type === "rect"){
-    component.attr({x: x + component.x_offset, y: y + component.y_offset});
-  } else if(component.type === "set"){
+  if(component.type === "set"){
     for(var i = 0; i < component.items.length; i++){
       setPosition(component.items[i], x, y);
     }
+  } else {
+    component.attr({x: x + component.x_offset, y: y + component.y_offset});
   }
 }
 
