@@ -1,5 +1,8 @@
 html,body {
   height:100%;
+  overflow: hidden;
+  margin: 0;
+  padding: 0;
 }
 
 #ha-control-heading {
@@ -10,5 +13,38 @@ html,body {
   border-style: solid;
   border-width: 1px;
   height: 100%;
+  margin-right: 200px;
+  position: absolute;
   width: 100%;
+}
+
+#ha-control-sidebar {
+  border-style: solid;
+  border-width: 1px;
+  height: 100%;
+  width: 200px;
+  position: absolute;
+  right: 0;
+  background: ghostwhite;
+}
+
+#ha-control-sidebar .sidebar-header {
+  border-style: solid;
+  border-width: 1px;
+  width: 100%;
+  display: inline-block;
+  background: linen;
+}
+
+#ha-control-sidebar .sidebar-header .object-color {
+  border-style: solid;
+  border-width: 1px;
+  width: 1em;
+  height: 1em;
+  background: black;
+  float: right;
+}
+
+#ha-control-sidebar .sidebar-header .text {
+  float: left;
 }

@@ -1,7 +1,7 @@
 var PORT_SIZE = 10;
 
 var objectTypes = {'alarm':          {'color':'blue', 'action':'new'},
-                   'cloud-download': {'color':'red', 'action':'new'},
+                   'cloud-download': {'color':'red', 'action':'new', callback: function(paper, sidebar, sharedData, shape){FlowObjectActiveUser(paper, sidebar, sharedData, shape);}},
                    'content-copy':   {'color':'green', 'action':'new'},
                    'redo':           {'action':'join'},
                    'settings':       {'action':'edit'}
@@ -13,6 +13,7 @@ xtag.register('ha-control', {
       var template = document.getElementById('ha-control').innerHTML;
       xtag.innerHTML(this, template);
       this.paper = Raphael('ha-control-paper', '100%', '100%');
+      this.sidebar = document.getElementById('ha-control-sidebar');
       this.shapes = [];
       this.sharedData = {mode : 'default'};
     }
@@ -33,7 +34,7 @@ xtag.register('ha-control', {
         var color = objectTypes[this.icon].color;
         var action = objectTypes[this.icon].action;
         if(color){
-          ha_control.addShape(color);
+          ha_control.addShape(objectTypes[this.icon]);
         } else if(action === 'join'){
           console.log('join')
           if(this.hasAttribute('active')){
@@ -58,8 +59,15 @@ xtag.register('ha-control', {
     },
   },
   methods: {
-    addShape: function(color){
-      var shape = new FlowObject(this.paper, this.sharedData, this.paper.box(0,0,50,50,2,3,color));
+    addShape: function(object_type){
+      var shape;
+      console.log(object_type);
+      if(object_type.callback){
+        console.log(object_type.callback);
+        shape = new FlowObjectActiveUser(this.paper, this.sidebar, this.sharedData, this.paper.box(0, 0, 50, 50, 2, 3, object_type.color));
+      } else {
+        shape = new FlowObject(this.paper, this.sidebar, this.sharedData, this.paper.box(0, 0, 50, 50, 2, 3, object_type.color));
+      }
       shape.setPosition(100,100);
       this.shapes.push(shape);
       if(this.shapes.length >= 2){
@@ -83,7 +91,11 @@ xtag.register('ha-control', {
 });
 
 
-var FlowObject = function(paper, sharedData, shape, data){
+var FlowObject = function(paper, sidebar, sharedData, shape){
+  console.log('FlowObject');
+
+  this.data = {name: 'FlowObject'};
+  this.sidebar = sidebar;
   this.sharedData = sharedData;
   this.shape = shape || paper.rect(0, 0, 30, 30, 5);
   this.shape.data('parent', this);
@@ -119,8 +131,9 @@ FlowObject.prototype.setPosition = function(x, y){
 
 FlowObject.prototype.editProperties = function(id){
   console.log('FlowObject.editProperties()', id);
-  this.shape.setInputs(5);
-  this.shape.setOutputs(1);
+  var header = this.sidebar.getElementsByClassName('sidebar-header')[0];
+  header.getElementsByClassName('text')[0].textContent = this.data.name;
+  header.getElementsByClassName('object-color')[0].style.background = this.getColor();
 }
 
 FlowObject.prototype.onmove = function(dx, dy){
@@ -135,10 +148,10 @@ FlowObject.prototype.onmove = function(dx, dy){
 }
 
 FlowObject.prototype.onstart = function(mouseEvent){
-  console.log('FlowObject.onstart()', this, mouseEvent);
-  console.log(this.data('parent'));
-  console.log(this.data('parent').sharedData);
+  console.log('FlowObject.onstart()', this, this.data('parent'));
   
+  this.data('parent').editProperties(this.id);
+
   if(this.data('parent').sharedData.mode === 'default'){
     if(this.id === this.data('myset')[0].id){
       this.data('myset').forEach(function(component){
@@ -153,8 +166,6 @@ FlowObject.prototype.onstart = function(mouseEvent){
     } else {
       this.animate({"fill-opacity": .2}, 500);
     }
-  } else if(this.data('parent').sharedData.mode === 'edit'){
-    this.data('parent').editProperties(this.id);
   }
 }
 
@@ -171,6 +182,30 @@ FlowObject.prototype.setColor = function(color){
   this.shape.attr("fill", color);
   this.shape.attr("stroke", "#000");
 }
+
+FlowObject.prototype.getColor = function(){
+  return this.shape[0].attr("fill");
+}
+
+
+
+var inheritsFrom = function (child, parent) {
+    child.prototype = Object.create(parent.prototype);
+};
+
+
+
+var FlowObjectActiveUser = function(paper, sidebar, sharedData, shape){
+  console.log("FlowObjectActiveUser");
+
+  FlowObject.prototype.constructor.call(this, paper, sidebar, sharedData, shape);
+  this.data = { name: 'Active User',
+                description: 'A user who\' device is active on the network.',
+                value: ''};
+}
+
+inheritsFrom(FlowObjectActiveUser, FlowObject);
+
 
 
 
@@ -241,7 +276,6 @@ Raphael.st.setInputs = function(input_count){
         setPosition(this.items[i], x, y);
       }
     }
-    this.data('myset', this);
   }
 }
 
@@ -269,7 +303,6 @@ Raphael.st.setOutputs = function(output_count){
         setPosition(this.items[i], x, y);
       }
     }
-    this.data('myset', this);
   }
 }
 
