@@ -48,6 +48,16 @@ FlowObject.prototype.setBoxPosition = function(x, y){
   this.shape[0].setBoxPosition(x, y);
 }
 
+FlowObject.prototype.select = function(){
+  if(this.shareBetweenShapes.selected){
+    this.shareBetweenShapes.selected.shape.setHighlight(false);
+  }
+  this.shape.setHighlight(true);
+  this.shareBetweenShapes.selected = this;
+
+  this.displaySideBar();
+}
+
 FlowObject.prototype.displaySideBar = function(){
   console.log('FlowObject.displaySideBar()');
 
@@ -106,8 +116,15 @@ FlowObject.prototype.displaySideBar = function(){
       inner_description.innerHTML = this.data.data[key][inner_key].description
       inner_list.appendChild(inner_description);
       
-      inner_content.appendChild(createUpdateField(this, inner_key, this.data.data[key][inner_key]));
-      inner_list.appendChild(inner_content);
+      if(key === 'inputs'){
+        var input_attribute = document.createElement('ha-input-attribute');
+        input_attribute.populate(this.data.data.inputs[inner_key]);
+        inner_content.appendChild(input_attribute);
+        inner_list.appendChild(inner_content);
+      } else {
+        inner_content.appendChild(createUpdateField(this, inner_key, this.data.data[key][inner_key]));
+        inner_list.appendChild(inner_content);
+      }
 
       outer_content.appendChild(inner_list);
     }
@@ -158,7 +175,7 @@ FlowObject.prototype.onmove = function(dx, dy){
 FlowObject.prototype.onstart = function(mouseEvent){
   console.log('FlowObject.onstart()', this, this.data('parent'));
   
-  this.data('parent').displaySideBar();
+  this.data('parent').select();
   this.animate({"fill-opacity": .2}, 500);
 
   var clicked_shape = this.data('parent').mapShapeToPort(this);
@@ -269,11 +286,12 @@ var FlowObjectMqttSubscribe = function(paper, sidebar, shareBetweenShapes, shape
                   general: {
                     instance_name: { 
                       description: 'Name',
-                      value: 'Object_' + shareBetweenShapes.unique_id } },
-                  inputs: {
-                    0: {
-                      description: 'MQTT topic',
-                      value: ''} },
+                      value: 'Object_' + shareBetweenShapes.unique_id },
+                    subscribed_topic: {
+                      description: 'MQTT topic subscription',
+                      value: 'homeautomation/#'
+                    }},
+                  inputs: {},
                   outputs: {
                     0: {
                       description: 'Default output',
@@ -298,21 +316,44 @@ var FlowObjectTimer = function(paper, sidebar, shareBetweenShapes, shape){
                   general: {
                     instance_name: {
                       description: 'Name',
-                      value: 'Object_' + shareBetweenShapes.unique_id } },
+                      value: 'Object_' + shareBetweenShapes.unique_id },
+                    period: {
+                      description: 'Time between output trigger. (seconds)',
+                      value: '10'
+                    },
+                    run_at_start: {
+                      description: 'Timer running at startup?',
+                      value: true,
+                      type: 'bool'
+                    },
+                    repeated: {
+                      description: 'Run continually or stop after triggering?',
+                      value: true,
+                      type: 'bool'
+                    }},
                   inputs: {
                     0: {
-                      description: 'Delay period',
-                      value: 'period'},
-                    1: {
-                      description: 'Trigger',
-                      value: 'trigger' },
+                      description: 'Start',
+                      tag: 'start',
+                      trigger_vlues: [] },
                     2: {
-                      description: 'Cancel',
-                      value: 'cancel' }},
+                      description: 'Stop',
+                      tag: 'stop',
+                      trigger_vlues: [] },
+                    1: {
+                      description: 'Reset',
+                      tag: 'reset',
+                      trigger_vlues: [] }},
                   outputs: {
                     0: {
                       description: 'Default output',
-                      value: 'default'} } }
+                      tag: 'default',
+                      output_values: {
+                        passthrough: false,
+                        bool: true,
+                        custom: ''
+                        }
+                      } } }
               }
   this.shape.setContents(this.data);
 }
@@ -320,228 +361,5 @@ var FlowObjectTimer = function(paper, sidebar, shareBetweenShapes, shape){
 inheritsFrom(FlowObjectTimer, FlowObject);
 
 
-
-
-Raphael.fn.arrow = function (pos1, pos2, color) {
-  var path = 'M ' + pos1.x + ' ' + pos1.y + ' L ' + pos2.x + ' ' + pos2.y;
-  return this.path(path).attr({stroke: color, fill: "none", 'stroke-width': 3, 'arrow-end': 'classic-wide'});
-};
-
-
-Raphael.fn.box = function(x, y, width, height, input_count, output_count, color){
-  var set_main = this.set();
-  var shape = this.rect(x, y, width, height, 5);
-  shape.x_offset = 0;
-  shape.y_offset = 0;
-  set_main.push(shape);
-
-  var set_content = this.set();
-  shape = this.text(x + 5, y, "Test Text").attr({font: "12px Fontin-Sans, Arial", fill: "#fff", "text-anchor": "start"});
-  shape.x_offset = 5;
-  shape.y_offset = 8;
-  set_content.push(shape);
-  set_content.label = 'contents';
-  set_main.push(set_content);
-
-  var set_inputs = this.set();
-  for(var i = 0; i < input_count; i++){
-    shape = this.rect(x - PORT_SIZE, y + PORT_SIZE + (i * PORT_SIZE), PORT_SIZE, PORT_SIZE, 2);
-    shape.x_offset = -PORT_SIZE;
-    shape.y_offset = PORT_SIZE + (i * PORT_SIZE);
-    set_inputs.push(shape);
-  }
-  set_inputs.label = 'inputs';
-  set_main.push(set_inputs);
-
-  var set_outputs = this.set();
-  for(var i = 0; i < output_count; i++){
-    shape = this.rect(x + width, y + PORT_SIZE + (i * PORT_SIZE), PORT_SIZE, PORT_SIZE, 2);
-    shape.x_offset = width;
-    shape.y_offset = PORT_SIZE + (i * PORT_SIZE);
-    set_outputs.push(shape);
-  }
-  set_outputs.label = 'outputs';
-  set_main.push(set_outputs);
-
-  var set_links = this.set();
-  set_links.label = 'links';
-  set_main.push(set_links);
-
-  set_main.data('myset', set_main);
-  set_main.data('label', 'container');
-
-  set_main.attr({"fill": color, "stroke": "#000"});
-  return set_main;
-}
-
-Raphael.st.setContents = function(content){
-  if(this.type === "set"){
-    var pos = this.items[0].getBoxPosition();  // item 0 is the parent shape.
-    var x = pos.x;
-    var y = pos.y;
-    for(var i = 0; i < this.items.length; i++){
-      if(this.items[i].label === 'contents'){
-        var node;
-        while(node = this.items[i].pop()){
-          node.remove();
-        }
-        var shape = this.paper.text(x + 5, y, content.object_name).attr({font: "12px Fontin-Sans, Arial", fill: "black", "text-anchor": "start"});
-        shape.x_offset = 5;
-        shape.y_offset = 8;
-        this.items[i].push(shape);
-        shape = this.paper.text(0, 0, content.data.general.instance_name.value).attr({font: "12px Fontin-Sans, Arial", fill: "black", "text-anchor": "start"});
-        shape.x_offset = 5;
-        shape.y_offset = 22;
-        this.items[i].push(shape);
-        // For some reason new shapes added to a set do not appear until they are moved.
-        setBoxPosition(this.items[i], x, y);
-      }
-    }
-  }
-}
-
-Raphael.st.setInputs = function(input_count){
-  if(this.type === "set"){
-    var pos = this.items[0].getBoxPosition();  // item 0 is the parent shape.
-    var x = pos.x;
-    var y = pos.y;
-    var color = this.items[0].attr('fill');
-    for(var i = 0; i < this.items.length; i++){
-      if(this.items[i].label === 'inputs'){
-        var node;
-        while(node = this.items[i].pop()){
-          node.remove();
-        }
-        for(var j = 0; j < input_count; j++){
-          var shape = this.paper.rect(x - PORT_SIZE, y + PORT_SIZE + (i * PORT_SIZE), PORT_SIZE, PORT_SIZE, 2);
-          shape.x_offset = -PORT_SIZE;
-          shape.y_offset = PORT_SIZE + (j * PORT_SIZE);
-          shape.attr({"fill": color, "stroke": "#000"});
-          this.items[i].push(shape);
-        }
-        // For some reason new shapes added to a set do not appear until they are moved.
-        setBoxPosition(this.items[i], x, y);
-      }
-    }
-  }
-}
-
-Raphael.st.setOutputs = function(output_count){
-  if(this.type === "set"){
-    var pos = this.items[0].getBoxPosition();  // item 0 is the parent shape.
-    var x = pos.x;
-    var y = pos.y;
-    var width = this.items[0].attr('width');
-    var color = this.items[0].attr('fill');
-    for(var i = 0; i < this.items.length; i++){
-      if(this.items[i].label === 'outputs'){
-        var node;
-        while(node = this.items[i].pop()){
-          node.remove();
-        }
-        for(var j = 0; j < output_count; j++){
-          var shape = this.paper.rect(x + width, y + PORT_SIZE + (i * PORT_SIZE), PORT_SIZE, PORT_SIZE, 2);
-          shape.x_offset = width;
-          shape.y_offset = PORT_SIZE + (j * PORT_SIZE);
-          shape.attr({"fill": color, "stroke": "#000"});
-          this.items[i].push(shape);
-        }
-        // For some reason new shapes added to a set do not appear until they are moved.
-        setBoxPosition(this.items[i], x, y);
-      }
-    }
-  }
-}
-
-Raphael.st.setOutputLinks = function(outputs){
-  var links;
-  for(var key_types in this.items){
-    if(this.items[key_types].label === 'links'){
-      links = this.items[key_types];
-      var node;
-      while(node = links.pop()){
-        node.remove();
-      }
-    }
-  }
-
-  for(var key_types in this.items){
-    if(this.items[key_types].label === 'outputs'){
-      for(var key_shape_output in this.items[key_types].items){
-        for(var key_data_output in outputs){
-          if(key_shape_output === key_data_output){
-            var outgoing_port_shape = this.items[key_types][key_shape_output];
-            for(var key_link in outputs[key_data_output].links){
-              var incoming_port_index = outputs[key_data_output].links[key_link].input_port;
-              var incoming_port_shape = outputs[key_data_output].links[key_link].box_object.shape.getPort('inputs', incoming_port_index);
-
-              var pos1 = outgoing_port_shape.getShapePosition();
-              var pos2 = incoming_port_shape.getShapePosition();
-              var pos1 = {x: pos1.x + PORT_SIZE /2, y: pos1.y + PORT_SIZE /2};
-              var pos2 = {x: pos2.x + PORT_SIZE /2, y: pos2.y + PORT_SIZE /2};
-              var shape = this.paper.arrow(pos1, pos2, 'red');
-              links.push(shape);
-            }
-          }
-        }
-      }
-    }
-  }
-}
-
-Raphael.st.setInputLinks = function(inputs){
-  var move_list = {};
-  for(var key in inputs){
-    if(inputs[key].links){
-      for(var i = 0; i < inputs[key].links.length; i++){
-        var output_object = inputs[key].links[i].box_object;
-        move_list[output_object.unique_id] = output_object;
-      }
-    }
-  }
-
-  console.log(move_list);
-
-  for(var key in move_list){
-    console.log(move_list[key]);
-    move_list[key].shape.setOutputLinks(move_list[key].data.data.outputs);
-  }
-}
-
-Raphael.st.getPort = function(type, index){
-  for(var key_types in this.items){
-    if(this.items[key_types].label === type){
-      for(var key_port = 0; key_port < this.items[key_types].length; key_port++){
-        if(key_port === index){
-          return this.items[key_types][key_port];
-        } 
-      } 
-    }
-  } 
-}
-
-Raphael.el.getBoxPosition = function(){
-  return {x: this.data('myset')[0].attr("x"), y: this.data('myset')[0].attr("y")};
-}
-
-Raphael.el.getShapePosition = function(){
-  return {x: this.attr("x"), y: this.attr("y")};
-}
-
-Raphael.el.setBoxPosition = function(x, y){
-  setBoxPosition(this.data('myset'), x, y);
-  this.data('myset').setOutputLinks(this.data('parent').data.data.outputs);
-  this.data('myset').setInputLinks(this.data('parent').data.data.inputs);
-}
-
-var setBoxPosition = function(component, x, y){
-  if(component.type === "set"){
-    for(var i = 0; i < component.items.length; i++){
-      setBoxPosition(component.items[i], x, y);
-    }
-  } else {
-    component.attr({x: x + component.x_offset, y: y + component.y_offset});
-  }
-}
 
 

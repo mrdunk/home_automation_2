@@ -1,4 +1,3 @@
-var PORT_SIZE = 10;
 
 var objectTypes = {'alarm':          {'color':'blue', 'action':'new', callback: FlowObjectTimer},
                    'cloud-download': {'color':'red', 'action':'new', callback: FlowObjectMqttSubscribe},
@@ -61,14 +60,14 @@ xtag.register('ha-control', {
       var shape;
       console.log(object_type);
       if(object_type.callback){
-        console.log(object_type.callback);
-        //shape = new FlowObjectMqttSubscribe(this.paper, this.sidebar, this.shareBetweenShapes);
         shape = new object_type.callback(this.paper, this.sidebar, this.shareBetweenShapes);
       } else {
         shape = new FlowObject(this.paper, this.sidebar, this.shareBetweenShapes, this.paper.box(0, 0, 50, 50, 2, 3, object_type.color));
       }
       shape.setBoxPosition(100,100);
-      shape.displaySideBar();
+
+      //shape.displaySideBar();
+      shape.select();
       this.shapes.push(shape);
     },
     disableMenuAdd: function(state){
@@ -83,6 +82,103 @@ xtag.register('ha-control', {
           }
         }
       }
+    }
+  }
+});
+
+
+xtag.register('ha-input-attribute', {
+  lifecycle:{
+    created: function(){
+      var template = document.getElementById('ha-input-attribute').innerHTML;
+      xtag.innerHTML(this, template);
+    },
+    removed: function(){
+      document.removeEventListener('click', this.clickOutside, false);
+    }
+  },
+  events: {
+    click: function(mouseEvent){
+      console.log(this, mouseEvent, mouseEvent.target.className);
+      if(mouseEvent.target.className === 'summary'){
+        mouseEvent.path[1].getElementsByClassName('summary')[0].style.display = 'none';
+        mouseEvent.path[1].getElementsByClassName('detailed')[0].style.display = 'inline';
+        document.addEventListener('click', this.clickOutside, false);
+      }
+    }
+  },
+  methods: {
+    populate: function(data){
+      console.log(this, data);
+      this.getElementsByClassName('description')[0].innerHTML = data.description;
+
+      var form = this.getElementsByClassName('form')[0];
+
+      var inputs = [[true, ['', '==', '!='], '=='],
+                    [false, ['', '==', '!='], ''],
+                    ['yes', ['', '==', '!='], '=='],
+                    ['no', ['', '==', '!='], ''],
+                    [0,  ['', '==', '!=', '>', '<', '>=', '<='], ''],
+                    [1, ['', '==', '!=', '>', '<', '>=', '<='], '>=']];
+      var summary = document.createElement('div');
+      summary.className = 'summary';
+      var detailed = document.createElement('div');
+      detailed.className = 'detailed';
+      detailed.style.display = 'none';
+      form.appendChild(summary);
+      form.appendChild(detailed);
+
+      for(var i = 0; i < inputs.length; i++){
+        var wrapper_detailed = document.createElement('div');
+        var select = document.createElement('select');
+        for(var j = 0; j < inputs[i][1].length; j++){
+          var option = document.createElement("option");
+          option.text = inputs[i][1][j];
+          if(inputs[i][1][j] === inputs[i][2]){
+            option.setAttribute("selected", "selected");
+          }
+          select.appendChild(option);
+        }
+        if(inputs[i][2] !== ''){
+          summary.innerHTML = summary.innerHTML + inputs[i][2] + ' ' + inputs[i][0] + ', ';
+        }
+        
+        select.type = 'checkbox';
+        select.name = inputs[i][0];
+        wrapper_detailed.appendChild(select);
+        wrapper_detailed.innerHTML = wrapper_detailed.innerHTML + inputs[i][0] + '\t(' + typeof(inputs[i][0]) + ')';
+
+        detailed.appendChild(wrapper_detailed);
+
+        console.log(select.options);
+      }
+      summary.innerHTML = summary.innerHTML.substring(0, summary.innerHTML.length -2);
+    },
+    clickOutside: function(event){
+      console.log('clickOutside');
+      var form_found;
+      for(var parent in event.path){
+        if(event.path[parent].className === 'form'){
+          form_found = true;
+        }
+      }
+      if(form_found){
+        // not actually outside the form.
+        return
+      }
+      console.log('clickOutside 2');
+
+      var summaries = this.getElementsByClassName('summary');
+      for(var i = 0; i < summaries.length; i++){
+        summaries[i].style.display = "inline";
+      }
+      var detaileds = this.getElementsByClassName('detailed');
+      for(var i = 0; i < detaileds.length; i++){
+        detaileds[i].style.display = "none";
+      }
+
+      // TODO. the following doesn't work as we no longer have the correct context.
+      // document.removeEventListener('click', this.clickOutside, false);  
     }
   }
 });
