@@ -102,31 +102,24 @@ FlowObject.prototype.displaySideBar = function(){
     if(key === 'general'){
       outer_description.innerHTML = 'General settings:';
     } else if(key === 'inputs'){
-      outer_description.innerHTML = 'Inputs:';
+      outer_description.innerHTML = '<br/>Inputs:';
     } else if(key === 'outputs'){
-      outer_description.innerHTML = 'Outputs:';
+      outer_description.innerHTML = '<br/>Outputs:';
     }
     outer_list.appendChild(outer_description);
 
-    var inner_list = document.createElement("dl");
     for (var inner_key in this.data.data[key]){
-      var inner_description = document.createElement("dt");
-      var inner_content = document.createElement("dd");
-
-      inner_description.innerHTML = this.data.data[key][inner_key].description
-      inner_list.appendChild(inner_description);
-      
       if(key === 'inputs'){
         var input_attribute = document.createElement('ha-input-attribute');
         input_attribute.populate(this.data.data.inputs[inner_key]);
-        inner_content.appendChild(input_attribute);
-        inner_list.appendChild(inner_content);
+        outer_list.appendChild(input_attribute);
+      } else if(key === 'general'){
+        var general_attribute = document.createElement('ha-general-attribute');
+        general_attribute.populate(inner_key, this.data.data.general[inner_key]);
+        outer_list.appendChild(general_attribute);
       } else {
-        inner_content.appendChild(createUpdateField(this, inner_key, this.data.data[key][inner_key]));
-        inner_list.appendChild(inner_content);
+        outer_list.appendChild(createUpdateField(this, inner_key, this.data.data[key][inner_key]));
       }
-
-      outer_content.appendChild(inner_list);
     }
     outer_list.appendChild(outer_content);
   }
@@ -185,10 +178,11 @@ FlowObject.prototype.onstart = function(mouseEvent){
   } else if(clicked_shape.type === 'inputs'){
   } else if(clicked_shape.type === 'outputs'){
     var pos1 = this.getShapePosition();
-    pos1.x = pos1.x + PORT_SIZE /2;
-    pos1.y = pos1.y + PORT_SIZE /2;
+    pos1.x = pos1.x + PORT_WIDTH;
+    pos1.y = pos1.y + PORT_HEIGHT /2;
     var pos2 = {x: pos1.x + 5, y: pos1.y};
-    this.data('parent').shareBetweenShapes.dragging = {arrow: this.paper.arrow(pos1, pos2, 'black'), origin: this};
+    this.data('parent').shareBetweenShapes.dragging = {arrow: this.paper.arrow(pos1, pos2, 'red'), origin: this};
+    this.data('parent').shareBetweenShapes.dragging.arrow.node.setAttribute("pointer-events", "none");
   }
 }
 
@@ -304,10 +298,49 @@ inheritsFrom(FlowObjectMqttSubscribe, FlowObject);
 
 
 
+var FlowObjectMqttPublish = function(paper, sidebar, shareBetweenShapes, shape){
+  console.log("FlowObjectMqttPublish");
+
+  var shape = paper.box(0, 0, 150, 50, 1, 0, 'seagreen');
+
+  FlowObject.prototype.constructor.call(this, paper, sidebar, shareBetweenShapes, shape);
+  this.data = { object_name: 'MQTT Publish',
+                description: 'Publish MQTT a message for a specific topic.',
+                data: {
+                  general: {
+                    instance_name: {
+                      description: 'Name',
+                      value: 'Object_' + shareBetweenShapes.unique_id },
+                    subscribed_topic: {
+                      description: 'MQTT topic to Publish to',
+                      value: 'homeautomation/test' },
+                    payload_passthrough: {
+                      description: 'Use Input payload as Output.',
+                      value: true,
+                      hide: ['payload_custom']
+                    },
+                    payload_custom: {
+                      description: 'Custom string to send as payload.',
+                      value: '42' },
+                    },
+                  inputs: {
+                    0: {
+                      description: 'Publish',
+                      tag: 'publish',
+                      trigger_success: [] }},
+                  outputs: {}}
+              }
+  this.shape.setContents(this.data);
+}
+
+inheritsFrom(FlowObjectMqttPublish, FlowObject);
+
+
+
 var FlowObjectTimer = function(paper, sidebar, shareBetweenShapes, shape){
   console.log("FlowObjectTimer");
 
-  var shape = paper.box(0, 0, 150, 50, 3, 1, 'coral');
+  var shape = paper.box(0, 0, 100, 50, 3, 1, 'coral');
 
   FlowObject.prototype.constructor.call(this, paper, sidebar, shareBetweenShapes, shape);
   this.data = { object_name: 'Timer',
@@ -335,15 +368,15 @@ var FlowObjectTimer = function(paper, sidebar, shareBetweenShapes, shape){
                     0: {
                       description: 'Start',
                       tag: 'start',
-                      trigger_vlues: [] },
+                      trigger_success: [] },
                     2: {
                       description: 'Stop',
                       tag: 'stop',
-                      trigger_vlues: [] },
+                      trigger_success: [] },
                     1: {
                       description: 'Reset',
                       tag: 'reset',
-                      trigger_vlues: [] }},
+                      trigger_success: [] }},
                   outputs: {
                     0: {
                       description: 'Default output',
@@ -351,8 +384,7 @@ var FlowObjectTimer = function(paper, sidebar, shareBetweenShapes, shape){
                       output_values: {
                         passthrough: false,
                         bool: true,
-                        custom: ''
-                        }
+                        custom: '' }
                       } } }
               }
   this.shape.setContents(this.data);
@@ -362,4 +394,95 @@ inheritsFrom(FlowObjectTimer, FlowObject);
 
 
 
+var FlowObjectAnd = function(paper, sidebar, shareBetweenShapes, shape){
+  console.log("FlowObjectAnd");
+
+  var shape = paper.box(0, 0, 100, 50, 4, 1, 'gold');
+
+  FlowObject.prototype.constructor.call(this, paper, sidebar, shareBetweenShapes, shape);
+  this.data = { object_name: 'Logical AND',
+                description: 'Trigger output only if both inputs evaluate True.',
+                data: {
+                  general: {
+                    instance_name: {
+                      description: 'Name',
+                      value: 'Object_' + shareBetweenShapes.unique_id } ,
+                    },
+                  inputs: {
+                    0: {
+                      description: 'Input 1',
+                      tag: 'input1',
+                      type: 'boolean',
+                      default_value: false },
+                    1: {
+                      description: 'Input 2',
+                      tag: 'input2',
+                      type: 'boolean',
+                      default_value: false },
+                    2: {
+                      description: 'Reset',
+                      tag: 'reset',
+                      type: 'boolean' },
+                    3: {
+                      description: 'Calcuate now',
+                      tag: 'calculate',
+                      type: 'boolean' },
+                    },
+                  outputs: {
+                    0: {
+                      description: 'Default output',
+                      tag: 'default',
+                      type: 'boolean',
+                      }}}}
+  this.shape.setContents(this.data);
+}
+
+inheritsFrom(FlowObjectAnd, FlowObject);
+
+
+
+var FlowObjectMapValues = function(paper, sidebar, shareBetweenShapes, shape){
+  console.log("FlowObjectMapValues");
+
+  var shape = paper.box(0, 0, 100, 50, 1, 1, 'crimson');
+
+  FlowObject.prototype.constructor.call(this, paper, sidebar, shareBetweenShapes, shape);
+  this.data = { object_name: 'Map values',
+                description: 'Remap input variables to different output.',
+                data: {
+                  general: {
+                    instance_name: {
+                      description: 'Name',
+                      value: 'Object_' + shareBetweenShapes.unique_id },
+                    transitions: {
+                      description: 'Map Input ranges to desired Output.',
+                      value: [] },
+                    },
+                  inputs: {
+                    0: {
+                      description: 'Input 1',
+                      tag: 'input1', 
+                      type: ['boolean', 'string', 'number'],
+                      default_value: false },
+                    },
+                  outputs: {
+                    0: {
+                      description: 'Default output',
+                      tag: 'default',
+                      type: 'boolean',
+                      }}}}
+  this.shape.setContents(this.data);
+
+  this.displayTransitions();
+}
+
+inheritsFrom(FlowObjectMapValues, FlowObject);
+
+FlowObjectMapValues.prototype.displayTransitions = function(){
+  var content = this.sidebar.getElementsByClassName('sidebar-content')[0];
+
+  var transition = document.createElement('ha-transitions');
+  transition.populate(this.data.data.general.transitions);
+  content.appendChild(transition);
+}
 

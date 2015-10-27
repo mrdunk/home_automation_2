@@ -1,4 +1,5 @@
-var PORT_SIZE = 15;
+var PORT_HEIGHT = 15;
+var PORT_WIDTH = 15;
 
 Raphael.fn.arrow = function (pos1, pos2, color) {
   var path = 'M ' + pos1.x + ' ' + pos1.y + ' L ' + pos2.x + ' ' + pos2.y;
@@ -18,15 +19,16 @@ Raphael.fn.box = function(x, y, width, height, input_count, output_count, color)
   shape = this.text(x + 5, y, "Test Text").attr({font: "12px Fontin-Sans, Arial", fill: "#fff", "text-anchor": "start"});
   shape.x_offset = 5;
   shape.y_offset = 8;
+  shape.node.setAttribute("pointer-events", "none");
   set_content.push(shape);
   set_content.label = 'contents';
   set_main.push(set_content);
 
   var set_inputs = this.set();
   for(var i = 0; i < input_count; i++){
-    shape = this.rect(x - PORT_SIZE, y + PORT_SIZE + (i * PORT_SIZE), PORT_SIZE, PORT_SIZE, 2);
-    shape.x_offset = -PORT_SIZE;
-    shape.y_offset = PORT_SIZE + (i * PORT_SIZE);
+    shape = this.rect(x - PORT_WIDTH, y + PORT_HEIGHT + (i * PORT_HEIGHT), PORT_WIDTH, PORT_HEIGHT, 2);
+    shape.x_offset = -PORT_WIDTH;
+    shape.y_offset = PORT_HEIGHT + (i * PORT_HEIGHT);
     set_inputs.push(shape);
   }
   set_inputs.label = 'inputs';
@@ -34,9 +36,9 @@ Raphael.fn.box = function(x, y, width, height, input_count, output_count, color)
 
   var set_outputs = this.set();
   for(var i = 0; i < output_count; i++){
-    shape = this.rect(x + width, y + PORT_SIZE + (i * PORT_SIZE), PORT_SIZE, PORT_SIZE, 2);
+    shape = this.rect(x + width, y + PORT_HEIGHT + (i * PORT_HEIGHT), PORT_WIDTH, PORT_HEIGHT, 2);
     shape.x_offset = width;
-    shape.y_offset = PORT_SIZE + (i * PORT_SIZE);
+    shape.y_offset = PORT_HEIGHT + (i * PORT_HEIGHT);
     set_outputs.push(shape);
   }
   set_outputs.label = 'outputs';
@@ -66,10 +68,12 @@ Raphael.st.setContents = function(content){
         var shape = this.paper.text(x + 5, y, content.object_name).attr({font: "12px Fontin-Sans, Arial", fill: "black", "text-anchor": "start"});
         shape.x_offset = 5;
         shape.y_offset = 8;
+        shape.node.setAttribute("pointer-events", "none");
         this.items[i].push(shape);
         shape = this.paper.text(0, 0, content.data.general.instance_name.value).attr({font: "12px Fontin-Sans, Arial", fill: "black", "text-anchor": "start"});
         shape.x_offset = 5;
         shape.y_offset = 22;
+        shape.node.setAttribute("pointer-events", "none");
         this.items[i].push(shape);
         // For some reason new shapes added to a set do not appear until they are moved.
         setBoxPosition(this.items[i], x, y);
@@ -91,9 +95,9 @@ Raphael.st.setInputs = function(input_count){
           node.remove();
         }
         for(var j = 0; j < input_count; j++){
-          var shape = this.paper.rect(x - PORT_SIZE, y + PORT_SIZE + (i * PORT_SIZE), PORT_SIZE, PORT_SIZE, 2);
-          shape.x_offset = -PORT_SIZE;
-          shape.y_offset = PORT_SIZE + (j * PORT_SIZE);
+          var shape = this.paper.rect(x - PORT_WIDTH, y + PORT_HEIGHT + (i * PORT_HEIGHT), PORT_WIDTH, PORT_HEIGHT, 2);
+          shape.x_offset = -PORT_WIDTH;
+          shape.y_offset = PORT_HEIGHT + (j * PORT_HEIGHT);
           shape.attr({"fill": color, "stroke": "#000"});
           this.items[i].push(shape);
         }
@@ -118,9 +122,9 @@ Raphael.st.setOutputs = function(output_count){
           node.remove();
         }
         for(var j = 0; j < output_count; j++){
-          var shape = this.paper.rect(x + width, y + PORT_SIZE + (i * PORT_SIZE), PORT_SIZE, PORT_SIZE, 2);
+          var shape = this.paper.rect(x + width, y + PORT_HEIGHT + (i * PORT_HEIGHT), PORT_WIDTH, PORT_HEIGHT, 2);
           shape.x_offset = width;
-          shape.y_offset = PORT_SIZE + (j * PORT_SIZE);
+          shape.y_offset = PORT_HEIGHT + (j * PORT_HEIGHT);
           shape.attr({"fill": color, "stroke": "#000"});
           this.items[i].push(shape);
         }
@@ -155,9 +159,9 @@ Raphael.st.setOutputLinks = function(outputs){
 
               var pos1 = outgoing_port_shape.getShapePosition();
               var pos2 = incoming_port_shape.getShapePosition();
-              var pos1 = {x: pos1.x + PORT_SIZE /2, y: pos1.y + PORT_SIZE /2};
-              var pos2 = {x: pos2.x + PORT_SIZE /2, y: pos2.y + PORT_SIZE /2};
-              var shape = this.paper.arrow(pos1, pos2, 'red');
+              var pos1 = {x: pos1.x + PORT_WIDTH, y: pos1.y + PORT_HEIGHT /2};
+              var pos2 = {x: pos2.x, y: pos2.y + PORT_HEIGHT /2};
+              var shape = this.paper.arrow(pos1, pos2, 'teal');
               links.push(shape);
             }
           }
@@ -179,7 +183,6 @@ Raphael.st.setInputLinks = function(inputs){
   }
 
   for(var key in move_list){
-    console.log(move_list[key]);
     move_list[key].shape.setOutputLinks(move_list[key].data.data.outputs);
   }
 }
