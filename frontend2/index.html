@@ -28,16 +28,7 @@
 
 
 <template id="ha-control">
-    <div id="ha-control-heading">
-      <paper-icon-button icon="alarm" alt="timer" title="Timer"></paper-icon-button>
-      <paper-icon-button icon="cloud-download"></paper-icon-button>
-      <paper-icon-button icon="cloud-upload"></paper-icon-button>
-      <paper-icon-button icon="add-circle-outline"></paper-icon-button>
-      <paper-icon-button icon="trending-flat"></paper-icon-button>
-      <paper-icon-button icon="content-copy"></paper-icon-button>
-      <paper-icon-button icon="redo" toggles></paper-icon-button>
-      <paper-icon-button icon="settings" toggles></paper-icon-button>
-    </div>
+    <ha-control-heading></ha-control-heading>
     <div id="ha-control-paper" height="400px">
     </div>
     <div id="ha-control-sidebar" height="400px">
@@ -48,6 +39,19 @@
       <div class="sidebar-content">
       </div>
     </div>
+</template>
+
+<template id="ha-control-heading">
+  <div class="container">
+    <paper-icon-button icon="alarm"></paper-icon-button>
+    <paper-icon-button icon="cloud-download"></paper-icon-button>
+    <paper-icon-button icon="cloud-upload"></paper-icon-button>
+    <paper-icon-button icon="add-circle-outline"></paper-icon-button>
+    <paper-icon-button icon="trending-flat"></paper-icon-button>
+    <paper-icon-button icon="content-copy"></paper-icon-button>
+    <paper-icon-button icon="redo"></paper-icon-button>
+    <paper-icon-button icon="settings" toggles></paper-icon-button>
+  </div>
 </template>
 
 <template id="ha-general-attribute">

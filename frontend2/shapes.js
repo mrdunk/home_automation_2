@@ -1,8 +1,12 @@
 var PORT_HEIGHT = 15;
 var PORT_WIDTH = 15;
+var MIN_ARROW_LEN = 10;
 
 Raphael.fn.arrow = function (pos1, pos2, color) {
   var path = 'M ' + pos1.x + ' ' + pos1.y + ' L ' + pos2.x + ' ' + pos2.y;
+  if(Math.abs(pos1.x - pos2.x) + Math.abs(pos1.y - pos2.y) < MIN_ARROW_LEN){
+    pos2.x = pos1.x + MIN_ARROW_LEN;
+  }
   return this.path(path).attr({stroke: color, fill: "none", 'stroke-width': 3, 'arrow-end': 'classic-wide'});
 };
 
@@ -161,6 +165,9 @@ Raphael.st.setOutputLinks = function(outputs){
               var pos2 = incoming_port_shape.getShapePosition();
               var pos1 = {x: pos1.x + PORT_WIDTH, y: pos1.y + PORT_HEIGHT /2};
               var pos2 = {x: pos2.x, y: pos2.y + PORT_HEIGHT /2};
+              if(Math.abs(pos1.x - pos2.x) + Math.abs(pos1.y - pos2.y) < MIN_ARROW_LEN){
+                pos2.x = pos1.x + MIN_ARROW_LEN;
+              }
               var shape = this.paper.arrow(pos1, pos2, 'teal');
               links.push(shape);
             }

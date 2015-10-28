@@ -5,15 +5,16 @@ html,body {
   padding: 0;
 }
 
-#ha-control-heading {
+ha-control-heading .container {
   background: grey;
 }
 
+ha-control-heading div paper-icon-button {
+  color: black;
+}
+
 #ha-control-paper {
-  border-style: solid;
-  border-width: 1px;
   height: 100%;
-  margin-right: 200px;
   position: absolute;
   width: 100%;
 }
@@ -22,11 +23,12 @@ html,body {
   border-style: solid;
   border-width: 1px;
   height: 100%;
-  width: 300px;
+  width: 400px;
   padding: 2px;
   position: absolute;
   right: 0;
   background: ghostwhite;
+  overflow: auto;
 }
 
 #ha-control-sidebar .sidebar-header {
@@ -53,3 +55,26 @@ html,body {
 
 #ha-control-sidebar .sidebar-content {
 }
+
+ha-transitions .table-transition {
+  border: 1px solid red;
+  overflow: auto;
+  display: inline-flex;
+}
+
+ha-transitions .input-transition {
+  border: 1px solid blue;
+}
+
+ha-transitions .input-transition div {
+  display: inline-flex;
+}
+
+ha-transitions .output-transition {
+  border: 1px solid blue;
+}
+
+ha-transitions .output-transition div {
+  display: inline-flex;
+}
+

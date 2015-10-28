@@ -444,7 +444,7 @@ inheritsFrom(FlowObjectAnd, FlowObject);
 var FlowObjectMapValues = function(paper, sidebar, shareBetweenShapes, shape){
   console.log("FlowObjectMapValues");
 
-  var shape = paper.box(0, 0, 100, 50, 1, 1, 'crimson');
+  var shape = paper.box(0, 0, 75, 50, 1, 1, 'crimson');
 
   FlowObject.prototype.constructor.call(this, paper, sidebar, shareBetweenShapes, shape);
   this.data = { object_name: 'Map values',

@@ -296,7 +296,7 @@ function initilize()
   mqtt_instance.ON_MESSAGE = mqtt_instance_ON_MESSAGE
 
 
-  if is_file_or_dir('/usr/share/homeautomation/outlets.lua') then
+  if is_file_or_dir('/usr/share/homeautomation/control.lua') then
     local control_class = require 'control'
     
     --local c1 = component:new()

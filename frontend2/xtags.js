@@ -1,10 +1,10 @@
 
-var objectTypes = {'alarm':              {'color':'blue', 'action':'new', callback: FlowObjectTimer},
-                   'cloud-download':     {'color':'red', 'action':'new', callback: FlowObjectMqttSubscribe},
-                   'cloud-upload':       {'color':'red', 'action':'new', callback: FlowObjectMqttPublish},
-                   'add-circle-outline': {'color':'red', 'action':'new', callback: FlowObjectAnd},
-                   'trending-flat':      {'color':'red', 'action':'new', callback: FlowObjectMapValues},
-                   'content-copy':       {'color':'green', 'action':'new'},
+var buttonTypes = {'alarm':              {'action':'new_object', callback: FlowObjectTimer},
+                   'cloud-download':     {'action':'new_object', callback: FlowObjectMqttSubscribe},
+                   'cloud-upload':       {'action':'new_object', callback: FlowObjectMqttPublish},
+                   'add-circle-outline': {'action':'new_object', callback: FlowObjectAnd},
+                   'trending-flat':      {'action':'new_object', callback: FlowObjectMapValues},
+                   'content-copy':       {'action':'new_object'},
                    'redo':               {'action':'join'},
                    'settings':           {'action':'edit'}
                   }
@@ -15,50 +15,19 @@ xtag.register('ha-control', {
       var template = document.getElementById('ha-control').innerHTML;
       xtag.innerHTML(this, template);
       this.paper = Raphael('ha-control-paper', '100%', '100%');
+      this.header = document.getElementsByTagName('ha-control-heading')[0];
+      this.header.setParent(this);
       this.sidebar = document.getElementById('ha-control-sidebar');
       this.shapes = [];
       this.shareBetweenShapes = {unique_id: 0};
     }
   },
-  events: {
-    'click:delegate(paper-icon-button)': function(mouseEvent){
-      console.log(mouseEvent, this.icon)
-      if(objectTypes[this.icon]){
-        var ha_control;
-        for (var i = 0; i < mouseEvent.path.length; i++){
-          if(xtag.matchSelector(mouseEvent.path[i], 'ha-control')){
-            ha_control = mouseEvent.path[i]
-            break;
-          }
-        }
-        if(ha_control === 'undefined'){ return; }
-
-        var color = objectTypes[this.icon].color;
-        var action = objectTypes[this.icon].action;
-        if(color){
-          ha_control.addShape(objectTypes[this.icon]);
-        } else if(action === 'join'){
-          console.log('join')
-          if(this.hasAttribute('active')){
-            ha_control.disableMenuAdd(true);
-          } else {
-            ha_control.disableMenuAdd(false);
-          }
-          
-          // TESTING
-          //ha_control.shapes[ha_control.shapes.length -1].replaceShape(ha_control.paper.box(0,0,50,50,3,2,'yellow'));
-        } else if(action === 'edit'){
-          console.log('edit')
-          if(this.hasAttribute('active')){
-            ha_control.disableMenuAdd(true);
-          } else {
-            ha_control.disableMenuAdd(false);
-          }
-        }
+  methods: {
+    buttonClicked: function(button_settings){
+      if(button_settings.action === 'new_object'){
+        this.addShape(button_settings);
       }
     },
-  },
-  methods: {
     addShape: function(object_type){
       var shape;
       console.log(object_type);
@@ -69,24 +38,40 @@ xtag.register('ha-control', {
       }
       shape.setBoxPosition(100,100);
 
-      //shape.displaySideBar();
       shape.select();
       this.shapes.push(shape);
     },
-    disableMenuAdd: function(state){
-      console.log('disableMenuAdd(', state, ')');
-      var buttons = xtag.queryChildren(xtag.queryChildren(this, 'div#ha-control-heading')[0], 'paper-icon-button');
-      for(var i = 0; i < buttons.length; i++){
-        if(objectTypes[buttons[i].icon].action === 'new'){
-          if(state){
-            buttons[i].setAttribute('disabled', state);
-          } else {
-             buttons[i].removeAttribute('disabled');
-          }
+  }
+});
+
+xtag.register('ha-control-heading', {
+  lifecycle:{
+    created: function(){
+      var template = document.getElementById('ha-control-heading').innerHTML;
+      xtag.innerHTML(this, template);
+    }
+  },
+  events: {
+    'click:delegate(paper-icon-button)': function(mouseEvent){
+      console.log(mouseEvent, this);
+      var ha_control_heading;
+      for (var i = 0; i < mouseEvent.path.length; i++){
+        if(xtag.matchSelector(mouseEvent.path[i], 'ha-control-heading')){
+          ha_control_heading = mouseEvent.path[i]
+          break;
         }
       }
+      if(ha_control_heading === 'undefined'){ return; }
+
+      ha_control_heading.parent.buttonClicked(buttonTypes[this.icon]);
     }
-  }
+  },
+  methods: {
+    setParent: function(parent){
+      console.log(parent);
+      this.parent = parent;
+    }
+  },
 });
 
 
@@ -112,7 +97,6 @@ xtag.register('ha-input-attribute', {
   },
   methods: {
     populate: function(data){
-      console.log(this, data);
       this.getElementsByClassName('description')[0].innerHTML = data.description;
 
       var form = this.getElementsByClassName('form')[0];
@@ -194,7 +178,6 @@ xtag.register('ha-general-attribute', {
   },
   methods: {
     populate: function(name, data){
-      console.log(this, data);
       if(name === 'transitions'){
         var input = document.createElement('ha-transitions');
         input.populate(data);
@@ -226,32 +209,57 @@ xtag.register('ha-transitions', {
       xtag.innerHTML(this, template);
     },
   },
+  events: {
+    'click:delegate(paper-icon-button)': function(mouseEvent){
+      var transition;
+      for (var i = 0; i < mouseEvent.path.length; i++){
+        if(xtag.matchSelector(mouseEvent.path[i], 'ha-transitions')){
+          transition = mouseEvent.path[i]
+          break;
+        }
+      }
+      if(transition === 'undefined'){ return; }
+      transition.newRange();
+      transition.populate();
+    }
+  },
   methods: {
     populate: function(data){
-      console.log(this, data);
-      this.data = data;
+      this.data = data || this.data;
 
-      if(data.value.length === 0){
-        this.new__range();
+      if(this.data.value.length === 0){
+        this.newRange();
+        this.newRange();
       }
 
       var form = this.getElementsByClassName('transition-form')[0];
-      for(var i = 0; i < data.value.length; i++){
-        form.appendChild(this.chooser_pair(data.value[i]));
+      while(form.firstChild){
+            form.removeChild(form.firstChild);
       }
+
+      var table = document.createElement('div');
+      table.className = 'table-transition';
+      form.appendChild(table);
+      var left = document.createElement('div');
+      var right = document.createElement('div');
+      left.className = 'input-transition';
+      right.className = 'output-transition';
+      table.appendChild(left);
+      table.appendChild(right);
+      for(var i = 0; i < this.data.value.length; i++){
+        left.appendChild(this.chooser(this.data.value[i], 'input'));
+        right.appendChild(this.chooser(this.data.value[i], 'output'));
+      }
+      var button = document.createElement('paper-icon-button');
+      button.icon = 'add-circle-outline';
+      form.appendChild(button);
     },
     update_callback: function(){
       console.log('update_callback', this);
     },
-    new__range: function(){
+    newRange: function(){
       var range = {input: true, output: true};
       this.data.value.push(range);
-    },
-    chooser_pair: function(range){
-      var container = document.createElement('div');
-      container.appendChild(this.chooser(range, 'input'));
-      container.appendChild(this.chooser(range, 'output'));
-      return container;
     },
     chooser: function(range, io){
       var container = document.createElement('div');
@@ -317,6 +325,7 @@ xtag.register('ha-transitions', {
       }
       input_number_high.style.width = '4em';
       input_number.appendChild(input_number_low);
+      input_number.appendChild(document.createTextNode('to'))
       input_number.appendChild(input_number_high);
 
       if(select.value !== 'boolean'){
