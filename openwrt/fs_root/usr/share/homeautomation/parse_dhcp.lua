@@ -186,8 +186,8 @@ function dhcp_parser:publish_users()
       count_devices = count_devices +1
     end
 
-    topic = "homeautomation/0/user/" .. google_id
-    payload = "count : " .. count_devices
+    topic = "homeautomation/0/users/announce"
+    payload = "users/" .. google_id .. " : " .. count_devices
     print(topic, payload)
     mqtt_instance:publish(topic, payload)
   end

@@ -5,3 +5,5 @@ USE_TLS=false;
 CLEANSESSION=true;
 username=null;
 password=null;
+
+MQTT_CACHE_TIME = 30;  // seconds

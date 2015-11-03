@@ -177,11 +177,14 @@ xtag.register('ha-general-attribute', {
     },
   },
   methods: {
-    populate: function(name, data){
+    populate: function(name, data, flow_object){
       if(name === 'transitions'){
         var input = document.createElement('ha-transitions');
         input.populate(data);
-
+        this.getElementsByClassName('form')[0].appendChild(input);
+      } else if(name === 'subscribed_topic'){
+        var input = document.createElement('ha-topic-chooser');
+        input.populate(0, '', 'root', Data.mqtt_data);
         this.getElementsByClassName('form')[0].appendChild(input);
       } else if(data.description && data.value){
         this.getElementsByClassName('description')[0].innerHTML = data.description;
@@ -189,14 +192,20 @@ xtag.register('ha-general-attribute', {
         var input = document.createElement("input");
         input.value = data.value;
         input.name = name;
-        input.onchange = this.update_callback.bind({element: input, data: data});
+        input.onchange = this.update_callback.bind({element: input, data: data, flow_object: flow_object});
 
         this.getElementsByClassName('form')[0].appendChild(input);
       }
     },
-    update_callback: function(){
-      console.log('update_callback', this);
+    update_callback: function(update_event){
+      console.log('update_callback', this, update_event);
       this.data.value = this.element.value;
+
+      if(this.data.description === 'Name'){
+        // Redraw sidebar and shape.
+        this.flow_object.displaySideBar();
+        this.flow_object.shape.setContents(this.flow_object.data);
+      }
     }
   }
 });
@@ -210,8 +219,9 @@ xtag.register('ha-transitions', {
     },
   },
   events: {
-    'click:delegate(paper-icon-button)': function(mouseEvent){
-      var transition;
+    'click:delegate(button)': function(mouseEvent){
+      console.log(mouseEvent.srcElement.value);
+      var transition; 
       for (var i = 0; i < mouseEvent.path.length; i++){
         if(xtag.matchSelector(mouseEvent.path[i], 'ha-transitions')){
           transition = mouseEvent.path[i]
@@ -219,8 +229,14 @@ xtag.register('ha-transitions', {
         }
       }
       if(transition === 'undefined'){ return; }
-      transition.newRange();
-      transition.populate();
+
+      if(mouseEvent.srcElement.value === 'add'){
+        transition.newRange();
+        transition.populate();
+      } else {
+        transition.data.value.splice(mouseEvent.srcElement.value, 1);
+        transition.populate();
+      }
     }
   },
   methods: {
@@ -228,8 +244,7 @@ xtag.register('ha-transitions', {
       this.data = data || this.data;
 
       if(this.data.value.length === 0){
-        this.newRange();
-        this.newRange();
+        this.prePopulateRange();
       }
 
       var form = this.getElementsByClassName('transition-form')[0];
@@ -240,19 +255,27 @@ xtag.register('ha-transitions', {
       var table = document.createElement('div');
       table.className = 'table-transition';
       form.appendChild(table);
+      var control = document.createElement('div');
       var left = document.createElement('div');
       var right = document.createElement('div');
+      control.className = 'control-transition';
       left.className = 'input-transition';
       right.className = 'output-transition';
+      table.appendChild(control);
       table.appendChild(left);
       table.appendChild(right);
       for(var i = 0; i < this.data.value.length; i++){
+        var button = document.createElement('button');
+        button.textContent = '-';
+        button.value = i;
+        control.appendChild(button);
         left.appendChild(this.chooser(this.data.value[i], 'input'));
         right.appendChild(this.chooser(this.data.value[i], 'output'));
       }
-      var button = document.createElement('paper-icon-button');
-      button.icon = 'add-circle-outline';
-      form.appendChild(button);
+      var button = document.createElement('button');
+      button.textContent = '+';
+      button.value = 'add';
+      control.appendChild(button);
     },
     update_callback: function(){
       console.log('update_callback', this);
@@ -260,6 +283,14 @@ xtag.register('ha-transitions', {
     newRange: function(){
       var range = {input: true, output: true};
       this.data.value.push(range);
+    },
+    prePopulateRange: function(){;
+      this.data.value.push( {input: true, output: true} );
+      this.data.value.push( {input: 'yes', output: true} );
+      this.data.value.push( {input: {low: 1, high: 100}, output: true} );
+      this.data.value.push( {input: false, output: false} );
+      this.data.value.push( {input: 'no', output: false} );
+      this.data.value.push( {input: {low: -100, high: 0}, output: false} );
     },
     chooser: function(range, io){
       var container = document.createElement('div');
@@ -310,7 +341,7 @@ xtag.register('ha-transitions', {
       var input_number = document.createElement('div');
       var input_number_low = document.createElement('input');
       input_number_low.type = 'number';
-      if(range[io].low){
+      if(typeof range[io].low !== 'undefined'){
         input_number_low.value = range[io].low;
       } else {
         input_number_low.value = 0;
@@ -318,7 +349,7 @@ xtag.register('ha-transitions', {
       input_number_low.style.width = '4em';
       var input_number_high = document.createElement('input');
       input_number_high.type = 'number';
-      if(range[io].high){
+      if(typeof range[io].high !== 'undefined'){
         input_number_high.value = range[io].high;
       } else {
         input_number_high.value = 100;
@@ -382,11 +413,102 @@ xtag.register('ha-transitions', {
         this.data[this.io] = {low: this.input_number.children[0].value, high: this.input_number.children[1].value};
       }
 
-      if(this.input_number.children[0].value > this.input_number.children[1].value){
+      if(Number(this.input_number.children[0].value) > Number(this.input_number.children[1].value)){
         this.input_number.children[1].value = this.input_number.children[0].value;
       }
+    }
+  }
+});
 
-      console.log(this.data);
+
+xtag.register('ha-topic-chooser', {
+  lifecycle:{
+    created: function(){
+    },
+  },
+  events: {
+    click: function(mouseEvent){
+      var line;
+      for (var i = 0; i < mouseEvent.path.length; i++){
+        if(xtag.matchSelector(mouseEvent.path[i], 'ha-topic-chooser')){
+          line = mouseEvent.path[i]
+          break;
+        }
+      }
+      if(line === 'undefined'){ return; }
+
+      line.colapseAll();
+      line.display();
+    }
+  },
+  methods: {
+    populate: function(level, prefix, name, data){
+      var title = document.createElement('div');
+      title.innerHTML = prefix + name;
+      this.appendChild(title);
+      for(key in data){
+        if(typeof(key) === 'string' && key !== 'updated'){
+          var new_item = document.createElement('ha-topic-chooser');
+          new_item.populate(level +1, prefix + name + '/', key, data[key]);
+          //new_item.style.pointerEvents = 'none';
+          if(level >= 1) {
+            new_item.style.display = 'none';
+          }
+          this.appendChild(new_item);
+        }
+      }
+    },
+    colapseAll: function(){
+      console.log("C", this);
+      var current = this;
+      while(current.parentElement.nodeName === 'HA-TOPIC-CHOOSER'){
+        current = current.parentElement;
+      }
+
+      var f = function(e, level){
+        for(var i = 0; i < e.children.length; i++){
+          if(level > 1){
+            e.children[i].style.display = 'none';
+          }
+          f(e.children[i], level +1);
+        }
+      }
+      f(current, 0);
+    },
+    display: function(){
+      console.log(this);
+      this.displayPeers();
+      for(var i = 0; i < this.children.length; i++){
+        console.log("*", this.children[i]);
+        this.children[i].style.display = 'block';
+        if(this.children[i].nodeName === 'HA-TOPIC-CHOOSER'){
+          this.children[i].displayPeers();
+        }
+        for(var j = 0; j < this.children[i].children.length; j++){
+          if(this.children[i].children[j].nodeName !== 'HA-TOPIC-CHOOSER'){
+            console.log("**", this.children[i].children[j], this.children[i].children[j].nodeName);
+            this.children[i].children[j].style.display = 'block';
+          } else {
+            //this.children[i].children[j].displayPeers();
+          }
+        }
+      }
+    },
+    displayPeers: function(){
+      console.log("#", this);
+      var parent_element = this.parentElement;
+      console.log("##", parent_element);
+      for(var i = 0; i < parent_element.children.length; i++){
+        parent_element.children[i].style.display = 'block';
+        for(var j = 0; j < parent_element.children[i].children.length; j++){
+          if(parent_element.children[i].children[j].nodeName !== 'HA-TOPIC-CHOOSER'){
+            console.log("###", parent_element.children[i].children[j]);
+            parent_element.children[i].children[j].style.display = 'block';
+          } else {
+            parent_element.children[i].children[j].style.display = 'none';
+          }
+        }
+      }
     }
   }
 });

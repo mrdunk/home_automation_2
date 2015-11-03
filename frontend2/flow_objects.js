@@ -115,7 +115,7 @@ FlowObject.prototype.displaySideBar = function(){
         outer_list.appendChild(input_attribute);
       } else if(key === 'general'){
         var general_attribute = document.createElement('ha-general-attribute');
-        general_attribute.populate(inner_key, this.data.data.general[inner_key]);
+        general_attribute.populate(inner_key, this.data.data.general[inner_key], this);
         outer_list.appendChild(general_attribute);
       } else {
         outer_list.appendChild(createUpdateField(this, inner_key, this.data.data[key][inner_key]));
@@ -311,7 +311,7 @@ var FlowObjectMqttPublish = function(paper, sidebar, shareBetweenShapes, shape){
                     instance_name: {
                       description: 'Name',
                       value: 'Object_' + shareBetweenShapes.unique_id },
-                    subscribed_topic: {
+                    publish_topic: {
                       description: 'MQTT topic to Publish to',
                       value: 'homeautomation/test' },
                     payload_passthrough: {
@@ -473,16 +473,8 @@ var FlowObjectMapValues = function(paper, sidebar, shareBetweenShapes, shape){
                       }}}}
   this.shape.setContents(this.data);
 
-  this.displayTransitions();
 }
 
 inheritsFrom(FlowObjectMapValues, FlowObject);
 
-FlowObjectMapValues.prototype.displayTransitions = function(){
-  var content = this.sidebar.getElementsByClassName('sidebar-content')[0];
-
-  var transition = document.createElement('ha-transitions');
-  transition.populate(this.data.data.general.transitions);
-  content.appendChild(transition);
-}
 

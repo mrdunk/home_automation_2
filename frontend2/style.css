@@ -56,9 +56,31 @@ ha-control-heading div paper-icon-button {
 #ha-control-sidebar .sidebar-content {
 }
 
+ha-transitions select, button, input, input[type=text], input[type=number] {
+    font-size: 0.8em;
+    padding: 0.1em;
+    margin: 0.0em 0.0em;
+    /* the following ensures they're all using the same box-model for rendering */
+    -moz-box-sizing: content-box; /* or `border-box` */
+    -webkit-box-sizing: content-box;
+    box-sizing: content-box;
+}
+
+ha-transitions button {
+  width: 1em;
+}
+
 ha-transitions .table-transition {
   border: 1px solid red;
   overflow: auto;
+  display: inline-flex;
+}
+
+ha-transitions .control-transition {
+  border: 1px solid blue;
+}
+
+ha-transitions .control-transition div {
   display: inline-flex;
 }
 
