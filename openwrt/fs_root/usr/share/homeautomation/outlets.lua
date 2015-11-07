@@ -122,9 +122,9 @@ function outlets:read_config()
 
   -- Now disconnect from pubsub broker so it will re-connect with the right subscrptions for the new config.
   mqtt_instance:disconnect()
-
 end
 
+-- Called when MQTT connects and returns a list of topics this module should subscribe to.
 function outlets:subscribe()
   local subscritions = {}
   for role, things in pairs(self.io_local_copy) do
@@ -137,6 +137,7 @@ function outlets:subscribe()
   return subscritions
 end
 
+-- Publishes topics this module knows about. 
 function outlets:announce()
   for address, device in pairs(info.io.lighting) do
     if type(device) == 'table' then
@@ -145,9 +146,10 @@ function outlets:announce()
   end
 end
 
+-- This gets called whenever a topic this module is subscribed to appears on the bus.
 function outlets:callback(path, incoming_data)
   path = var_to_path(path)
-  local incoming_command = incoming_data.command
+  local incoming_command = incoming_data._command
   local role, address = path:match('(.-)/(.+)')
   if self.io_local_copy[role] and self.io_local_copy[role][address] then
     local command = info.io[role][address].command
@@ -160,6 +162,67 @@ function outlets:callback(path, incoming_data)
       device_announce(role, address, command)
     end
 
+  end
+end
+
+
+
+-- Get the value a particular device is set to. eg. "on" or "off".
+-- Works by calling a bash program that contains the necessary code to perform the operation.
+-- The name of this bash program can be set in the main configuration file.
+function device_get_value(role, address, command)
+  -- TODO limit executable code in device.command.query to shell scripts in a limited directory.
+  local device_tmp_filename = string.gsub(address, "/", "__")
+  local handle = io.popen(POWER_SCRIPT_DIR .. command .. " " .. device_tmp_filename .. " query")
+  if not handle then
+    return nil
+  end
+  local ret_val = handle:read("*all")
+  handle:close()
+
+  return ret_val:match "^%s*(.-)%s*$"
+end
+
+-- Set a power management device to the "on" state.
+-- Works by calling a bash program that contains the necessary code to perform the operation.
+-- The name of this bash program can be set in the main configuration file.
+function device_set_on(role, address, command)
+  print("device_set_on: " .. address)
+  local device_tmp_filename = string.gsub(address, "/", "__")
+  local ret_val = os.execute(POWER_SCRIPT_DIR .. command .. " " .. device_tmp_filename .. " on")
+  device_announce(role, address, command)
+  return ret_val
+end
+
+-- Set a power management device to the "off" state.
+-- Works by calling a bash program that contains the necessary code to perform the operation.
+-- The name of this bash program can be set in the main configuration file.
+function device_set_off(role, address, command)
+  print("device_set_off: " .. address)
+  local device_tmp_filename = string.gsub(address, "/", "__")
+  local ret_val = os.execute(POWER_SCRIPT_DIR .. command .. " " .. device_tmp_filename .. " off")
+  device_announce(role, address, command)
+  return ret_val
+end
+
+-- Advertise the existence of a device over the message bus.
+function device_announce(role, address, command)
+  local value = device_get_value(role, address, command)
+  local topic = "homeautomation/0/" .. role .. "/_announce"
+  local data = "_subject : " .. role .. "/" .. address .. " , _state : " .. value
+  print("Announcing: " .. topic, data)
+  mqtt_instance:publish(topic, data)
+  if DEBUG then
+    local found_match
+    for k, v in pairs(info.mqtt.last_announced) do
+      if string.match(info.mqtt.last_announced[k], address .. " : ") then
+        found_match = true
+        info.mqtt.last_announced[k] = role .. "/" .. address .. " : " .. os.time()
+      end
+    end
+    if not found_match then
+      table.insert(info.mqtt.last_announced, role .. "/" .. address .. " : " .. os.time())
+    end
   end
 end
 

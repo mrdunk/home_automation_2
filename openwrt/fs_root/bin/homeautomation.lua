@@ -30,7 +30,7 @@ DEBUG = true
 local WEB_DIR = '/www/info/'
 local TEMP_DIR = '/tmp/homeautomation/'
 local MOSQUITTO_CONF = '/etc/mosquitto/mosquitto.conf'
-local POWER_SCRIPT_DIR = '/usr/share/homeautomation/power_commands/'
+POWER_SCRIPT_DIR = '/usr/share/homeautomation/power_commands/'
 
 
 
@@ -47,7 +47,6 @@ function mqtt_instance_ON_MESSAGE(mid, topic, payload)
 
   -- Only match alphanumeric characters and a very limited range of special characters here to prevent easy injection type attacks.
   local unique_ID, incoming_broker_level, incoming_role, incoming_address = string.match(topic, "^([%w_%-]+)/([%w_%-]+)/([%w_%-]+)/([%w_%-/]+)")
-  --local incoming_data = string.match(payload, "^command%s*:%s*(%w+)")
   local incoming_data = parse_incoming_data(payload)
 
   -- Now we have parsed topic and payload, lets remove the temptation to use them again.
@@ -86,12 +85,12 @@ function mqtt_instance_ON_CONNECT()
     for _, subscrition in pairs(subscribtions) do
       local address_partial = ''
       for address_section in string.gmatch(subscrition.address, "[^/]+") do
-        subscribe_to(subscrition.role, subscrition.address, subscrition.role .. address_partial .. '/all')
-        subscribe_to(subscrition.role, subscrition.address, 'all' .. address_partial .. '/all')
+        subscribe_to(subscrition.role, subscrition.address, subscrition.role .. address_partial .. '/_all')
+        subscribe_to(subscrition.role, subscrition.address, '_all' .. address_partial .. '/_all')
         address_partial = address_partial .. '/' .. address_section
       end
       subscribe_to(subscrition.role, subscrition.address, subscrition.role .. address_partial)
-      subscribe_to(subscrition.role, subscrition.address, 'all' .. address_partial)
+      subscribe_to(subscrition.role, subscrition.address, '_all' .. address_partial)
     end
   end
 
@@ -122,7 +121,7 @@ function match_paths(path_one, path_two)
   local role_one, address_one = path_one:match('(.-)/(.+)')
   local role_two, address_two = path_two:match('(.-)/(.+)')
 
-  if role_one ~= 'all' and role_two ~= 'all' and role_one ~= role_two then
+  if role_one ~= '_all' and role_two ~= '_all' and role_one ~= role_two then
     return
   end
 
@@ -130,7 +129,7 @@ function match_paths(path_one, path_two)
   local atoms_two = split(address_two, '/')
   
   for i=1,#atoms_one,1 do
-    if atoms_one[i] == 'all' or atoms_two[i] == 'all' or atoms_one[i] == '#' or atoms_two[i] == '#' then
+    if atoms_one[i] == '_all' or atoms_two[i] == '_all' or atoms_one[i] == '#' or atoms_two[i] == '#' then
       break
     end
     if atoms_one[i] ~= atoms_two[i] then
@@ -156,63 +155,6 @@ end
 
 function var_to_path(var)
   return var:gsub('__', '/')
-end
-
--- Get the value a particular device is set to. eg. "on" or "off".
--- Works by calling a bash program that contains the necessary code to perform the operation.
--- The name of this bash program can be set in the main configuration file.
-function device_get_value(role, address, command)
-  -- TODO limit executable code in device.command.query to shell scripts in a limited directory.
-  local device_tmp_filename = string.gsub(address, "/", "__")
-  local handle = io.popen(POWER_SCRIPT_DIR .. command .. " " .. device_tmp_filename .. " query")
-  if not handle then
-    return nil
-  end
-  local ret_val = handle:read("*all")
-  handle:close()
-
-  return ret_val:match "^%s*(.-)%s*$"
-end
-
--- Set a power management device to the "on" state.
--- Works by calling a bash program that contains the necessary code to perform the operation.
--- The name of this bash program can be set in the main configuration file.
-function device_set_on(role, address, command)
-  print("device_set_on: " .. address)
-  local device_tmp_filename = string.gsub(address, "/", "__")
-  local ret_val = os.execute(POWER_SCRIPT_DIR .. command .. " " .. device_tmp_filename .. " on")
-  device_announce(role, address, command)
-  return ret_val
-end
-
--- Set a power management device to the "off" state.
--- Works by calling a bash program that contains the necessary code to perform the operation.
--- The name of this bash program can be set in the main configuration file.
-function device_set_off(role, address, command)
-  print("device_set_off: " .. address)
-  local device_tmp_filename = string.gsub(address, "/", "__")
-  local ret_val = os.execute(POWER_SCRIPT_DIR .. command .. " " .. device_tmp_filename .. " off")
-  device_announce(role, address, command)
-  return ret_val
-end
-
--- Advertise the existence of a device over the message bus.
-function device_announce(role, address, command)
-  local value = device_get_value(role, address, command)
-  print("Announcing: homeautomation/0/" .. role .. "/announce", role .. "/" .. address .. " : " .. value)
-  mqtt_instance:publish("homeautomation/0/" .. role .. "/announce", role .. "/" .. address .. " : " .. value)
-  if DEBUG then
-    local found_match
-    for k, v in pairs(info.mqtt.last_announced) do
-      if string.match(info.mqtt.last_announced[k], address .. " : ") then
-        found_match = true
-        info.mqtt.last_announced[k] = role .. "/" .. address .. " : " .. os.time()
-      end
-    end
-    if not found_match then
-      table.insert(info.mqtt.last_announced, role .. "/" .. address .. " : " .. os.time())
-    end
-  end
 end
 
 -- To be called first.
@@ -256,6 +198,7 @@ function initilize()
     if dhcp_class then
       info.config.component.parse_dhcp = true
       dhcp_instance = dhcp_class.new()
+      info.mqtt.callbacks['parse_dhcp'] = dhcp_instance
     end
   end
 

@@ -98,5 +98,6 @@ ha-transitions .output-transition {
 
 ha-transitions .output-transition div {
   display: inline-flex;
+  white-space: nowrap;
 }
 

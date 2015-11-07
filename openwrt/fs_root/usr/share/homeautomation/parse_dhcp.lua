@@ -186,21 +186,51 @@ function dhcp_parser:publish_users()
       count_devices = count_devices +1
     end
 
-    topic = "homeautomation/0/users/announce"
-    payload = "users/" .. google_id .. " : " .. count_devices
+    topic = "homeautomation/0/users/_announce"
+    payload = "_subject : users/" .. google_id .. ", _count : " .. count_devices .. ", _display_name : " .. info.io.users[google_id].display_name
     print(topic, payload)
     mqtt_instance:publish(topic, payload)
   end
 
 end
 
-function dhcp_parser:subscribe(subscribe_to)
+-- Called when MQTT connects and returns a list of topics this module should subscribe to.
+function dhcp_parser:subscribe()
+  local subscritions = {}
   -- TODO Subscribe to updates from other DHCP servers on the network.
   --   subscribe_to["homeautomation/+/dhcp"] = true
-  return subscribe_to
+
+  for user, things in pairs(info.io.users) do
+    if type(things) == 'table' then
+      subscritions[#subscritions +1] = {role = 'users', address = user}
+    end
+  end
+  return subscritions
 end
 
+-- Publishes topics this module knows about. 
 function dhcp_parser:announce()
+  self.publish_users()
+end
+
+-- This gets called whenever a topic this module is subscribed to appears on the bus.
+function dhcp_parser:callback(path, incoming_data)
+  print("dhcp_parser:callback", path, incoming_data)
+  path = var_to_path(path)
+  local incoming_command = incoming_data._command
+  local role, google_id = path:match('(.-)/(.+)')
+
+  if info.io[role] and info.io[role][google_id] and incoming_command == 'solicit' then
+    local count_devices = 0
+    for _,_ in pairs(info.io[role][google_id].devices) do
+      count_devices = count_devices +1
+    end
+    local topic = "homeautomation/0/users/_announce"
+
+    local payload = "_subject : users/" .. google_id .. ", _count : " .. count_devices .. ", _display_name : " .. info.io[role][google_id].display_name
+    print(topic, payload)
+    mqtt_instance:publish(topic, payload)
+  end
 end
 
 return dhcp_parser

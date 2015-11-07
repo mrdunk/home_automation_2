@@ -6,7 +6,7 @@ Page.init = function() {
   Page.running_ = true;
   Page.fps_ = 10;
   Page.topics = {};
-  Page.topics.all_devices = 'homeautomation/0/all/all';
+  Page.topics.all_devices = 'homeautomation/0/_all/_all';
 }
 
 Page.run = function() {
@@ -18,41 +18,28 @@ Page.exit = function() {
 
 var Data = { mqtt_data: {} };
 
-Data.storeIncomingMqtt = function(topic, label, data) {
-  // Make sure topic and label both look like valid MQTT addresses.
-  var regex = /^(\w+\/?)+$/ ;
-  topic = regex.exec(topic)[0];
-  label = regex.exec(label)[0];
+Data.storeIncomingMqtt = function(topic, data) {
+  var topic_atom_list = topic.split('/').slice(2);
 
-  if(!topic){
-    console.log('Incorrectly formed topic:', topic);
-    return;
-  }
-  if(!label){
-    console.log('Incorrectly formed label:', label);
-    return;
-  }
-
-  var topic_atom_list = topic.split('/');
-  var label_atom_list = label.split('/');
-
-  if(topic === topic_atom_list.join('/') && topic_atom_list[0] === 'homeautomation' && label === label_atom_list.join('/')){
-    if(topic_atom_list[2] === label_atom_list[0] && topic_atom_list[3] === 'announce'){
-      // This is appears to be a valid announcement.
-      var pointer = Data.mqtt_data;
-      for(var i = 0; i < label_atom_list.length; i++){
-        if(pointer[label_atom_list[i]] === undefined){
-          pointer[label_atom_list[i]] = {};
-          console.log('Adding:', label_atom_list[i]);
-        }
-        pointer = pointer[label_atom_list[i]];
-        pointer.updated = Date.now();
-        console.log('Updating:', label_atom_list[i]);
-      }
+  var pointer = Data.mqtt_data;
+  for(var index in topic_atom_list){
+    if(pointer[topic_atom_list[index]] === undefined){
+      pointer[topic_atom_list[index]] = {};
     }
+    pointer = pointer[topic_atom_list[index]];
+    pointer.updated = Date.now();
   }
-  Data.cleanOutOfDateMqtt(MQTT_CACHE_TIME);
+
+  if(data._subject){
+    pointer[data._subject] = data;
+    pointer[data._subject].updated = Date.now();
+  } else {
+    pointer = data;
+  }
+
   console.log(Data.mqtt_data);
+
+  Data.cleanOutOfDateMqtt(MQTT_CACHE_TIME);
 }
 
 Data.cleanOutOfDateMqtt = function(max_age){
@@ -63,7 +50,7 @@ Data.cleanOutOfDateMqtt = function(max_age){
       if(pointer[key].updated && Math.abs(Date.now() - pointer[key].updated) > max_age){
         console.log('Removing:', key);
         delete pointer[key];
-      } else {
+      } else if(typeof(pointer[key]) === 'object') {
         f(pointer[key], max_age);
       }
     }
@@ -103,7 +90,8 @@ Mqtt.onConnect = function() {
   Mqtt.broker.subscribe(ANNOUNCE_SUBSCRIPTION, {qos: 0});
   console.log('Subscribed to topic: ' + ANNOUNCE_SUBSCRIPTION);
 
-  Mqtt.send(Page.topics.all_devices, "command:solicit");
+  Mqtt.send(Page.topics.all_devices, '_command : solicit');
+  console.log('Sent: topic: ' + Page.topics.all_devices + '  data: _command : solicit');
 }
 
 Mqtt.onConnectionLost = function(response) {
@@ -112,16 +100,69 @@ Mqtt.onConnectionLost = function(response) {
 };
 
 Mqtt.onMessageArrived = function(message) {
-  var topic = message.destinationName;
+  // Make sure topic looks like valid MQTT addresses.
+  var regex_topic = /^(\w+\/?)+$/ ;
+  var topic;
+  if (message.destinationName.match(regex_topic)) {
+    topic = regex_topic.exec(message.destinationName)[0];
+  }
+  if (!topic) {
+    console.log('Mqtt.onMessageArrived: Malformed topic: ' + message.destinationName);
+    return;
+  }
 
-  // Make sure only valid characters are in payload with "match()".
-  var regex = /^([\w\/]+)\s*:\s*(\w+)\s*$/ ;
-  var regex_results = regex.exec(message.payloadString);
-  var label = regex_results[1];
-  var data = regex_results[2];
-  console.log(topic + ' = ' + regex_results[1] + " : " + regex_results[2]);
+  var data;
+  var regex_data = /^s*([\s\w\/:,_]+)s*$/ ;
+  if (message.payloadString.match(regex_data)) {
+    data = regex_data.exec(message.payloadString)[0];
+  }
+  if (!data) {
+    console.log('Mqtt.onMessageArrived: Illegal charicter in payload: ' + message.payloadString);
+    return;
+  }
 
-  Data.storeIncomingMqtt(topic, label, data);
+  // data will be a list of key:value pairs, separated by a colon (:).
+  // eg the following is valid:
+  //    _subject : users/104167545338599232229, _count : 1, _display_name : Duncan Law
+  // Ideally there will be a _subject key and the value should be a valid topic fragment.
+  // If no _subject is set, we can presume the packet applies to the address of the topic.
+  data = data.replace(/:/g, ' : ');
+  data = data.replace(/,/g, ' , ');
+  data = data.split(' ');
+
+  var data_object = {};
+  var key_or_val;
+  for(var index in data){
+    if (data[index] === ''){
+      // pass.
+    } else if(!key_or_val){
+      if (data[index][0] !== '_') {
+        console.log('Mqtt.onMessageArrived: Incorrectly formed key: ' + data[index] + '. Expected to start with "_".');
+        return;
+      }
+      key_or_val = data[index];
+    } else if (data[index] === ':') {
+      // pass.
+    } else if (data[index] === ','){
+      // Next key:value pair.
+      key_or_val = undefined;
+    } else if (!data_object[key_or_val]) {
+      data_object[key_or_val] = data[index];
+    } else {
+      // Append data.
+      data_object[key_or_val] += ' ' + data[index];
+    }
+  }
+
+  // The "_subject" in data_object refers to the target that this MQTT packet is about and
+  // should also look like a topic.
+  if (!data_object._subject.match(regex_topic)) {
+    console.log('Mqtt.onMessageArrived: Malformed _subject: ' + data_object._subject);
+    return;
+  }
+
+  console.log(topic + ' = ', data_object);
+  Data.storeIncomingMqtt(topic, data_object);
 };
 
 Mqtt.send = function(send_topic, data) {

@@ -447,7 +447,7 @@ xtag.register('ha-topic-chooser', {
       title.innerHTML = prefix + name;
       this.appendChild(title);
       for(key in data){
-        if(typeof(key) === 'string' && key !== 'updated'){
+        if(typeof(key) === 'string' && key !== 'updated' && typeof(data[key]) === 'object'){
           var new_item = document.createElement('ha-topic-chooser');
           new_item.populate(level +1, prefix + name + '/', key, data[key]);
           //new_item.style.pointerEvents = 'none';

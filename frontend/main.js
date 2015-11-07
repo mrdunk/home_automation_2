@@ -8,7 +8,7 @@ Page.init = function() {
   Page.log_ = document.getElementById("ha-container-log").getElementsByClassName("ha-container-children")[0];
   Page.log_.className = Page.log_.className + " ha-container-log-content"
   Page.topics = {};
-  Page.topics.all_devices = 'homeautomation/0/all/all';
+  Page.topics.all_devices = 'homeautomation/0/_all/_all';
 }
 
 Page.run = function() {
@@ -57,11 +57,11 @@ Mqtt.MQTTconnect = function() {
 
 Mqtt.onConnect = function() {
   console.log('Connected to ' + BROKER_ADDRESS + ':' + BROKER_PORT);
-  Mqtt.broker.subscribe(ANNOUNCE_SUBSCRIPTION, {qos: 0});
+  Mqtt.broker.subscribe(ANNOUNCE_SUBSCRIPTION, {qos: 1});
   console.log('Subscribed to topic: ' + ANNOUNCE_SUBSCRIPTION);
 
-  Page.AppendToLog(Page.topics.all_devices + " = command:solicit", 'RED');
-  Mqtt.send(Page.topics.all_devices, "command:solicit");
+  Page.AppendToLog(Page.topics.all_devices + " = _command:solicit", 'RED');
+  Mqtt.send(Page.topics.all_devices, "_command : solicit");
 
 }
 
@@ -70,20 +70,75 @@ Mqtt.onConnectionLost = function(response) {
   console.log("connection lost: " + response.errorMessage + ". Reconnecting");
 };
 
+
 Mqtt.onMessageArrived = function(message) {
-  var topic = message.destinationName;
+  // Make sure topic looks like valid MQTT addresses.
+  var regex_topic = /^(\w+\/?)+$/ ;
+  var topic;
+  if (message.destinationName.match(regex_topic)) {
+    topic = regex_topic.exec(message.destinationName)[0];
+  }
+  if (!topic) {
+    console.log('Mqtt.onMessageArrived: Malformed topic: ' + message.destinationName);
+    return;
+  }
 
-  // Make sure only valid characters are in payload with "match()".
-  var regex = /^([\w/]+)\s*:\s*(\w+)\s*$/
-  var regex_results = regex.exec(message.payloadString)
+  var data;
+  var regex_data = /^s*([\s\w\/:,_]+)s*$/ ;
+  if (message.payloadString.match(regex_data)) {
+    data = regex_data.exec(message.payloadString)[0];
+  }
+  if (!data) {
+    console.log('Mqtt.onMessageArrived: Illegal charicter in payload: ' + message.payloadString);
+    return;
+  }
 
-  Page.AppendToLog(topic + ' = ' + message.payloadString)
+  // data will be a list of key:value pairs, separated by a colon (:).
+  // eg the following is valid:
+  //    _subject : users/104167545338599232229, _count : 1, _display_name : Duncan Law
+  // Ideally there will be a _subject key and the value should be a valid topic fragment.
+  // If no _subject is set, we can presume the packet applies to the address of the topic.
+  data = data.replace(/:/g, ' : ');
+  data = data.replace(/,/g, ' , ');
+  data = data.split(' ');
 
-  if(regex_results !== null && regex_results[0] === message.payloadString){
-    var address = regex_results[1] 
-    var command = regex_results[2]
-    Page.AppendToLog("  payload parsed as: {address: " + address + ", command: " + command + "}", "yellow")
-    document.getElementById('ha-container-lighting').addChild(address, command)
+  var data_object = {};
+  var key_or_val;
+  for(var index in data){
+    if (data[index] === ''){
+      // pass.
+    } else if(!key_or_val){
+      if (data[index][0] !== '_') {
+        console.log('Mqtt.onMessageArrived: Incorrectly formed key: ' + data[index] + '. Expected to start with "_".');
+        return;
+      }
+      key_or_val = data[index];
+    } else if (data[index] === ':') {
+      // pass.
+    } else if (data[index] === ','){
+      // Next key:value pair.
+      key_or_val = undefined;
+    } else if (!data_object[key_or_val]) {
+      data_object[key_or_val] = data[index];
+    } else {
+      // Append data.
+      data_object[key_or_val] += ' ' + data[index];
+    }
+  }
+
+  // The "_subject" in data_object refers to the target that this MQTT packet is about and
+  // should also look like a topic.
+  if (!data_object._subject.match(regex_topic)) {
+    console.log('Mqtt.onMessageArrived: Malformed _subject: ' + data_object._subject);
+    return;
+  }
+
+  console.log(topic + ' = ', data_object);
+  Page.AppendToLog(topic + ' = ' + JSON.stringify(data_object));
+
+  if(data_object._subject && data_object._state){
+    Page.AppendToLog('  payload parsed as: {_subject: ' + data_object._subject + ', _state: ' + data_object._state + '}', 'yellow');
+    document.getElementById('ha-container-lighting').addChild(data_object._subject, data_object._state);
   }
 };
 
@@ -124,7 +179,7 @@ Mqtt.ParsePayload = function(payload) {
 Mqtt.send = function(send_topic, data) {
   message = new Messaging.Message(data);
   message.destinationName = send_topic;
-  message.qos = 0;
+  message.qos = 1;
   Mqtt.broker.send(message);
 };
 
