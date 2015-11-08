@@ -19,25 +19,25 @@ Page.exit = function() {
 var Data = { mqtt_data: {} };
 
 Data.storeIncomingMqtt = function(topic, data) {
-  var topic_atom_list = topic.split('/').slice(2);
+  topic = topic.split('/').slice(2).join('/');
 
-  var pointer = Data.mqtt_data;
-  for(var index in topic_atom_list){
-    if(pointer[topic_atom_list[index]] === undefined){
-      pointer[topic_atom_list[index]] = {};
+  if(Data.mqtt_data[topic] === undefined){
+    Data.mqtt_data[topic] = [];
+  }
+  Data.mqtt_data[topic].updated = Date.now();
+
+  var found;
+  data.updated = Date.now();
+  for(var key in Data.mqtt_data[topic]){
+    if(Data.mqtt_data[topic][key]._subject === data._subject){
+      Data.mqtt_data[topic][key] = data;
+      found = true;
+      break;
     }
-    pointer = pointer[topic_atom_list[index]];
-    pointer.updated = Date.now();
   }
-
-  if(data._subject){
-    pointer[data._subject] = data;
-    pointer[data._subject].updated = Date.now();
-  } else {
-    pointer = data;
+  if(!found){
+    Data.mqtt_data[topic].push(data);
   }
-
-  console.log(Data.mqtt_data);
 
   Data.cleanOutOfDateMqtt(MQTT_CACHE_TIME);
 }
@@ -46,16 +46,28 @@ Data.cleanOutOfDateMqtt = function(max_age){
   max_age = max_age * 1000;  // ms to seconds.
   var pointer = Data.mqtt_data;
   var f = function(pointer, max_age){
-    for(var key in pointer){
-      if(pointer[key].updated && Math.abs(Date.now() - pointer[key].updated) > max_age){
-        console.log('Removing:', key);
-        delete pointer[key];
-      } else if(typeof(pointer[key]) === 'object') {
-        f(pointer[key], max_age);
+    var loop_complete;
+    while(!loop_complete){
+      loop_complete = true;
+      for(var key in pointer){
+        if(pointer[key].updated && Math.abs(Date.now() - pointer[key].updated) > max_age){
+          console.log('Removing:', key, typeof(pointer[key]));
+          if(Array.isArray(pointer)){
+            pointer.splice(key, 1);
+          } else {
+            delete pointer[key];
+          }
+          // Since we have removed a property, we can no longer trust the for loop is sane.
+          loop_complete = undefined;
+          break;
+        } else if(pointer[key].updated !== undefined) {
+          f(pointer[key], max_age);
+        }
       }
     }
   }
   f(pointer, max_age);
+  console.log(Data.mqtt_data);
 }
 
 var Mqtt = {}
@@ -171,6 +183,102 @@ Mqtt.send = function(send_topic, data) {
   message.qos = 0;
   Mqtt.broker.send(message);
 };
+
+/* Takes a list of topics and returns combinations that include likely wildcards. */
+function ExpandTopicsObject(input_topics){
+  var topic_object = {};
+
+  for(var topic_index in input_topics){
+    var topic = input_topics[topic_index];
+    var topic_atoms = topic.split('/');
+    var role = topic_atoms[0];
+    topic_atoms = topic_atoms.slice(1);
+    if(topic_atoms.length === 0){
+      topic_atoms = ['_'];
+    }
+
+    if(topic_object[role] === undefined){
+      topic_object[role] = {};
+    }
+    if(topic_object['+'] === undefined){
+      topic_object['+'] = {};
+    }
+
+    var pointer_role = topic_object[role];
+    var pointer_all = topic_object['+'];
+    for(var i in topic_atoms){
+      if(pointer_role[topic_atoms[i]] === undefined && topic_atoms[i] !== '_'){
+        pointer_role[topic_atoms[i]] = {};
+      }
+      if(pointer_all[topic_atoms[i]] === undefined && topic_atoms[i] !== '_'){
+        pointer_all[topic_atoms[i]] = {};
+      }
+      pointer_role['#'] = {};
+      pointer_all['#'] = {};
+      pointer_role = pointer_role[topic_atoms[i]];
+      pointer_all = pointer_all[topic_atoms[i]];
+    }
+
+  }
+  topic_object['#'] = {};
+  return topic_object;
+}
+function ExpandTopicsList(topic_object){
+  if(Array.isArray(topic_object)){
+    topic_object = ExpandTopicsObject(topic_object);
+    console.log(topic_object);
+  }
+
+  var topic_list = [];
+  for(var key in topic_object){
+    var child_list = ExpandTopics(topic_object[key]);
+    if(child_list.length){
+      for(var index in child_list){
+        var new_list = [key];
+        new_list = new_list.concat(child_list[index]);
+        topic_list.push(new_list);
+      }
+    } else {
+      topic_list.push([key]);
+    }
+  }
+  return topic_list;
+}
+function ExpandTopics(topic_list){
+  topic_list = ExpandTopicsList(topic_list);
+  var return_topic_list = [];
+  for(var key in topic_list){
+    return_topic_list.push(topic_list[key].join('/')); 
+  }
+  return return_topic_list;
+}
+
+
+function GetMatchingTopics(topic){
+  var topic_atoms = topic.split('/');
+  var matches = [];
+  for(var key in Data.mqtt_data){
+    var cached_topic_atoms = key.split('/');
+    var match = true;
+    for(var index in cached_topic_atoms){
+      if(index >= topic_atoms.length){
+        match = false;
+        break;
+      } else if(topic_atoms[index] === '#' && parseInt(index) +1 === topic_atoms.length){
+        // Wildcard matches rest of topic.
+        break;
+      } else if(topic_atoms[index] !== '+' && topic_atoms[index] !== cached_topic_atoms[index]){
+        match = false;
+        break;
+      }
+    }
+    if(match){
+      matches.push(key);
+    }
+  }
+
+  return matches;
+}
 
 
 window.onload = function() {

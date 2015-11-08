@@ -2,7 +2,6 @@
 var buttonTypes = {'alarm':              {'action':'new_object', callback: FlowObjectTimer},
                    'cloud-download':     {'action':'new_object', callback: FlowObjectMqttSubscribe},
                    'cloud-upload':       {'action':'new_object', callback: FlowObjectMqttPublish},
-                   'add-circle-outline': {'action':'new_object', callback: FlowObjectAnd},
                    'trending-flat':      {'action':'new_object', callback: FlowObjectMapValues},
                    'content-copy':       {'action':'new_object'},
                    'redo':               {'action':'join'},
@@ -80,90 +79,63 @@ xtag.register('ha-input-attribute', {
     created: function(){
       var template = document.getElementById('ha-input-attribute').innerHTML;
       xtag.innerHTML(this, template);
-    },
-    removed: function(){
-      document.removeEventListener('click', this.clickOutside, false);
-    }
-  },
-  events: {
-    click: function(mouseEvent){
-      console.log(this, mouseEvent, mouseEvent.target.className);
-      if(mouseEvent.target.className === 'summary'){
-        mouseEvent.path[1].getElementsByClassName('summary')[0].style.display = 'none';
-        mouseEvent.path[1].getElementsByClassName('detailed')[0].style.display = 'inline';
-        document.addEventListener('click', this.clickOutside, false);
-      }
     }
   },
   methods: {
-    populate: function(data){
+    populate: function(data, flow_object){
+      console.log(data);
       this.getElementsByClassName('description')[0].innerHTML = data.description;
-
       var form = this.getElementsByClassName('form')[0];
 
-      var inputs = [[true, ['', '==', '!='], '=='],
-                    [false, ['', '==', '!='], ''],
-                    ['yes', ['', '==', '!='], '=='],
-                    ['no', ['', '==', '!='], ''],
-                    [0,  ['', '==', '!=', '>', '<', '>=', '<='], ''],
-                    [1, ['', '==', '!=', '>', '<', '>=', '<='], '>=']];
-      var summary = document.createElement('div');
-      summary.className = 'summary';
-      var detailed = document.createElement('div');
-      detailed.className = 'detailed';
-      detailed.style.display = 'none';
-      form.appendChild(summary);
-      form.appendChild(detailed);
+      var found_already = {};
+      for(var sender_name in data.sample_data){
+        for(var subject in data.sample_data[sender_name]){
+          if(!found_already[subject]){
+            found_already[subject] = true;
+            var sample = data.sample_data[sender_name][subject];
+            var line = document.createElement('div');
+            form.appendChild(line);
 
-      for(var i = 0; i < inputs.length; i++){
-        var wrapper_detailed = document.createElement('div');
-        var select = document.createElement('select');
-        for(var j = 0; j < inputs[i][1].length; j++){
-          var option = document.createElement("option");
-          option.text = inputs[i][1][j];
-          if(inputs[i][1][j] === inputs[i][2]){
-            option.setAttribute("selected", "selected");
+            var text = '';
+            for(var key in sample){
+              if(key !== 'updated'){
+                text += key + ' : ' + sample[key] + ' , ';
+              }
+            }
+            line.innerHTML = text;
           }
-          select.appendChild(option);
-        }
-        if(inputs[i][2] !== ''){
-          summary.innerHTML = summary.innerHTML + inputs[i][2] + ' ' + inputs[i][0] + ', ';
-        }
-        
-        select.type = 'checkbox';
-        select.name = inputs[i][0];
-        wrapper_detailed.appendChild(select);
-        wrapper_detailed.innerHTML = wrapper_detailed.innerHTML + inputs[i][0] + '\t(' + typeof(inputs[i][0]) + ')';
-
-        detailed.appendChild(wrapper_detailed);
-      }
-      summary.innerHTML = summary.innerHTML.substring(0, summary.innerHTML.length -2);
-    },
-    clickOutside: function(event){
-      console.log('clickOutside');
-      var form_found;
-      for(var parent in event.path){
-        if(event.path[parent].className === 'form'){
-          form_found = true;
         }
       }
-      if(form_found){
-        // not actually outside the form.
-        return
-      }
-      console.log('clickOutside 2');
+    }
+  }
+});
 
-      var summaries = this.getElementsByClassName('summary');
-      for(var i = 0; i < summaries.length; i++){
-        summaries[i].style.display = "inline";
-      }
-      var detaileds = this.getElementsByClassName('detailed');
-      for(var i = 0; i < detaileds.length; i++){
-        detaileds[i].style.display = "none";
-      }
 
-      // TODO. the following doesn't work as we no longer have the correct context.
-      // document.removeEventListener('click', this.clickOutside, false);  
+xtag.register('ha-output-attribute', {
+  lifecycle:{
+    created: function(){
+      var template = document.getElementById('ha-output-attribute').innerHTML;
+      xtag.innerHTML(this, template);
+    }
+  },
+  methods: {
+    populate: function(data, flow_object){
+      console.log(data);
+      this.getElementsByClassName('description')[0].innerHTML = data.description;
+      var form = this.getElementsByClassName('form')[0];
+      for(var key in data.sample_data){
+        var sample = data.sample_data[key];
+        var line = document.createElement('div');
+        form.appendChild(line);
+
+        var text = '';
+        for(var key2 in sample){
+          if(key2 !== 'updated'){
+            text += key2 + ' : ' + sample[key2] + ' , ';
+          }
+        }
+        line.innerHTML = text;
+      }
     }
   }
 });
@@ -178,22 +150,22 @@ xtag.register('ha-general-attribute', {
   },
   methods: {
     populate: function(name, data, flow_object){
+      this.getElementsByClassName('description')[0].innerHTML = data.description;
       if(name === 'transitions'){
         var input = document.createElement('ha-transitions');
-        input.populate(data);
+        input.populate(data, flow_object);
         this.getElementsByClassName('form')[0].appendChild(input);
       } else if(name === 'subscribed_topic'){
         var input = document.createElement('ha-topic-chooser');
-        input.populate(0, '', 'root', Data.mqtt_data);
+        input.populate(data.value, flow_object);
+        var input_tag = input.getElementsByTagName('INPUT')[0];
+        input_tag.onchange = this.update_callback.bind({element: input_tag, data: data, flow_object: flow_object});
         this.getElementsByClassName('form')[0].appendChild(input);
       } else if(data.description && data.value){
-        this.getElementsByClassName('description')[0].innerHTML = data.description;
-
         var input = document.createElement("input");
         input.value = data.value;
         input.name = name;
         input.onchange = this.update_callback.bind({element: input, data: data, flow_object: flow_object});
-
         this.getElementsByClassName('form')[0].appendChild(input);
       }
     },
@@ -240,8 +212,9 @@ xtag.register('ha-transitions', {
     }
   },
   methods: {
-    populate: function(data){
+    populate: function(data, flow_object){
       this.data = data || this.data;
+      this.flow_object = flow_object || this.flow_object;
 
       if(this.data.value.length === 0){
         this.prePopulateRange();
@@ -276,9 +249,6 @@ xtag.register('ha-transitions', {
       button.textContent = '+';
       button.value = 'add';
       control.appendChild(button);
-    },
-    update_callback: function(){
-      console.log('update_callback', this);
     },
     newRange: function(){
       var range = {input: true, output: true};
@@ -376,9 +346,15 @@ xtag.register('ha-transitions', {
 
       container.addEventListener('change', this.chooser_change.bind({
           data: range, io: io, select: select, input_bool: input_bool, input_string: input_string, input_number: input_number}));
+      container.addEventListener('change', this.update_sidebar.bind({ flow_object: this.flow_object }));
       container.addEventListener('mousedown', this.chooser_change.bind({
           data: range, io: io, select: select, input_bool: input_bool, input_string: input_string, input_number: input_number}));
       return container;
+    },
+    update_sidebar: function(){
+      this.flow_object.FilterInputToOutput(0);
+      this.flow_object.setAdjacentInputSamples();
+      this.flow_object.displaySideBar();
     },
     chooser_change: function(){
       console.log('chooser_change', this);
@@ -427,87 +403,47 @@ xtag.register('ha-topic-chooser', {
     },
   },
   events: {
-    click: function(mouseEvent){
-      var line;
-      for (var i = 0; i < mouseEvent.path.length; i++){
-        if(xtag.matchSelector(mouseEvent.path[i], 'ha-topic-chooser')){
-          line = mouseEvent.path[i]
-          break;
+    input: function(event){
+      console.log('ha-topic-chooser: change', event, event.target.value);
+      this.flow_object.data.data.outputs[0].sample_data = {};
+      var topic = event.target.value.split('/').slice(2).join('/');
+      var topics = GetMatchingTopics(topic);
+      for(var i = 0; i < topics.length; i++){
+        console.log(Data.mqtt_data[topics[i]]);
+        for(var j = 0; j < Data.mqtt_data[topics[i]].length; j++){
+          var sample_payload = Data.mqtt_data[topics[i]][j];
+          this.flow_object.data.data.outputs[0].sample_data[sample_payload._subject] = sample_payload;
         }
       }
-      if(line === 'undefined'){ return; }
-
-      line.colapseAll();
-      line.display();
+      this.flow_object.displaySideBar();
+      this.flow_object.setAdjacentInputSamples();
+      console.log(this.flow_object.data.data.outputs[0]);
     }
   },
   methods: {
-    populate: function(level, prefix, name, data){
-      var title = document.createElement('div');
-      title.innerHTML = prefix + name;
-      this.appendChild(title);
-      for(key in data){
-        if(typeof(key) === 'string' && key !== 'updated' && typeof(data[key]) === 'object'){
-          var new_item = document.createElement('ha-topic-chooser');
-          new_item.populate(level +1, prefix + name + '/', key, data[key]);
-          //new_item.style.pointerEvents = 'none';
-          if(level >= 1) {
-            new_item.style.display = 'none';
-          }
-          this.appendChild(new_item);
+    populate: function(value, flow_object){
+      this.flow_object = flow_object;
+      var topic_list = [];
+      for(var key in Data.mqtt_data){
+        if(typeof(key) === 'string' && key !== 'updated' && typeof(Data.mqtt_data[key]) === 'object'){
+          topic_list.push(key);
         }
       }
-    },
-    colapseAll: function(){
-      console.log("C", this);
-      var current = this;
-      while(current.parentElement.nodeName === 'HA-TOPIC-CHOOSER'){
-        current = current.parentElement;
-      }
+      topic_list = ExpandTopics(topic_list);
 
-      var f = function(e, level){
-        for(var i = 0; i < e.children.length; i++){
-          if(level > 1){
-            e.children[i].style.display = 'none';
-          }
-          f(e.children[i], level +1);
-        }
-      }
-      f(current, 0);
-    },
-    display: function(){
-      console.log(this);
-      this.displayPeers();
-      for(var i = 0; i < this.children.length; i++){
-        console.log("*", this.children[i]);
-        this.children[i].style.display = 'block';
-        if(this.children[i].nodeName === 'HA-TOPIC-CHOOSER'){
-          this.children[i].displayPeers();
-        }
-        for(var j = 0; j < this.children[i].children.length; j++){
-          if(this.children[i].children[j].nodeName !== 'HA-TOPIC-CHOOSER'){
-            console.log("**", this.children[i].children[j], this.children[i].children[j].nodeName);
-            this.children[i].children[j].style.display = 'block';
-          } else {
-            //this.children[i].children[j].displayPeers();
-          }
-        }
-      }
-    },
-    displayPeers: function(){
-      console.log("#", this);
-      var parent_element = this.parentElement;
-      console.log("##", parent_element);
-      for(var i = 0; i < parent_element.children.length; i++){
-        parent_element.children[i].style.display = 'block';
-        for(var j = 0; j < parent_element.children[i].children.length; j++){
-          if(parent_element.children[i].children[j].nodeName !== 'HA-TOPIC-CHOOSER'){
-            console.log("###", parent_element.children[i].children[j]);
-            parent_element.children[i].children[j].style.display = 'block';
-          } else {
-            parent_element.children[i].children[j].style.display = 'none';
-          }
-        }
+      var input = document.createElement('input');
+      input.setAttribute('list', 'topics');
+      input.setAttribute('name', 'topics');
+      input.setAttribute('value', value);
+      this.appendChild(input);
+      
+      var datalist = document.createElement('DATALIST');
+      datalist.id = 'topics';
+      this.appendChild(datalist);
+      for(var key in topic_list){
+        var option = document.createElement("OPTION");
+        option.setAttribute("value", 'homeautomation/+/' + topic_list[key]);
+        datalist.appendChild(option);
       }
     }
   }

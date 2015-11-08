@@ -221,8 +221,8 @@ xtag.register('ha-light', {
       var address = this.id.substr("ha-light-".length)
       var children = document.getElementById("ha-container-" + address).getElementsByClassName("ha-container-children")[0].childNodes
       if(children.length > 0){
-        Mqtt.send("homeautomation/0/" + address + "/all", "_command:" + send_data)
-        Page.AppendToLog("homeautomation/0/" + address + "/all = _command:" + send_data, "red")
+        Mqtt.send("homeautomation/0/" + address + "/_all", "_command:" + send_data)
+        Page.AppendToLog("homeautomation/0/" + address + "/_all = _command:" + send_data, "red")
       } else {
         Mqtt.send("homeautomation/0/" + address, "_command:" + send_data) 
         Page.AppendToLog("homeautomation/0/" + address + " = _command:" + send_data, "red")

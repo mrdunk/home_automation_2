@@ -139,6 +139,7 @@ Raphael.st.setOutputs = function(output_count){
   }
 }
 
+/* Update link when the Output end is moved. */
 Raphael.st.setOutputLinks = function(outputs){
   var links;
   for(var key_types in this.items){
@@ -178,6 +179,7 @@ Raphael.st.setOutputLinks = function(outputs){
   }
 }
 
+/* Update link when the Input end is moved. */
 Raphael.st.setInputLinks = function(inputs){
   var move_list = {};
   for(var key in inputs){

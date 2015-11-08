@@ -101,3 +101,19 @@ ha-transitions .output-transition div {
   white-space: nowrap;
 }
 
+ha-topic-chooser input {
+  width: 20em;
+}
+
+ha-input-attribute .form {
+  border: 1px solid blue;
+  background: white;
+  white-space: nowrap;
+}
+
+ha-output-attribute .form {
+  border: 1px solid blue;
+  background: white;
+  white-space: nowrap;
+}
+
