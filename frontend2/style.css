@@ -5,6 +5,12 @@ html,body {
   padding: 0;
 }
 
+#ha-control-paper {
+  height: 100%;
+  position: absolute;
+  width: 100%;
+}
+
 ha-control-heading .container {
   background: grey;
 }
@@ -13,25 +19,57 @@ ha-control-heading div paper-icon-button {
   color: black;
 }
 
-#ha-control-paper {
-  height: 100%;
-  position: absolute;
-  width: 100%;
-}
-
-#ha-control-sidebar {
+ha-sidebar {
+  display: block;
   border-style: solid;
   border-width: 1px;
+  padding-left: 8px;
   height: 100%;
-  width: 400px;
-  padding: 2px;
-  position: absolute;
-  right: 0;
+  width: 200px;
   background: ghostwhite;
-  overflow: auto;
+  position: relative;
+  z-index: 99;
+  overflow: hidden;
 }
 
-#ha-control-sidebar .sidebar-header {
+[draggable=true] {
+  cursor: move;
+  -moz-user-select: none;
+  -khtml-user-select: none;
+  -webkit-user-select: none;
+  user-select: none;
+  /* Required to make elements draggable in old WebKit */
+  -khtml-user-drag: element;
+  -webkit-user-drag: element;
+}
+
+ha-sidebar.sidebar-left-align {
+  float: left;
+}
+
+ha-sidebar.sidebar-right-align {
+  float: right;
+}
+
+
+ha-sidebar .sidebar-handle {
+  width: 8px;
+  height: 100%;
+  border-width: 0;
+  background: dimgrey;
+  position: absolute;
+  z-index: 100;
+}
+
+ha-sidebar .sidebar-handle-left-align {
+  right: 0;
+}
+
+ha-sidebar .sidebar-handle-right-align {
+  right: 200px;
+}
+
+ha-sidebar .sidebar-header {
   border-style: solid;
   border-width: 1px;
   width: 100%;
@@ -39,21 +77,17 @@ ha-control-heading div paper-icon-button {
   background: linen;
 }
 
-#ha-control-sidebar .sidebar-header .object-color {
-  border-style: solid;
-  border-width: 1px;
-  width: 1em;
-  height: 100%;
-  background: black;
-  float: right;
+ha-sidebar .sidebar-header .text,.object-color {
   display: inline-block;
 }
 
-#ha-control-sidebar .sidebar-header .text {
-  float: left;
-}
-
-#ha-control-sidebar .sidebar-content {
+ha-sidebar .object-color {
+  float: right;
+  background: black;
+  border-style: solid;
+  border-width: 1px;
+  width: 2em;
+  height: 2em;
 }
 
 ha-transitions select, button, input, input[type=text], input[type=number] {
@@ -78,27 +112,33 @@ ha-transitions .table-transition {
 
 ha-transitions .control-transition {
   border: 1px solid blue;
+  display: inline-block;
 }
 
 ha-transitions .control-transition div {
-  display: inline-flex;
+  display: inline-block;
+  width: 100%;
 }
 
 ha-transitions .input-transition {
   border: 1px solid blue;
+  display: inline-block;
 }
 
 ha-transitions .input-transition div {
   display: inline-flex;
+  width: 100%;
 }
 
 ha-transitions .output-transition {
   border: 1px solid blue;
+  display: inline-block;
 }
 
 ha-transitions .output-transition div {
   display: inline-flex;
   white-space: nowrap;
+  width: 100%;
 }
 
 ha-topic-chooser input {

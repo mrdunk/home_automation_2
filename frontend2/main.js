@@ -1,24 +1,38 @@
+/*global BROKER_ADDRESS*/ 
+/*global BROKER_PORT*/ 
+/*global ANNOUNCE_SUBSCRIPTION*/ 
+/*global USE_TLS*/ 
+/*global CLEANSESSION*/ 
+/*global username*/ 
+/*global password*/ 
+/*global MQTT_CACHE_TIME*/
+
+/*global Messaging*/
 
 
-var Page = {}
+var Page = {};
 
 Page.init = function() {
+  'use strict';
   Page.running_ = true;
   Page.fps_ = 10;
   Page.topics = {};
   Page.topics.all_devices = 'homeautomation/0/_all/_all';
-}
+};
 
 Page.run = function() {
-}
+  'use strict';
+};
 
 Page.exit = function() {
+  'use strict';
   clearInterval(Page._intervalId_);
-}
+};
 
 var Data = { mqtt_data: {} };
 
 Data.storeIncomingMqtt = function(topic, data) {
+  'use strict';
   topic = topic.split('/').slice(2).join('/');
 
   if(Data.mqtt_data[topic] === undefined){
@@ -40,9 +54,10 @@ Data.storeIncomingMqtt = function(topic, data) {
   }
 
   Data.cleanOutOfDateMqtt(MQTT_CACHE_TIME);
-}
+};
 
 Data.cleanOutOfDateMqtt = function(max_age){
+  'use strict';
   max_age = max_age * 1000;  // ms to seconds.
   var pointer = Data.mqtt_data;
   var f = function(pointer, max_age){
@@ -65,15 +80,36 @@ Data.cleanOutOfDateMqtt = function(max_age){
         }
       }
     }
-  }
+  };
   f(pointer, max_age);
   console.log(Data.mqtt_data);
-}
+};
 
-var Mqtt = {}
+Data.getLabels = function(){
+  'use strict';
+  var labels_object = {};
+  var label;
+  for(var topic in Data.mqtt_data){
+    for(var subject in Data.mqtt_data[topic]){
+      for(label in Data.mqtt_data[topic][subject]){
+        if(label[0] === '_'){
+          labels_object[label] = true;
+        }
+      }
+    }
+  }
+  var label_list = [];
+  for(label in labels_object){
+    label_list.push(label);
+  }
+  return label_list;
+};
+
+var Mqtt = {};
 Mqtt.reconnectTimeout = 2000;
 
 Mqtt.MQTTconnect = function() {
+  'use strict';
   Mqtt.broker = new Messaging.Client( BROKER_ADDRESS, BROKER_PORT, "web_" + parseInt(Math.random() * 100, 10));
   var options = {
       timeout: 3,
@@ -89,29 +125,32 @@ Mqtt.MQTTconnect = function() {
   Mqtt.broker.onConnectionLost = Mqtt.onConnectionLost;
   Mqtt.broker.onMessageArrived = Mqtt.onMessageArrived;
 
-  if (username != null) {
+  if (username !== null) {
     options.userName = username;
     options.password = password;
   }
   console.log("Host="+ BROKER_ADDRESS + ", port=" + BROKER_PORT + " TLS = " + USE_TLS + " username=" + username + " password=" + password);
   Mqtt.broker.connect(options);
-}
+};
 
 Mqtt.onConnect = function() {
+  'use strict';
   console.log('Connected to ' + BROKER_ADDRESS + ':' + BROKER_PORT);
   Mqtt.broker.subscribe(ANNOUNCE_SUBSCRIPTION, {qos: 0});
   console.log('Subscribed to topic: ' + ANNOUNCE_SUBSCRIPTION);
 
   Mqtt.send(Page.topics.all_devices, '_command : solicit');
   console.log('Sent: topic: ' + Page.topics.all_devices + '  data: _command : solicit');
-}
+};
 
 Mqtt.onConnectionLost = function(response) {
+  'use strict';
   setTimeout(Mqtt.MQTTconnect, Mqtt.reconnectTimeout);
   console.log("connection lost: " + response.errorMessage + ". Reconnecting");
 };
 
 Mqtt.onMessageArrived = function(message) {
+  'use strict';
   // Make sure topic looks like valid MQTT addresses.
   var regex_topic = /^(\w+\/?)+$/ ;
   var topic;
@@ -178,7 +217,8 @@ Mqtt.onMessageArrived = function(message) {
 };
 
 Mqtt.send = function(send_topic, data) {
-  message = new Messaging.Message(data);
+  'use strict';
+  var message = new Messaging.Message(data);
   message.destinationName = send_topic;
   message.qos = 0;
   Mqtt.broker.send(message);
@@ -186,6 +226,7 @@ Mqtt.send = function(send_topic, data) {
 
 /* Takes a list of topics and returns combinations that include likely wildcards. */
 function ExpandTopicsObject(input_topics){
+  'use strict';
   var topic_object = {};
 
   for(var topic_index in input_topics){
@@ -224,6 +265,7 @@ function ExpandTopicsObject(input_topics){
   return topic_object;
 }
 function ExpandTopicsList(topic_object){
+  'use strict';
   if(Array.isArray(topic_object)){
     topic_object = ExpandTopicsObject(topic_object);
     console.log(topic_object);
@@ -231,7 +273,7 @@ function ExpandTopicsList(topic_object){
 
   var topic_list = [];
   for(var key in topic_object){
-    var child_list = ExpandTopics(topic_object[key]);
+    var child_list = Data.ExpandTopics(topic_object[key]);
     if(child_list.length){
       for(var index in child_list){
         var new_list = [key];
@@ -244,20 +286,22 @@ function ExpandTopicsList(topic_object){
   }
   return topic_list;
 }
-function ExpandTopics(topic_list){
+Data.ExpandTopics = function(topic_list){
+  'use strict';
   topic_list = ExpandTopicsList(topic_list);
   var return_topic_list = [];
   for(var key in topic_list){
     return_topic_list.push(topic_list[key].join('/')); 
   }
   return return_topic_list;
-}
+};
 
 
-function GetMatchingTopics(topic){
+Data.GetMatchingTopics = function(topic){
+  'use strict';
   var topic_atoms = topic.split('/');
   var matches = [];
-  for(var key in Data.mqtt_data){
+  for(var key in this.mqtt_data){
     var cached_topic_atoms = key.split('/');
     var match = true;
     for(var index in cached_topic_atoms){
@@ -278,12 +322,13 @@ function GetMatchingTopics(topic){
   }
 
   return matches;
-}
+};
 
 
 window.onload = function() {
+  'use strict';
   Page.init();
   Page._intervalId_ = setInterval(Page.run, 1000 / Page.fps_);
   Mqtt.MQTTconnect();
-  console.log("done window.onload")
+  console.log("done window.onload");
 };

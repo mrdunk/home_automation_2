@@ -29,15 +29,8 @@
 
 <template id="ha-control">
     <ha-control-heading></ha-control-heading>
+    <ha-sidebar></ha-sidebar>
     <div id="ha-control-paper" height="400px">
-    </div>
-    <div id="ha-control-sidebar" height="400px">
-      <div class="sidebar-header">
-        <div class="text">Header</div>
-        <div class="object-color"></div>
-      </div>
-      <div class="sidebar-content">
-      </div>
     </div>
 </template>
 
@@ -50,6 +43,18 @@
     <paper-icon-button icon="content-copy"></paper-icon-button>
     <paper-icon-button icon="redo"></paper-icon-button>
     <paper-icon-button icon="settings" toggles></paper-icon-button>
+  </div>
+</template>
+
+<template id="ha-sidebar">
+  <div class="container">
+    <div class="sidebar-handle sidebar-handle-left-align"></div>
+    <div class="sidebar-header">
+      <span class="text">Header</span>
+      <span class="object-color"></span>
+    </div>
+    <div class="sidebar-content">
+    </div>
   </div>
 </template>
 
