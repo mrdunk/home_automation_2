@@ -131,7 +131,6 @@ xtag.register('ha-sidebar', {
 
       if(drag_event.clientX && drag_event.clientY){
         if(sidebar.align === 'right'){
-          console.log(drag_event.clientX, window.innerWidth, this.getBoundingClientRect().right);
           this.style.right = (document.body.getBoundingClientRect().right - drag_event.clientX) + 'px';
         } else {
           this.style.left = (drag_event.clientX - (this.clientWidth /2)) + 'px';
@@ -334,16 +333,19 @@ xtag.register('ha-transitions', {
         table.className = 'table-transition';
         form.appendChild(table);
         var header = document.createElement('div');
+        var content = document.createElement('div');
         var control = document.createElement('div');
         var left = document.createElement('div');
         var right = document.createElement('div');
+        content.className = 'content-transition';
         control.className = 'control-transition';
         left.className = 'input-transition';
         right.className = 'output-transition';
         table.appendChild(header);
-        table.appendChild(control);
-        table.appendChild(left);
-        table.appendChild(right);
+        table.appendChild(content);
+        content.appendChild(control);
+        content.appendChild(left);
+        content.appendChild(right);
 
         var label_tag = document.createElement('div');
         label_tag.innerHTML = 'Label:';
@@ -369,7 +371,8 @@ xtag.register('ha-transitions', {
         header.appendChild(datalist);
         var div;
         var button;
-        for(i = 0; i < this.data.values[label].length; i++){
+        for(i = 0; i < this.data.values[label].length -1; i++){
+          // ".length -1" because the last item in the list is a special case which we handle separately.
           div = document.createElement('div');
           button = document.createElement('button');
           button.textContent = '-';
@@ -385,6 +388,16 @@ xtag.register('ha-transitions', {
         button.value = 'add|' + label;
         div.appendChild(button);
         control.appendChild(div);
+				var button_spacer = document.createElement('div');
+				button_spacer.className = 'button-spacer';
+        left.appendChild(button_spacer);
+        right.appendChild(button_spacer.cloneNode(false));
+
+        // Now the last item in the list...
+        i = this.data.values[label].length -1;
+				control.appendChild(button_spacer.cloneNode(false));
+				left.appendChild(this.chooser(this.data.values[label][i], 'input'));
+				right.appendChild(this.chooser(this.data.values[label][i], 'output'));
       }
       if(this.flow_object.data.data.general.block_labels.callbacks === undefined){
         this.flow_object.data.data.general.block_labels.callbacks = {};
@@ -410,55 +423,96 @@ xtag.register('ha-transitions', {
     },
     newRange: function(label){
       var range = {input: true, output: true};
-      this.data.values[label].push(range);
+      this.data.values[label].splice(this.data.values[label].length -1, 0, range);
     },
     prePopulateRange: function(){
       this.data.values._subject = [];
-      this.data.values._subject.push( {input: true, output: true} );
       this.data.values._subject.push( {input: 'yes', output: true} );
-      this.data.values._subject.push( {input: {low: 1, high: 100}, output: true} );
-      this.data.values._subject.push( {input: false, output: false} );
-      this.data.values._subject.push( {input: 'no', output: false} );
-      this.data.values._subject.push( {input: {low: -100, high: 0}, output: false} );
+			this.data.values._subject.push( {input: '_missing', output: false} );
+      this.data.values._subject.push( {input: '_else', output: '_drop'} );
     },
     chooser: function(range, io){
+      // Create a widget that allows a choice of input or output data. (string, number, boolean, etc.)
+
       var container = document.createElement('div');
+
+			if(io === 'input' && range[io] === '_else'){
+        // This is a special case filter that is always last on the list.
+        // It decides what to do if none of the other filters match.
+        container.innerHTML = 'If none of the above match:';
+        return container;
+      }
+
       var select = document.createElement('select');
-      var option = document.createElement("option");
+
+			// Add 'boolean' to select.
+      var option = document.createElement('option');
       option.text = 'boolean';
       if(typeof(range[io]) === 'boolean'){
-        option.setAttribute("selected", "selected");
-      }
-      select.appendChild(option);
-      option = document.createElement("option");
-      option.text = 'string';
-      if(typeof(range[io]) === 'string'){
-        option.setAttribute("selected", "selected");
-      }
-      select.appendChild(option);
-      option = document.createElement("option");
-      option.text = 'number';
-      if(typeof(range[io]) === 'object'){
-        option.setAttribute("selected", "selected");
+        option.setAttribute('selected', 'selected');
       }
       select.appendChild(option);
 
-      var input_bool = document.createElement('select');
-      option = document.createElement("option");
-      option.text = 'true';
-      option.value = true;
+			// Add 'string' to select.
+      option = document.createElement('option');
+      option.text = 'string';
+      if(typeof(range[io]) === 'string' && (range[io] !== '_forward' || range[io] !== '_drop' || range[io] !== '_missing')){
+        option.setAttribute('selected', 'selected');
+      }
+      select.appendChild(option);
+
+			// Add 'number' to select.
+      option = document.createElement('option');
+      option.text = 'number';
+      if(typeof(range[io]) === 'object'){
+        option.setAttribute('selected', 'selected');
+      }
+      select.appendChild(option);
+
+			if(io === 'input'){
+				// Add 'missing' to select.
+				var option = document.createElement('option');
+				option.text = 'missing';
+				if(range[io] === '_missing'){
+					option.setAttribute('selected', 'selected');
+				}
+				select.appendChild(option);
+			}
+
+			// Add output only options.
+      if(io === 'output'){
+				option = document.createElement('option');
+				option.text = 'forward';
+				if(typeof(range[io]) === 'string' && range[io] === '_forward'){
+					option.setAttribute('selected', 'selected');
+				}
+				select.appendChild(option);
+
+				option = document.createElement('option');
+				option.text = 'drop';
+				if(typeof(range[io]) === 'string' && range[io] === '_drop'){
+					option.setAttribute('selected', 'selected');
+				}
+				select.appendChild(option);
+			}
+
+
+			var input_bool = document.createElement('select');
+			option = document.createElement('option');
+			option.text = 'true';
+			option.value = true;
       if(typeof(range[io]) === 'boolean'){
         if(range[io]){
-          option.setAttribute("selected", "selected");
+          option.setAttribute('selected', 'selected');
         }
       }
       input_bool.appendChild(option);
-      option = document.createElement("option");
+      option = document.createElement('option');
       option.text = 'false';
       option.value = false;
       if(typeof(range[io]) === 'boolean'){
         if(range[io] === false){
-          option.setAttribute("selected", "selected");
+          option.setAttribute('selected', 'selected');
         }
       }
       input_bool.appendChild(option);
@@ -489,13 +543,13 @@ xtag.register('ha-transitions', {
       input_number.appendChild(input_number_high);
 
       if(select.value !== 'boolean'){
-        input_bool.style.display = "none";
+        input_bool.style.display = 'none';
       }
       if(select.value !== 'string'){
-        input_string.style.display = "none";
+        input_string.style.display = 'none';
       }
       if(select.value !== 'number'){
-        input_number.style.display = "none";
+        input_number.style.display = 'none';
       }
 
       container.appendChild(select);
@@ -515,18 +569,20 @@ xtag.register('ha-transitions', {
       this.flow_object.displaySideBar();
     },
     chooser_change: function(){
+			// This gets called when widgets on the form get adjusted.
+
       console.log('chooser_change', this);
 
       // TODO: fix this so it only allows number ranges for the output if there are number ranges for the input.
       if(this.io === 'output'){
         if(typeof(this.data.input) !== 'object'){
           if(this.select.value === 'number'){
-            this.select.children[2].removeAttribute("selected");
-            this.select.children[1].setAttribute("selected", "selected");
+            this.select.children[2].removeAttribute('selected');
+            this.select.children[1].setAttribute('selected', 'selected');
           }
-          this.select.children[2].style.display = "none";
+          this.select.children[2].style.display = 'none';
         } else{
-          this.select.children[2].style.display = "initial";
+          this.select.children[2].style.display = 'initial';
         }
       }
 
@@ -539,14 +595,37 @@ xtag.register('ha-transitions', {
         this.input_bool.style.display = 'none';
         this.input_string.style.display = 'inline';
         this.input_number.style.display = 'none';
-        this.data[this.io] = this.input_string.value;
+				// The special cases '_drop' and '_forward' are just strings.
+        // If someone actually wants to change from a '_drop' to a 'string' we need to make sure
+        // '_drop' is not still in the data field of the widget will think it's actually a drop.
+				if(this.input_string.value !== '_drop' && this.input_string.value !== '_forward' && this.input_string.value !== '_missing'){
+        	this.data[this.io] = this.input_string.value;
+				} else {
+					this.data[this.io] = '';
+				}
       } else if(this.select.value === 'number'){
         this.input_bool.style.display = 'none';
         this.input_string.style.display = 'none';
         this.input_number.style.display = 'inline';
         this.data[this.io] = {low: this.input_number.children[0].value, high: this.input_number.children[1].value};
+      } else if(this.select.value === 'drop'){
+        this.input_bool.style.display = 'none';
+        this.input_string.style.display = 'none';
+        this.input_number.style.display = 'none';
+        this.data[this.io] = '_drop';
+      } else if(this.select.value === 'forward'){
+        this.input_bool.style.display = 'none';
+        this.input_string.style.display = 'none';
+        this.input_number.style.display = 'none';
+        this.data[this.io] = '_forward';
+      } else if(this.select.value === 'missing'){
+        this.input_bool.style.display = 'none';
+        this.input_string.style.display = 'none';
+        this.input_number.style.display = 'none';
+        this.data[this.io] = '_missing';
       }
 
+      // Make sure left number is lower than the right one.
       if(Number(this.input_number.children[0].value) > Number(this.input_number.children[1].value)){
         this.input_number.children[1].value = this.input_number.children[0].value;
       }

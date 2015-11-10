@@ -500,8 +500,8 @@ var FlowObjectMapValues = function(paper, sidebar, shareBetweenShapes, shape){
   shape = shape || paper.box(0, 0, 75, 50, 1, 1, 'crimson');
 
   FlowObject.prototype.constructor.call(this, paper, sidebar, shareBetweenShapes, shape);
-  this.data = { object_name: 'Map values',
-                description: 'Remap input variables to different output.',
+  this.data = { object_name: 'Filter values',
+                description: 'Filter or modify input variables to different output.',
                 data: {
                   general: {
                     instance_name: {
@@ -509,7 +509,7 @@ var FlowObjectMapValues = function(paper, sidebar, shareBetweenShapes, shape){
                       value: 'Object_' + shareBetweenShapes.unique_id
                     },
                     block_labels: {
-                      description: 'Block labels with no filter.',
+                      description: 'Remove other labels from the data.',
                       value: true
                     },
                     transitions: {
@@ -538,13 +538,12 @@ inheritsFrom(FlowObjectMapValues, FlowObject);
 
 var stringToBoolean = function(string){
   'use strict';
-  console.log(string);
   switch(String(string).toLowerCase().trim()){
     case "true": return true;
     case "false": return false;
     //case "true": case "yes": case "1": return true;
     //case "false": case "no": case "0": case null: return false;
-    default: return Boolean(string);
+    default: return;
   }
 };
 
@@ -570,50 +569,85 @@ FlowObjectMapValues.prototype.FilterInputToOutput = function(port_in){
   for(var sender in this.data.data.inputs[port_in].sample_data){
     for(var subject in this.data.data.inputs[port_in].sample_data[sender]){
       var payload = this.data.data.inputs[port_in].sample_data[sender][subject];
-      var stripped_payload = {};
-      console.log('+++', block_labels, filters);
-      for(var label in payload){
-        console.log('++++', label, filters[label]);
-        if(!block_labels || filters[label] !== undefined){
-          console.log('+');
-          var value = payload[label];
-          for(var i = 0; i < filters[label].length; i++){
-            var filter = filters[label][i];
-            if(typeof(filter.input) === 'boolean'){
-              value = stringToBoolean(value);
-              if(value === filter.input){
-                stripped_payload[label] = filter.output;
-                break;
-              }
-            } else if(typeof(filter.input) === 'string'){
-              value = String(value);
-              if(value.trim() === filter.input.trim()){
-                stripped_payload[label] = filter.output;
-                break;
-              }
-            } else if(typeof(filter.input) === 'object'){
-              value = parseInt(value);
-              if(!isNaN(value) && value >= filter.input.low && value <= filter.input.high){
-                if(typeof(filter.output) === 'object'){
-                  stripped_payload[label] = 'TODO';
-                  break;
-                } else {
-                  stripped_payload[label] = filter.output;
-                  break;
-                }
-              }
+      var modified_payload = {};
+      
+      // Iterate through filters. There can be one for each label.
+      // TODO: Allow configuration of more than one label.
+      for(var label in filters){
+        var value = payload[label];
+        var _value;
+        // Now cycle through the filters for this label.
+        for(var i = 0; i < filters[label].length; i++){
+          var filter = filters[label][i];
+          if(value !== undefined && typeof(filter.input) === 'boolean'){
+            _value = stringToBoolean(value);
+            if(_value === filter.input){
+              modified_payload[label] = this.FilterOutput(_value, filter.output);
+              break;
             }
+          } else if(value !== undefined && filter.input === '_else'){
+            // This filter is the default when no other filter matches.
+            modified_payload[label] = this.FilterOutput(value, filter.output);
+            break;
+          } else if(value !== undefined && typeof(filter.input) === 'string'){
+            _value = String(value);
+            if(_value.trim() === filter.input.trim()){
+              modified_payload[label] = this.FilterOutput(_value, filter.output);
+              break;
+            }
+          } else if(value !== undefined && typeof(filter.input) === 'object'){
+            _value = parseInt(value);
+            console.log(value, _value, filter.input.low, filter.input.high);
+            if(!isNaN(_value) && _value >= filter.input.low && _value <= filter.input.high){
+              modified_payload[label] = this.FilterOutput(_value, filter.output);
+              break;
+            }
+          } else if(value ===undefined && filter.input === '_missing'){
+            // This filter is applied when the label we are filtering on does not appear in the payload data.
+            modified_payload[label] = this.FilterOutput(value, filter.output);
+            break;
           }
-          //stripped_payload[label] = payload[label];
+        }
+        if(modified_payload[label] === undefined){
+          delete modified_payload[label];
         }
       }
-      console.log(payload, stripped_payload);
-      //samples[subject] = this.data.data.inputs[port_in].sample_data[sender][subject];
-      samples[subject] = stripped_payload;
+
+      // Check none of the values are the result of a _drop request.
+      var drop;
+      for(var label in modified_payload){
+        if(modified_payload[label] === '_drop'){
+          drop = true;
+        }
+      }
+
+      // We have a partial payload with modified fields.
+      // Now we must copy in all the labels that were not modified.
+      if(!drop){
+        for(var label in payload){
+          console.log('£££', label, modified_payload[label], payload[label]);
+          if(modified_payload[label] === undefined) {
+            console.log('*');
+            modified_payload[label] = payload[label];
+          }
+        }
+
+        samples[subject] = modified_payload;
+      }
     }
   }
   this.data.data.outputs[0].sample_data = samples;
   this.setAdjacentInputSamples();
 };
 
-
+FlowObjectMapValues.prototype.FilterOutput = function(input_payload, filter_output){
+  if(filter_output === '_drop'){
+    return '_drop';  // We filter for this later and remove the entry if found.
+  } else if(filter_output === '_forward') {
+    return input_payload;
+  } else if(typeof(filter_output) === 'object'){
+    return 'TODO';
+  } else {
+    return filter_output;
+  }
+};
