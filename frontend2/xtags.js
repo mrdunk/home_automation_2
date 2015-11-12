@@ -8,12 +8,14 @@
 /*global FlowObjectMqttSubscribe*/
 /*global FlowObjectMqttPublish*/
 /*global FlowObjectMapValues*/
+/*global FlowObjectTestData*/
 
 
 (function() {
 'use strict';
 
 var buttonTypes = {'alarm':              {'action':'new_object', callback: FlowObjectTimer},
+									 'assignment-returned':{'action':'new_object', callback: FlowObjectTestData},
                    'cloud-download':     {'action':'new_object', callback: FlowObjectMqttSubscribe},
                    'cloud-upload':       {'action':'new_object', callback: FlowObjectMqttPublish},
                    'trending-flat':      {'action':'new_object', callback: FlowObjectMapValues},
@@ -159,10 +161,62 @@ xtag.register('ha-sidebar', {
         this.handle.className = "sidebar-handle sidebar-handle-left-align";
       }
     },
+		setHeader: function(name, uid, color){
+			name = name || ' ';
+			uid = uid || ' ';
+			color = color || 'black';
+
+			var header = this.getElementsByClassName('sidebar-header')[0];
+			header.getElementsByClassName('text')[0].innerHTML = '';
+			var h1 = document.createElement('div');
+			var h2 = document.createElement('div');
+			h1.innerHTML = name;
+			h2.innerHTML = uid;
+			header.getElementsByClassName('text')[0].appendChild(h1);
+			header.getElementsByClassName('text')[0].appendChild(h2);
+			header.getElementsByClassName('object-color')[0].style.height = '2em';
+
+			header.getElementsByClassName('object-color')[0].style.background = color;
+		}
   },
 });
 
-xtag.register('ha-input-attribute', {
+xtag.register('ha-flowobject-data', {
+  lifecycle:{
+    created: function(){
+      var template = document.getElementById('ha-flowobject-data').innerHTML;
+      xtag.innerHTML(this, template);
+    }
+  },
+  methods: {
+    populate: function(data, flow_object){
+
+      var list_content = this.getElementsByClassName('general')[0];
+			for(var general_id in data.general){
+      	var general_attributes = document.createElement(data.general[general_id].updater);
+        general_attributes.populate(data.general[general_id], flow_object);
+      	list_content.appendChild(general_attributes);
+			}
+
+      list_content = this.getElementsByClassName('input')[0];
+      for(var input_id in data.inputs){
+        var input_attributes = document.createElement('ha-input-attributes');
+        input_attributes.populate(data.inputs[input_id], flow_object);
+        list_content.appendChild(input_attributes);
+      }
+
+      list_content = this.getElementsByClassName('output')[0];
+      for(var output_id in data.outputs){
+      	var output_attributes = document.createElement('ha-output-attributes');
+				output_attributes.populate(data.outputs[output_id], flow_object);
+				list_content.appendChild(output_attributes);
+      }
+
+    }
+  },
+});
+
+xtag.register('ha-input-attributes', {
   lifecycle:{
     created: function(){
       var template = document.getElementById('ha-input-attribute').innerHTML;
@@ -170,36 +224,34 @@ xtag.register('ha-input-attribute', {
     }
   },
   methods: {
-    populate: function(data){
+    populate: function(data, flow_object){
       console.log(data);
       this.getElementsByClassName('description')[0].innerHTML = data.description;
       var form = this.getElementsByClassName('form')[0];
 
-      var found_already = {};
-      for(var sender_name in data.sample_data){
-        for(var subject in data.sample_data[sender_name]){
-          if(!found_already[subject]){
-            found_already[subject] = true;
-            var sample = data.sample_data[sender_name][subject];
-            var line = document.createElement('div');
-            form.appendChild(line);
-
-            var text = '';
-            for(var key in sample){
-              if(key !== 'updated'){
-                text += key + ' : ' + sample[key] + ' , ';
-              }
-            }
-            line.innerHTML = text;
-          }
-        }
+      // Modifiable attributes.
+      for(var label in data.peramiters){
+        var general_attributes = document.createElement(data.peramiters[label].updater);
+        general_attributes.populate(data.peramiters[label], flow_object);
+        form.appendChild(general_attributes);        
       }
+
+      // Sample data
+      var sample_data = document.createElement('ha-sample-data');
+			var unwrapped_data = {};
+			for(var key in data.sample_data){
+				for(var key2 in data.sample_data[key]){
+          unwrapped_data[key2] = data.sample_data[key][key2];
+        }
+			}
+      sample_data.populate(unwrapped_data);
+      form.appendChild(sample_data);
     }
   }
 });
 
 
-xtag.register('ha-output-attribute', {
+xtag.register('ha-output-attributes', {
   lifecycle:{
     created: function(){
       var template = document.getElementById('ha-output-attribute').innerHTML;
@@ -207,27 +259,44 @@ xtag.register('ha-output-attribute', {
     }
   },
   methods: {
-    populate: function(data){
-      console.log(data);
+    populate: function(data, flow_object){
       this.getElementsByClassName('description')[0].innerHTML = data.description;
       var form = this.getElementsByClassName('form')[0];
-      for(var key in data.sample_data){
-        var sample = data.sample_data[key];
-        var line = document.createElement('div');
-        form.appendChild(line);
 
-        var text = '';
-        for(var key2 in sample){
-          if(key2 !== 'updated'){
-            text += key2 + ' : ' + sample[key2] + ' , ';
-          }
-        }
-        line.innerHTML = text;
+      // Modifiable attributes.
+      for(var label in data.peramiters){
+        var general_attributes = document.createElement(data.peramiters[label].updater);
+        general_attributes.populate(data.peramiters[label], flow_object);
+        form.appendChild(general_attributes);                
       }
+
+      // Sample data
+      var sample_data = document.createElement('ha-sample-data');
+      sample_data.populate(data.sample_data);
+      form.appendChild(sample_data);
     }
   }
 });
 
+xtag.register('ha-sample-data', {
+	lifecycle:{
+    created: function(){
+      var template = document.getElementById('ha-sample-data').innerHTML;
+      xtag.innerHTML(this, template);
+		}
+	},
+	methods: {
+    populate: function(data){
+      var form = this.getElementsByClassName('form-sample-data')[0];
+      for(var key in data){
+        var sample = data[key];
+        var line = document.createElement('div');
+        form.appendChild(line);
+        line.innerHTML = JSON.stringify(sample);
+      }
+    }
+  }
+});
 
 xtag.register('ha-general-attribute', {
   lifecycle:{
@@ -237,26 +306,13 @@ xtag.register('ha-general-attribute', {
     },
   },
   methods: {
-    populate: function(name, data, flow_object){
+    populate: function(data, flow_object){
       this.getElementsByClassName('description')[0].innerHTML = data.description;
-      var input;
-      if(name === 'transitions'){
-        input = document.createElement('ha-transitions');
-        input.populate(data, flow_object);
-        this.getElementsByClassName('form')[0].appendChild(input);
-      } else if(name === 'subscribed_topic'){
-        input = document.createElement('ha-topic-chooser');
-        input.populate(data.value, flow_object);
-        var input_tag = input.getElementsByTagName('INPUT')[0];
-        input_tag.onchange = this.update_callback.bind({element: input_tag, data: data, flow_object: flow_object});
-        this.getElementsByClassName('form')[0].appendChild(input);
-      } else if(data.description && data.value){
-        input = document.createElement("input");
-        input.value = data.value;
-        input.name = name;
-        input.onchange = this.update_callback.bind({element: input, data: data, flow_object: flow_object});
-        this.getElementsByClassName('form')[0].appendChild(input);
-      }
+			var input = document.createElement("input");
+			input.value = data.value;
+			input.name = name;
+			input.onchange = this.update_callback.bind({element: input, data: data, flow_object: flow_object});
+			this.getElementsByClassName('form')[0].appendChild(input);
     },
     update_callback: function(update_event){
       console.log('update_callback', this, update_event);
@@ -270,11 +326,11 @@ xtag.register('ha-general-attribute', {
 
       // A callback function can be registered in ~.callbacks.CALLBACKTYPE.LABEL.
       // This allows different elements to register callbacks that get called when this element changes.
-      if(this.data.callbacks !== undefined && this.data.callbacks.input !== undefined){
+      /*if(this.data.callbacks !== undefined && this.data.callbacks.input !== undefined){
         for(var key in this.data.callbacks.input){
           this.data.callbacks.input[key]();
         }
-      }
+      }*/
     }
   }
 });
@@ -308,7 +364,7 @@ xtag.register('ha-transitions', {
         transition.populate();
       }
     },
-    input: function(event){
+    change: function(event){
       if(event.target.name.split('|',1)[0] === 'label'){
         this.changeLabel(event.target.name.split('|')[1], event.target.value);
       }
@@ -319,9 +375,13 @@ xtag.register('ha-transitions', {
       this.data = data || this.data;
       this.flow_object = flow_object || this.flow_object;
 
+			console.log(this.data);
+
       if(Object.keys(this.data.values).length === 0){
         this.prePopulateRange();
       }
+
+			this.getElementsByClassName('description')[0].innerHTML = this.data.description;
 
       var form = this.getElementsByClassName('transition-form')[0];
       while(form.firstChild){
@@ -399,13 +459,13 @@ xtag.register('ha-transitions', {
 				left.appendChild(this.chooser(this.data.values[label][i], 'input'));
 				right.appendChild(this.chooser(this.data.values[label][i], 'output'));
       }
-      if(this.flow_object.data.data.general.block_labels.callbacks === undefined){
+/*      if(this.flow_object.data.data.general.block_labels.callbacks === undefined){
         this.flow_object.data.data.general.block_labels.callbacks = {};
       }
       if(this.flow_object.data.data.general.block_labels.callbacks.input === undefined){
         this.flow_object.data.data.general.block_labels.callbacks.input = {};
       }
-      this.flow_object.data.data.general.block_labels.callbacks.input.transitions = function(){this.update_sidebar();}.bind(this);
+      this.flow_object.data.data.general.block_labels.callbacks.input.transitions = function(){this.update_sidebar();}.bind(this);*/
     },
     changeLabel: function(from, to){
       console.log('changeLabel(', from, to, ')');
@@ -471,7 +531,7 @@ xtag.register('ha-transitions', {
 
 			if(io === 'input'){
 				// Add 'missing' to select.
-				var option = document.createElement('option');
+				option = document.createElement('option');
 				option.text = 'missing';
 				if(range[io] === '_missing'){
 					option.setAttribute('selected', 'selected');
@@ -640,7 +700,7 @@ xtag.register('ha-topic-chooser', {
     },
   },
   events: {
-    input: function(event){
+    change: function(event){
       console.log('ha-topic-chooser: change', event, event.target.value);
       this.flow_object.data.data.outputs[0].sample_data = {};
       var topic = event.target.value.split('/').slice(2).join('/');
@@ -658,7 +718,7 @@ xtag.register('ha-topic-chooser', {
     }
   },
   methods: {
-    populate: function(value, flow_object){
+    populate: function(data, flow_object){
       this.flow_object = flow_object;
       var topic_list = [];
       var key;
@@ -672,14 +732,17 @@ xtag.register('ha-topic-chooser', {
       var input = document.createElement('input');
       input.setAttribute('list', 'topics');
       input.setAttribute('name', 'topics');
-      input.setAttribute('value', value);
+      input.setAttribute('value', data.value);
       this.appendChild(input);
       
       var datalist = document.createElement('DATALIST');
       datalist.id = 'topics';
       this.appendChild(datalist);
+			var option = document.createElement("OPTION");
+			option.setAttribute("value", '');
+			datalist.appendChild(option);
       for(key in topic_list){
-        var option = document.createElement("OPTION");
+        option = document.createElement("OPTION");
         option.setAttribute("value", 'homeautomation/+/' + topic_list[key]);
         datalist.appendChild(option);
       }

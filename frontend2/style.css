@@ -155,15 +155,14 @@ ha-topic-chooser input {
   width: 20em;
 }
 
-ha-input-attribute .form {
-  border: 1px solid blue;
-  background: white;
-  white-space: nowrap;
+ha-input-attributes div.form, ha-output-attributes div.form {
+  margin-left: 2em;
 }
 
-ha-output-attribute .form {
-  border: 1px solid blue;
-  background: white;
-  white-space: nowrap;
-}
 
+ha-input-attributes div.form ha-sample-data div.form-sample-data, ha-output-attributes div.form ha-sample-data div.form-sample-data {
+  border: 1px solid blue;
+  white-space: nowrap;
+  background: lightgrey;
+	color: dimgrey;
+}

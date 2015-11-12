@@ -37,6 +37,7 @@
 <template id="ha-control-heading">
   <div class="container">
     <paper-icon-button icon="alarm"></paper-icon-button>
+    <paper-icon-button icon="assignment-returned"></paper-icon-button>
     <paper-icon-button icon="cloud-download"></paper-icon-button>
     <paper-icon-button icon="cloud-upload"></paper-icon-button>
     <paper-icon-button icon="trending-flat"></paper-icon-button>
@@ -58,6 +59,14 @@
   </div>
 </template>
 
+<template id="ha-flowobject-data">
+  <dl>
+    <dt>General settings:</dt><dd class="general"></dd>
+    <dt>Inputs:</dt><dd class="input"></dd>
+    <dt>Outputs:</dt><dd class="output"></dd>
+  </dl>
+</template>
+
 <template id="ha-general-attribute">
   <div class="description"></div>
   <div class="form"></div>
@@ -74,5 +83,12 @@
 </template>
 
 <template id="ha-transitions">
+  <div class="description"></div>
   <div class="transition-form">ha-transitions</div>
 </template>
+
+<template id="ha-sample-data">
+  <div class="description">Sample data:</div>
+  <div class="form-sample-data"></div>
+</template>
+
