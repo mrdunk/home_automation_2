@@ -1,6 +1,8 @@
 /*global PORT_WIDTH*/
 /*global PORT_HEIGHT*/
 
+INPUT_PORT = { description: 'Trigger label', value: '_any', updater: 'ha-general-attribute' };
+
 var FlowObject = function(paper, sidebar, shareBetweenShapes, shape){
   'use strict';
   console.log('FlowObject');
@@ -131,11 +133,8 @@ FlowObject.prototype.onmove = function(dx, dy){
     this.setBoxPosition(dx + this.start_move_x, dy + this.start_move_y);
   } else if(this.data('parent').shareBetweenShapes.dragging){
     var path = this.data('parent').shareBetweenShapes.dragging.arrow.attr('path');
-    path[1][1] = path[0][1] + dx;
-    path[1][2] = path[0][2] + dy;
-    if(Math.abs(path[0][1] - path[1][1]) > 10 || Math.abs(path[0][2] - path[1][2]) > 10){
-      this.data('parent').shareBetweenShapes.dragging.arrow.attr('path', path);
-    }
+    var pos2 = {x: path[0][1] + dx, y: path[0][2] + dy};
+    this.data('parent').shareBetweenShapes.dragging.arrow.dragArrow(pos2);
   }
 };
 
@@ -419,20 +418,26 @@ var FlowObjectTimer = function(paper, sidebar, shareBetweenShapes, shape){
                   inputs: {
                     0: {
                       description: 'Start',
-                      trigger_label: '_any',
-                      trigger_value: '_any',
+                      peramiters:{
+                        trigger_label: INPUT_PORT,
+                        trigger_value: INPUT_PORT,
+                      },
                       sample_data: {},
                       },
                     2: {
                       description: 'Stop',
-                      trigger_label: '_any',
-                      trigger_value: '_any',
+                      peramiters:{
+                        trigger_label: INPUT_PORT,
+                        trigger_value: INPUT_PORT
+                      },
                       sample_data: {},
                       },
                     1: {
                       description: 'Reset',
-                      trigger_label: '_any',
-                      trigger_value: '_any',
+                      peramiters:{
+                        trigger_label: INPUT_PORT,
+                        trigger_value: INPUT_PORT
+                      },
                       sample_data: {},
                       }},
                   outputs: {
@@ -630,7 +635,7 @@ var FlowObjectTestData = function(paper, sidebar, shareBetweenShapes, shape){
 
   FlowObject.prototype.constructor.call(this, paper, sidebar, shareBetweenShapes, shape);
   this.data = { object_name: 'Test data',
-                description: 'Return data in a user defined format.',
+                description: 'Generate some fake data for testing this UI.',
                 data: {
                   general: {
                     instance_name: { 
@@ -654,4 +659,32 @@ var FlowObjectTestData = function(paper, sidebar, shareBetweenShapes, shape){
 };
 
 inheritsFrom(FlowObjectTestData, FlowObject);
+
+
+var FlowObjectCombineData = function(paper, sidebar, shareBetweenShapes, shape){
+  'use strict';
+  console.log("FlowObjectCombineData");
+
+  shape = shape || paper.box(0, 0, 150, 50, 0, 0, 'crimson');
+
+  FlowObject.prototype.constructor.call(this, paper, sidebar, shareBetweenShapes, shape);
+  this.data = { object_name: 'Combine data',
+                description: 'Combine data from multiple data payloads.',
+                data: {
+                  general: {
+                    instance_name: {
+                      description: 'Name',
+                      updater: 'ha-general-attribute',
+                      value: 'Object_' + shareBetweenShapes.unique_id }
+                  },
+                  inputs: {},
+                  outputs: {}
+                }
+	}
+
+  this.shape.setContents(this.data);
+  this.setup();
+};
+
+inheritsFrom(FlowObjectCombineData, FlowObject);
 

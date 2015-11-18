@@ -19,6 +19,7 @@ var buttonTypes = {'alarm':              {'action':'new_object', callback: FlowO
                    'cloud-download':     {'action':'new_object', callback: FlowObjectMqttSubscribe},
                    'cloud-upload':       {'action':'new_object', callback: FlowObjectMqttPublish},
                    'trending-flat':      {'action':'new_object', callback: FlowObjectMapValues},
+									 'unfold-less':      {'action':'new_object', callback: FlowObjectCombineData},
                    'content-copy':       {'action':'new_object'},
                    'redo':               {'action':'join'},
                    'settings':           {'action':'edit'}

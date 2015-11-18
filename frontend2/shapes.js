@@ -18,12 +18,36 @@ var setBoxPosition = function(component, x, y){
 
 Raphael.fn.arrow = function (pos1, pos2, color) {
   'use strict';
-  var path = 'M ' + pos1.x + ' ' + pos1.y + ' L ' + pos2.x + ' ' + pos2.y;
   if(Math.abs(pos1.x - pos2.x) + Math.abs(pos1.y - pos2.y) < MIN_ARROW_LEN){
     pos2.x = pos1.x + MIN_ARROW_LEN;
   }
+  var dx = Math.abs(pos2.x - pos1.x);
+  if(dx > 100){
+    dx = 100;
+  }
+  if(dx < 20){
+    dx = 20;
+  }
+
+  //var path = 'M ' + pos1.x + ' ' + pos1.y + ' L ' + pos2.x + ' ' + pos2.y;
+  var path = 'M ' + pos1.x + ' ' + pos1.y + ' C ' + (pos1.x + dx) + ' ' + pos1.y + ' ' + (pos2.x - dx) + ' ' + pos2.y + ' ' + pos2.x + ' ' + pos2.y;
   return this.path(path).attr({stroke: color, fill: "none", 'stroke-width': 3, 'arrow-end': 'classic-wide'});
 };
+
+Raphael.el.dragArrow = function(pos2) {
+  var path = this.attr('path');
+  var pos1 = {x: path[0][1], y: path[0][2]};
+  if(path[1][0] === 'C'){
+    path[1][5] = pos2.x;
+    path[1][6] = pos2.y;
+  } else if (path[1][0] === 'L'){
+    if(Math.abs(pos1.x - pos2.x) + Math.abs(pos1.y - pos2.y) >= MIN_ARROW_LEN){
+      path[1][1] = pos2.x;
+      path[1][2] = pos2.y;
+    }
+  }
+  this.attr('path', path);
+}
 
 
 Raphael.fn.box = function(x, y, width, height, input_count, output_count, color){
