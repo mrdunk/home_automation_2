@@ -52,7 +52,8 @@ function sanitize_filename(filename)
 end
 
 function sanitize_mac_address(mac)
-  return mac:match('(%x%x:%x%x:%x%x:%x%x:%x%x:%x%x)')
+  mac = mac:match('(%x%x:%x%x:%x%x:%x%x:%x%x:%x%x)')
+  return mac:gsub(':', '_')
 end
 
 function sanitize_url(url)

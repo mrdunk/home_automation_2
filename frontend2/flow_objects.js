@@ -477,12 +477,7 @@ var FlowObjectMapValues = function(paper, sidebar, shareBetweenShapes, shape){
                     instance_name: {
                       description: 'Name',
                       updater: 'ha-general-attribute',
-                      value: 'Object_' + shareBetweenShapes.unique_id
-                    },
-//                    transitions: {
-//                      description: 'Map Input ranges to desired Output.',
-//                      updater: 'ha-transitions',
-//                      values: {} },
+                      value: 'Object_' + shareBetweenShapes.unique_id },
                     },
                   inputs: {
                     0: {
@@ -665,7 +660,7 @@ var FlowObjectCombineData = function(paper, sidebar, shareBetweenShapes, shape){
   'use strict';
   console.log("FlowObjectCombineData");
 
-  shape = shape || paper.box(0, 0, 150, 50, 0, 0, 'crimson');
+  shape = shape || paper.box(0, 0, 150, 50, 2, 1, 'crimson');
 
   FlowObject.prototype.constructor.call(this, paper, sidebar, shareBetweenShapes, shape);
   this.data = { object_name: 'Combine data',
@@ -677,8 +672,24 @@ var FlowObjectCombineData = function(paper, sidebar, shareBetweenShapes, shape){
                       updater: 'ha-general-attribute',
                       value: 'Object_' + shareBetweenShapes.unique_id }
                   },
-                  inputs: {},
-                  outputs: {}
+                  inputs: {
+                    0: {
+                      description: 'Default input',
+                      sample_data: {} },
+                    1: {
+                      description: 'Reset',
+                      peramiters:{
+                        trigger_label: INPUT_PORT,
+                        trigger_value: INPUT_PORT },
+                      sample_data: {}
+                      }
+                    },
+                  outputs: {
+                    0: {
+                      description: 'Default output',
+                      sample_data: {}
+                    }
+                  }
                 }
 	}
 

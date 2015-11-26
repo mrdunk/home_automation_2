@@ -163,7 +163,7 @@ Mqtt.onMessageArrived = function(message) {
   }
 
   var data;
-  var regex_data = /^s*([\s\w\/:,_]+)s*$/ ;
+  var regex_data = /^s*([\s\w\/:,._]+)s*$/ ;
   if (message.payloadString.match(regex_data)) {
     data = regex_data.exec(message.payloadString)[0];
   }
