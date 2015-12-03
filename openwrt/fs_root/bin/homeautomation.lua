@@ -39,7 +39,7 @@ function mqtt_instance_ON_PUBLISH()
 end
 
 function mqtt_instance_ON_MESSAGE(mid, topic, payload)
-  --print(" ** mqtt_instance_ON_MESSAGE")
+  --print(" ** mqtt_instance_ON_MESSAGE", mid, topic, payload)
 
   if topic == nil or payload == nil then
     return
@@ -53,15 +53,13 @@ function mqtt_instance_ON_MESSAGE(mid, topic, payload)
   topic = nil
   payload = nil
 
-  -- See which of our info.io things the incoming topic matches.
+  -- See which of our subscriptions the incoming topic matches.
   local incoming_path = incoming_role .. '/' .. incoming_address
-  for _, class_instance in pairs(info.mqtt.callbacks) do
-    if class_instance.subscribe then
-      for _, subscription in pairs(class_instance:subscribe()) do
-        if match_paths(incoming_path, subscription.role .. '/' .. subscription.address) then
-          -- Only do callback if it's one of the class_instance's inputs.
-          class_instance:callback(subscription.role .. '/' .. subscription.address, incoming_data)
-        end
+  for path, class_instances in pairs(info.mqtt.subscriptions) do
+    path = var_to_path(path)
+    if match_paths(incoming_path, path) then
+      for instance, _ in pairs(class_instances) do
+        instance:callback(path, incoming_data)
       end
     end
   end
@@ -69,6 +67,11 @@ end
 
 function mqtt_instance_ON_CONNECT()
   print(" ** mqtt_instance_ON_CONNECT")
+
+  -- Presume all existing subscriptions are dead.
+  for key in pairs(info.mqtt.subscriptions) do
+    info.mqtt.subscriptions[key] = nil
+  end
 
   while #info.mqtt.subscriptions > 0 do
     table.remove(info.mqtt.subscriptions, #info.mqtt.subscriptions)
@@ -83,14 +86,7 @@ function mqtt_instance_ON_CONNECT()
       subscribtions = loader:subscribe()
     end
     for _, subscrition in pairs(subscribtions) do
-      local address_partial = ''
-      for address_section in string.gmatch(subscrition.address, "[^/]+") do
-        subscribe_to(subscrition.role, subscrition.address, subscrition.role .. address_partial .. '/_all')
-        subscribe_to(subscrition.role, subscrition.address, '_all' .. address_partial .. '/_all')
-        address_partial = address_partial .. '/' .. address_section
-      end
-      subscribe_to(subscrition.role, subscrition.address, subscrition.role .. address_partial)
-      subscribe_to(subscrition.role, subscrition.address, '_all' .. address_partial)
+      subscribe_to_all(loader, subscrition.role, subscrition.address)
     end
   end
 
@@ -105,16 +101,46 @@ function parse_incoming_data(data)
   local return_table = {}
   local atoms = split(data, ',')
   for _, atom in pairs(atoms) do
-    local key, value = atom:match("^%s*([%w_]+)%s*:%s*([%w_]+)")
-    return_table[key] = value
+    local key, value = atom:match("^%s*([%w_]+)%s*:%s*([%w_.]+)")
+    if key ~= nil then
+      return_table[key] = value
+    end
   end
   return return_table
 end
 
-function subscribe_to(role, address, subscription)
-  print('Subscribing to: homeautomation/+/' .. subscription)
-  mqtt_instance:subscribe('homeautomation/+/' .. subscription)
-  info.mqtt.subscriptions[path_to_var(subscription)] = true
+function subscribe_to_all(class_instance, role, address)
+  address = var_to_path(address)
+
+  print("##", role, address)
+
+  local address_partial = ''
+
+  for address_section in address:gmatch("[^/]+") do
+    --print("###", role, address_partial .. '/all')
+    subscribe_to(class_instance, '_all' .. address_partial .. '/_all')
+    subscribe_to(class_instance, role .. address_partial .. '/_all')
+    address_partial = address_partial .. '/' .. address_section
+  end
+  --print("###", role, address_partial)
+  subscribe_to(class_instance, '_all' .. address_partial)
+  subscribe_to(class_instance, role .. address_partial)
+end
+
+function subscribe_to(class_instance, subscription)
+  if mqtt_instance:subscribe('homeautomation/+/' .. var_to_path(subscription)) == nil then
+    -- Probably not connected to broker yet.
+    print('...subscription failed.')
+    return
+  end
+  if info.mqtt.subscriptions[path_to_var(subscription)] == nil then
+    print('First subscribing to: homeautomation/+/' .. var_to_path(subscription))
+    info.mqtt.subscriptions[path_to_var(subscription)] = {}
+  end
+  if info.mqtt.subscriptions[path_to_var(subscription)][class_instance] == nil then
+    print('Subscribing to: homeautomation/+/' .. var_to_path(subscription))
+    info.mqtt.subscriptions[path_to_var(subscription)][class_instance] = true
+  end
 end
 
 function match_paths(path_one, path_two)
@@ -138,23 +164,6 @@ function match_paths(path_one, path_two)
   end
   print("Match:", path_one, path_two)
   return true
-end
-
-function split(path, deliminator)
-  local return_list={} ; i=1
-  for str in path:gmatch("([^" .. deliminator .. "]+)") do
-    return_list[i] = str
-    i = i + 1
-  end
-  return return_list
-end
-
-function path_to_var(path)
-  return path:gsub('/', '__')
-end
-
-function var_to_path(var)
-  return var:gsub('__', '/')
 end
 
 -- To be called first.
@@ -245,22 +254,32 @@ function initilize()
     --local c1 = component:new()
     --c1:setup('c1')
     
-    local c2 = component_mqtt_listener:new()
-    c2:setup('c2')
+    --local c2 = component_mqtt_listener:new()
+    --c2:setup('c2')
 
-    local c3 = component_cache:new()
-    c3:setup('c3')
+    --local c3 = component_cache:new()
+    --c3:setup('c3')
 
-    c2:add_output(c3)
-    c2:add_input('user/#')
+    --c2:add_output(c3)
+    --c2:add_input('dhcp/_all')
 
     --c1:display()
-    c2:display()
-    c3:display()
+    --c2:display()
+    --c3:display()
 
     print('----------')
     --c1:send_output()
     print('----------')
+
+    local dhcp_watcher = component_mqtt_listener:new()
+    dhcp_watcher:setup('dhcp_watcher')
+    dhcp_watcher:add_input('dhcp/#')
+    dhcp_watcher:display()
+
+    local jess_watcher = component_field_watcher:new()
+    jess_watcher:setup('jess_watcher')
+
+    dhcp_watcher:add_output(jess_watcher)
   end
 
   -- Set required files and directories.
@@ -501,7 +520,7 @@ function _itterate_info(info_branch, key, output)
     for name, value in pairs(info_branch) do
       table_populated = true
       if key ~= '' then
-        output = _itterate_info(value, key .. '.' .. name, output)
+        output = _itterate_info(value, key .. '.' .. tostring(name), output)
       else
         output = _itterate_info(value, name, output)
       end

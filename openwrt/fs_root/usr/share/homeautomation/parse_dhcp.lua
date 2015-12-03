@@ -1,7 +1,5 @@
 #!/usr/bin/lua
 
---[[ Parse DHCP log file for devices matching those in the configuration file and
-     generate unique user records for anyone with a device connected to the network. ]]--
 
 --local DEVICE_CONFIG = '/etc/homeautomation/trigger_dhcp.conf'
 local DHCP_FILE = '/tmp/dhcp.leases'
@@ -24,15 +22,15 @@ function dhcp_parser.new()
   if info.mqtt == nil then
     info.mqtt = {}
   end
-  if info.mqtt.subscription_loaders == nil then
-    info.mqtt.subscription_loaders = {}
-  end
-  if info.mqtt.announcer_loaders == nil then
-    info.mqtt.announcer_loaders = {}
-  end
+--  if info.mqtt.subscription_loaders == nil then
+--    info.mqtt.subscription_loaders = {}
+--  end
+--  if info.mqtt.announcer_loaders == nil then
+--    info.mqtt.announcer_loaders = {}
+--  end
 
-  info.mqtt.subscription_loaders['dhcp'] = self.subscribe
-  info.mqtt.announcer_loaders['dhcp'] = self.announce
+--  info.mqtt.subscription_loaders['dhcp'] = self.subscribe
+--  info.mqtt.announcer_loaders['dhcp'] = self.announce
 
   return self
 end
@@ -112,6 +110,10 @@ function dhcp_parser:publish_one_record(mac_address)
   end
   print(topic, payload)
   mqtt_instance:publish(topic, payload)
+
+  -- Make sure we are subscribed to messages sent to this target.
+  -- We need to do this here because a dhcp lease may not have been given yet when dhcp_parser:subscribe() was called.
+  subscribe_to_all(self, 'dhcp', mac_address)
 end
 
 function dhcp_parser:publish_dhcp()

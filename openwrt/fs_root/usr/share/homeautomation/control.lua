@@ -58,7 +58,7 @@ function component:display()
 end
 
 function component:send_output(data, label)
-  print("component:send_output(", data, label, ")")
+  --print("component:send_output(", data, label, ")")
   label = label or 'default'
 
   if self.outputs[label] then
@@ -87,20 +87,20 @@ function component_mqtt_listener:setup(name)
 end
 
 function component_mqtt_listener:receive_input(data, label)
-  print("component_mqtt_listener:receive_input(" .. tostring(data) .. ", " .. tostring(label) .. ")")
+  --print(" ", "component_mqtt_listener:receive_input(" .. tostring(data) .. ", " .. tostring(label) .. ")")
 
   label = label or 'default'
   
   if label == 'default' then
-    print(self.name .. ' default mqtt_listener.receive_input() triggered.')
+    --print(" ", self.name .. ' default mqtt_listener.receive_input() triggered.')
   else
-    print("component_mqtt_listener:receive_input() triggered")
+    --print(" ", "component_mqtt_listener:receive_input() triggered")
     self:send_output(data)
   end
 end
 
 function component_mqtt_listener:callback(path, data)
-  print("component_mqtt_listener:callback(" .. tostring(path) .. ", " .. tostring(data) .. ")")
+  --print(" ", "component_mqtt_listener:callback(" .. tostring(path) .. ", " .. tostring(data) .. ")")
 
   path = var_to_path(path)
   self:receive_input(data, path_to_var(path))
@@ -112,7 +112,7 @@ function component_mqtt_listener:subscribe()
     path = var_to_path(path)
     local role, address = path:match('(.-)/(.+)')
     if role and address then
-      print(path, role, address)
+      --print(" ", "component_mqtt_listener:subscribe():", path, role, address)
       subscritions[#subscritions +1] = {role = role, address = address}
     end
   end
@@ -124,7 +124,7 @@ end
 component_cache = component:new()
 
 function component_cache:receive_input(data, label)
-  print("component_cache:receive_input(", data, label, ")")
+  --print("component_cache:receive_input(", data, label, ")")
   label = label or 'default'
 
   if info.cache == nil then
@@ -142,4 +142,32 @@ function component_cache:receive_input(data, label)
 end
 
 
+-- TODO much tempory stuff here to hard code the christmas tree lights
+component_field_watcher = component:new()
+
+function component_field_watcher:receive_input(data, label)
+  --print(" *", "component_field_watcher:receive_input(", data, label, ")")
+  local reachable, address
+  for key, value in pairs(data) do
+    --print(" ", key, tostring(value))
+    if key == '_reachable' then
+      reachable = value
+    elseif key == '_address' then
+      address = value
+    end
+  end
+
+  if address == '192.168.192.200' then
+    local hour = tonumber(os.date('%H'))
+    local topic = 'homeautomation/0/lighting/extension/jess_warning_lamp'
+    local payload = '_command:'
+    if reachable == 'true' and hour >= 6 and hour <= 22 then
+      payload = payload .. 'on'
+    else
+      payload = payload .. 'off'
+    end
+    print('####', topic, payload)
+    mqtt_instance:publish(topic, payload)
+  end
+end
 

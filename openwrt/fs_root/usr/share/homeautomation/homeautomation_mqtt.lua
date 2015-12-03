@@ -152,6 +152,7 @@ function mqtt:subscribe(topic)
   
   -- Build dict of filename : command.
   self.subscriptions[filename] = {command=command}
+  return true
 end
 
 

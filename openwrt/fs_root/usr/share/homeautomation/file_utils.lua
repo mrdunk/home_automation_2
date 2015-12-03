@@ -95,3 +95,20 @@ function sanitize_topic_atom(topic)
   return ''
 end
 
+function split(path, deliminator)
+  local return_list={} ; i=1
+  for str in path:gmatch("([^" .. deliminator .. "]+)") do
+    return_list[i] = str
+    i = i + 1
+  end
+  return return_list
+end
+
+function path_to_var(path)
+  return path:gsub('/', '__')
+end
+
+function var_to_path(var)
+  return var:gsub('__', '/')
+end
+
