@@ -309,7 +309,14 @@ xtag.register('ha-general-attribute', {
   methods: {
     populate: function(data, flow_object){
       this.getElementsByClassName('description')[0].innerHTML = data.description;
-			var input = document.createElement("input");
+			var input;
+      if(data.form_type){
+        input = document.createElement(data.form_type);
+        input.rows = 4;
+        input.cols = 50;
+      } else {
+        input = document.createElement("input");
+      }
 			input.value = data.value;
 			input.name = name;
 			input.onchange = this.update_callback.bind({element: input, data: data, flow_object: flow_object});
@@ -319,23 +326,43 @@ xtag.register('ha-general-attribute', {
       console.log('update_callback', this, update_event);
       this.data.value = this.element.value;
 
-      if(this.data.description === 'Name'){
+      if(this.data.description === 'Name' || this.data.update_on_change){
         // Redraw sidebar and shape.
         this.flow_object.displaySideBar();
         this.flow_object.shape.setContents(this.flow_object.data);
       }
-
-      // A callback function can be registered in ~.callbacks.CALLBACKTYPE.LABEL.
-      // This allows different elements to register callbacks that get called when this element changes.
-      /*if(this.data.callbacks !== undefined && this.data.callbacks.input !== undefined){
-        for(var key in this.data.callbacks.input){
-          this.data.callbacks.input[key]();
-        }
-      }*/
     }
   }
 });
 
+
+xtag.register('ha-select-label', {
+  lifecycle:{
+    created: function(){
+    },
+  },
+  methods: {
+    populate: function(data, flow_object){
+			var label = data.value;
+      var value_tag = document.createElement('input');
+      value_tag.setAttribute('list', 'label|' + label);
+      value_tag.setAttribute('name', 'label|' + label);
+      value_tag.setAttribute('value', label);
+
+      var datalist = document.createElement('DATALIST');
+      datalist.setAttribute('id', 'label|' + label);
+      var labels = Data.getLabels();
+      var i;
+      for(i = 0; i < labels.length; i++){
+        var option = document.createElement("OPTION");
+        option.setAttribute("value", labels[i]);
+        datalist.appendChild(option);
+      }
+      this.appendChild(value_tag);
+      this.appendChild(datalist);
+    }
+  }
+});
 
 xtag.register('ha-transitions', {
   lifecycle:{
@@ -410,28 +437,15 @@ xtag.register('ha-transitions', {
 
         var label_tag = document.createElement('div');
         label_tag.innerHTML = 'Label:';
-        var value_tag = document.createElement('input');
-        value_tag.setAttribute('list', 'label|' + label);
-        value_tag.setAttribute('name', 'label|' + label);
-        value_tag.setAttribute('value', label);
-
-        var datalist = document.createElement('DATALIST');
-        datalist.setAttribute('id', 'label|' + label);
-
-        // TODO Limit the suggested labels to those in inputs[0].sample_data.
-        var labels = Data.getLabels();
-        var i;
-        for(i = 0; i < labels.length; i++){
-          var option = document.createElement("OPTION");
-          option.setAttribute("value", labels[i]);
-          datalist.appendChild(option);
-        }
+        var datalist = document.createElement('ha-select-label');
+				datalist.populate({value: label}, this.flow_object);
 
         header.appendChild(label_tag);
-        header.appendChild(value_tag);
         header.appendChild(datalist);
+
         var div;
         var button;
+				var i;
         for(i = 0; i < this.data.values[label].length -1; i++){
           // ".length -1" because the last item in the list is a special case which we handle separately.
           div = document.createElement('div');
@@ -703,6 +717,7 @@ xtag.register('ha-topic-chooser', {
   events: {
     change: function(event){
       console.log('ha-topic-chooser: change', event, event.target.value);
+      this.flow_object.data.data.general.subscribed_topic.value = event.target.value;
       this.flow_object.data.data.outputs[0].sample_data = {};
       var topic = event.target.value.split('/').slice(2).join('/');
       var topics = Data.GetMatchingTopics(topic);

@@ -301,7 +301,8 @@ FlowObject.prototype.FilterInputToOutput = function(){
 
 var inheritsFrom = function (child, parent) {
   'use strict';
-    child.prototype = Object.create(parent.prototype);
+  child.prototype = Object.create(parent.prototype);
+  child.prototype.$super = parent.prototype;
 };
 
 
@@ -636,7 +637,14 @@ var FlowObjectTestData = function(paper, sidebar, shareBetweenShapes, shape){
                     instance_name: { 
                       description: 'Name',
                       updater: 'ha-general-attribute',
-                      value: 'Object_' + shareBetweenShapes.unique_id }
+                      value: 'Object_' + shareBetweenShapes.unique_id },
+                    test_data: {
+                      description: 'Test data',
+                      updater: 'ha-general-attribute',
+                      form_type: 'textarea',
+                      update_on_change: true,
+                      value: '[{"_subject":"dhcp/84_3a_4b_0c_11_6c","_google_id":"test_gid"}]'
+                    }
                   },
                   inputs: {},
                   outputs: {
@@ -651,9 +659,17 @@ var FlowObjectTestData = function(paper, sidebar, shareBetweenShapes, shape){
               };
   this.shape.setContents(this.data);
   this.setup();
+  console.log(this.data.data);
 };
 
 inheritsFrom(FlowObjectTestData, FlowObject);
+
+FlowObjectTestData.prototype.displaySideBar = function(){
+  'use strict';
+  this.data.data.outputs[0].sample_data = JSON.parse(this.data.data.general.test_data.value);
+
+  this.$super.displaySideBar.call(this);
+}
 
 
 var FlowObjectCombineData = function(paper, sidebar, shareBetweenShapes, shape){
@@ -675,7 +691,15 @@ var FlowObjectCombineData = function(paper, sidebar, shareBetweenShapes, shape){
                   inputs: {
                     0: {
                       description: 'Default input',
-                      sample_data: {} },
+											peramiters: {
+                        primary_key: {
+                          description: 'Primary key.',
+                          updater: 'ha-select-label',
+                          port_out: 0,
+                          value: '' }
+                        },
+                      sample_data: {} 
+                    },
                     1: {
                       description: 'Reset',
                       peramiters:{
