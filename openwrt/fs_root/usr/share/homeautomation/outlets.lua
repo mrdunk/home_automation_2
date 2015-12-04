@@ -148,10 +148,27 @@ end
 
 -- This gets called whenever a topic this module is subscribed to appears on the bus.
 function outlets:callback(path, incoming_data)
+  print("outlets:callback(", path, incoming_data, ")")
   path = var_to_path(path)
-  local incoming_command = incoming_data._command
   local role, address = path:match('(.-)/(.+)')
+  if role == '_all' then
+    role = 'lighting'
+  end
+
+  -- "address" might contain "_all" keyword rather than full path so we need to compare against every known device.
+  for light_address, _ in pairs(info.io.lighting) do
+    if light_address ~= 'file_update_time' then
+      if match_paths(role .. '/' .. address, role .. '/' .. light_address, true) then
+        self:operate_one(role, light_address, incoming_data)
+      end
+    end
+  end
+end
+
+function outlets:operate_one(role, address, incoming_data)
+  print("   outlets:operate_one(", role, address, incoming_data, ")")
   if self.io_local_copy[role] and self.io_local_copy[role][address] then
+    local incoming_command = incoming_data._command
     local command = info.io[role][address].command
     
     if incoming_command == "on" then
@@ -164,7 +181,6 @@ function outlets:callback(path, incoming_data)
 
   end
 end
-
 
 
 -- Get the value a particular device is set to. eg. "on" or "off".

@@ -112,3 +112,10 @@ function var_to_path(var)
   return var:gsub('__', '/')
 end
 
+function is_mac_address(mac)
+  return mac:match('(%x%x:%x%x:%x%x:%x%x:%x%x:%x%x)')
+end
+
+function is_sanitized_mac_address(mac)
+  return mac:match('(%x%x_%x%x_%x%x_%x%x_%x%x_%x%x)')
+end

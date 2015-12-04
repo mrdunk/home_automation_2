@@ -112,8 +112,6 @@ end
 function subscribe_to_all(class_instance, role, address)
   address = var_to_path(address)
 
-  print("##", role, address)
-
   local address_partial = ''
 
   for address_section in address:gmatch("[^/]+") do
@@ -143,11 +141,11 @@ function subscribe_to(class_instance, subscription)
   end
 end
 
-function match_paths(path_one, path_two)
+function match_paths(path_one, path_two, all)
   local role_one, address_one = path_one:match('(.-)/(.+)')
   local role_two, address_two = path_two:match('(.-)/(.+)')
 
-  if role_one ~= '_all' and role_two ~= '_all' and role_one ~= role_two then
+  if role_two ~= '+' and role_one ~= role_two then
     return
   end
 
@@ -155,10 +153,13 @@ function match_paths(path_one, path_two)
   local atoms_two = split(address_two, '/')
   
   for i=1,#atoms_one,1 do
-    if atoms_one[i] == '_all' or atoms_two[i] == '_all' or atoms_one[i] == '#' or atoms_two[i] == '#' then
+    if all and atoms_one[i] == '_all' then
       break
     end
-    if atoms_one[i] ~= atoms_two[i] then
+    if atoms_two[i] == '#' then
+      break
+    end
+    if atoms_two[i] ~= '+' and atoms_one[i] ~= atoms_two[i] then
       return
     end
   end
@@ -273,13 +274,23 @@ function initilize()
 
     local dhcp_watcher = component_mqtt_listener:new()
     dhcp_watcher:setup('dhcp_watcher')
-    dhcp_watcher:add_input('dhcp/#')
+    dhcp_watcher:add_general('subscribed_topic', 'dhcp/_announce')
     dhcp_watcher:display()
 
     local jess_watcher = component_field_watcher:new()
     jess_watcher:setup('jess_watcher')
 
+    local jess_watcher_2 = component_map_values:new()
+    jess_watcher_2:setup('jess_watcher_2')
+    jess_watcher_2:add_input('default', {label = '_address',
+                                         rules = { _a = {match = '192.168.192.200',
+                                                         action = 'forward'}, 
+                                                   _b = {match = '_else', 
+                                                         action = 'drop'} } })
+
+    
     dhcp_watcher:add_output(jess_watcher)
+    dhcp_watcher:add_output(jess_watcher_2)
   end
 
   -- Set required files and directories.

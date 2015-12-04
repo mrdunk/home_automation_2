@@ -149,9 +149,21 @@ function dhcp_parser:callback(path, incoming_data)
   path = var_to_path(path)
   local incoming_command = incoming_data._command
   local role, identifier = path:match('(.-)/(.+)')
+  
+  if role == '_all' then
+    role = 'dhcp'
+  end
 
-  if role == 'dhcp' and info.io[role] and info.io[role][identifier] and incoming_command == 'solicit' then
-    self:publish_one_record(identifier)
+  if role == 'dhcp' and info.io[role] and incoming_command == 'solicit' then
+    if identifier == '_all' then
+      for mac_address, _ in pairs(info.io[role]) do
+        if is_sanitized_mac_address(mac_address) then
+          self:publish_one_record(mac_address)
+        end
+      end
+    elseif info.io[role][identifier] then
+      self:publish_one_record(identifier)
+    end
   end
 end
 

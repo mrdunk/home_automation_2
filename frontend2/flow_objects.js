@@ -471,7 +471,7 @@ var FlowObjectMapValues = function(paper, sidebar, shareBetweenShapes, shape){
   shape = shape || paper.box(0, 0, 75, 50, 1, 1, 'crimson');
 
   FlowObject.prototype.constructor.call(this, paper, sidebar, shareBetweenShapes, shape);
-  this.data = { object_name: 'Filter values',
+  this.data = { object_name: 'Map values',
                 description: 'Filter or modify input variables to different output.',
                 data: {
                   general: {
