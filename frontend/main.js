@@ -89,7 +89,7 @@ Mqtt.onMessageArrived = function(message) {
     data = regex_data.exec(message.payloadString)[0];
   }
   if (!data) {
-    console.log('Mqtt.onMessageArrived: Illegal charicter in payload: ' + message.payloadString);
+    console.log('Mqtt.onMessageArrived: Illegal character in payload: ' + message.payloadString);
     return;
   }
 

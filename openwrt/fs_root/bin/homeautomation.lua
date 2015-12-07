@@ -289,8 +289,8 @@ function initilize()
                                                          action = 'drop'} } })
 
     
-    dhcp_watcher:add_output(jess_watcher)
-    dhcp_watcher:add_output(jess_watcher_2)
+    dhcp_watcher:add_output(jess_watcher, 'jess_watcher')
+    dhcp_watcher:add_output(jess_watcher_2, 'jess_watcher_2')
   end
 
   -- Set required files and directories.
@@ -341,7 +341,7 @@ end
 -- eg. Whether mosquitto is running will affect whether this code can use localhost as a broker or if it must look elsewhere.
 function process_list()
     for process, value in pairs(info.host.processes) do
-      local pid_command = "pgrep -f \"\\b" .. process .. "\\b\""  -- "\b" matches a word boundary.
+      local pid_command = "pgrep \"\\b" .. process .. "\\b\""  -- "\b" matches a word boundary.
       local handle = io.popen(pid_command)
       local result = handle:read("*line")
       local results = ''
@@ -382,47 +382,33 @@ function broker_list()
 
   -- Make localhost a broker if appropriate.
   if info.host.processes.mosquitto.enabled == true and info.host.processes.mosquitto.pid ~= "" and info.config.component.mosquitto_update then
-    if not info.brokers.localhost then
-      info.brokers.localhost = {}
-    end
-
-    local found_address
-    for address_index, existing_address in ipairs(info.brokers.localhost) do
-      if existing_address.address == "127.0.0.1" then
-        found_address = true
-        info.brokers.localhost[address_index].port = 1883
-        info.brokers.localhost[address_index].last_updated = os.time()
-        info.brokers.localhost[address_index].reachable = broker_test("localhost", 1883)
-        info.brokers.localhost[address_index].active = info.brokers.localhost[address_index].reachable
-        have_active = info.brokers.localhost[address_index].reachable
-      end
-    end
-
-    if not found_address then
-      local reachable = broker_test("127.0.0.1", 1883)
-      info.brokers.localhost[#info.brokers.localhost +1] = {address = "127.0.0.1", port = 1883, last_updated = os.time(), reachable = reachable, active = reachable}
-      have_active = reachable
-    end
+    info.brokers.localhost = {}
+    have_active = broker_test("127.0.0.1", 1883)
+    info.brokers.localhost[1] = {address = "127.0.0.1", port = 1883, last_updated = os.time(), reachable = have_active, active = have_active}
+  elseif info.brokers.localhost ~= nil and info.brokers.localhost[1] ~= nil then
+    info.brokers.localhost[1].reachable = nil
+    info.brokers.localhost[1].active = nil
   end
 
   -- Check if one of the brokers we already know about is the active one.
   -- Do this now so we don't change brokers as we learn about more.
-  local reachable_broker
   for broker, connections in pairs(info.brokers) do
     if type(connections) == 'table' then
       for index, connection in ipairs(connections) do
-        if connection.active then
-          connection.reachable = broker_test(connection.address, connection.port)
-          connection.active = connection.reachable
-          have_active = connection.reachable
-        end
-      
-        if reachable_broker == nil and connection.reachable then
-          reachable_broker = connection
-          if have_active == nil then
-            print("Make this the active broker: ", connection.address)
+        local reachable = broker_test(connection.address, connection.port)
+        info.brokers[broker][index].reachable = reachable
+        if have_active then
+          -- Already have an active broker.
+          if connection.address ~= "127.0.0.1" then
+            info.brokers[broker][index].active = nil
+          end
+        else
+          -- Don't have an active broker yet.
+          if reachable then
             have_active = true
-            connection.active = true
+            info.brokers[broker][index].active = true
+          else
+            info.brokers[broker][index].active = nil
           end
         end
       end

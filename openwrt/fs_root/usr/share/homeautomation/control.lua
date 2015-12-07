@@ -63,7 +63,13 @@ function component:display()
   end
 end
 
-function component:send_output(data, label)
+function component:send_output(data)
+  for label, _ in pairs(self.data.outputs) do
+    self:send_one_output(data, label)
+  end
+end
+
+function component:send_one_output(data, label)
   --print("component:send_output(", data, label, ")")
   label = label or 'default'
 
@@ -121,7 +127,7 @@ end
 component_field_watcher = component:new()
 
 function component_field_watcher:receive_input(data, label)
-  --print(" *", "component_field_watcher:receive_input(", data, label, ")")
+  print(" *", "component_field_watcher:receive_input(", data, label, ")")
   local reachable, address
   for key, value in pairs(data) do
     --print(" ", key, tostring(value))
@@ -184,6 +190,7 @@ function component_map_values:receive_input(data, l)
   end
 end
 
+-- Used to display data for debug
 function flatten_data(data_in)
   local data_out = ''
   for key, value in pairs(data_in) do
