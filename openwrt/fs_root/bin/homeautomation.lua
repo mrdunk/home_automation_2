@@ -101,7 +101,7 @@ function parse_incoming_data(data)
   local return_table = {}
   local atoms = split(data, ',')
   for _, atom in pairs(atoms) do
-    local key, value = atom:match("^%s*([%w_]+)%s*:%s*([%w_.]+)")
+    local key, value = atom:match("^%s*([%w_]+)%s*:%s*([%w_./]+)")
     if key ~= nil then
       return_table[key] = value
     end
@@ -255,7 +255,7 @@ function initilize()
     --local c1 = component:new()
     --c1:setup('c1')
     
-    --local c2 = component_mqtt_listener:new()
+    --local c2 = component_mqtt_subscribe:new()
     --c2:setup('c2')
 
     --local c3 = component_cache:new()
@@ -272,25 +272,56 @@ function initilize()
     --c1:send_output()
     print('----------')
 
-    local dhcp_watcher = component_mqtt_listener:new()
+    local dhcp_watcher = component_mqtt_subscribe:new()
     dhcp_watcher:setup('dhcp_watcher')
     dhcp_watcher:add_general('subscribed_topic', 'dhcp/_announce')
-    dhcp_watcher:display()
 
-    local jess_watcher = component_field_watcher:new()
+--		local registered_users = component_read_file:new()
+--    registered_users:setup('registered_users')
+--    registered_users:add_general('filename', '/etc/homeautomation/registered_users.conf')
+
+    local jess_watcher = component_map_values:new()
     jess_watcher:setup('jess_watcher')
-
-    local jess_watcher_2 = component_map_values:new()
-    jess_watcher_2:setup('jess_watcher_2')
-    jess_watcher_2:add_input('default', {label = '_address',
-                                         rules = { _a = {match = '192.168.192.200',
+    jess_watcher:add_input('default', {label = '_subject',
+                                         rules = { _a = {match = 'dhcp/ec_9b_f3_83_d9_23',
                                                          action = 'forward'}, 
                                                    _b = {match = '_else', 
                                                          action = 'drop'} } })
 
+    local jess_modifier = component_map_labels:new()
+    jess_modifier:setup('jess_modifier')
+    jess_modifier:add_input('default', {rules = { _a = {match = '_reachable',
+                                                        action = 'string',
+                                                        value = '_command'},
+                                                  _b = {match = '_else',
+                                                         action = 'drop'} } } )
+
+    local jess_modify_value = component_map_values:new()
+    jess_modify_value:setup('jess_modify_value')
+    jess_modify_value:add_input('default', {label = '_command',
+                                          rules = { _a = {match = 'true',
+                                                          action = 'string',
+                                                          value = 'on'},
+                                                    _b = {match = 'false',
+                                                          action = 'string',
+                                                          value = 'off'} } })
+
+    local time_window = component_time_window:new()
+    time_window:setup('time_window')
+    time_window:add_general('start_time', '6')
+    time_window:add_general('end_time', '22')
+    time_window:add_general('within_window', {action = 'forward'})
+    time_window:add_general('outside_window', {action = 'custom', label = '_command', value = 'off'})
     
+    local set_jess_warning_lamp = component_publish:new()
+    set_jess_warning_lamp:setup('set_jess_warning_lamp')
+    set_jess_warning_lamp:add_general('publish_topic', 'lighting/extension/jess_warning_lamp')
+
     dhcp_watcher:add_output(jess_watcher, 'jess_watcher')
-    dhcp_watcher:add_output(jess_watcher_2, 'jess_watcher_2')
+    jess_watcher:add_output(jess_modifier, 'jess_modifier')
+    jess_modifier:add_output(jess_modify_value, 'jess_modify_value')
+		jess_modify_value:add_output(time_window, 'time_window')
+    time_window:add_output(set_jess_warning_lamp)
   end
 
   -- Set required files and directories.

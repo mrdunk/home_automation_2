@@ -23,7 +23,6 @@ end
 
 function component:add_general(label, value)
   label = path_to_var(label)
-  value = path_to_var(value)
 
   self.data.general[label] = value
 end
@@ -91,65 +90,34 @@ end
 
 
 
-component_mqtt_listener = component:new()
+component_mqtt_subscribe = component:new()
 
-function component_mqtt_listener:setup(name)
+function component_mqtt_subscribe:setup(name)
   component.setup(self, name)
   info.mqtt.callbacks[name] = self
 end
 
-function component_mqtt_listener:receive_mqtt(data, label)
-  print(" ", "component_mqtt_listener:receive_input() triggered", label)
+function component_mqtt_subscribe:receive_mqtt(data, label)
+  print(" ", "component_mqtt_subscribe:receive_input() triggered", label)
   self:send_output(data)
 end
 
-function component_mqtt_listener:callback(path, data)
-  --print(" ", "component_mqtt_listener:callback(" .. tostring(path) .. ", " .. tostring(data) .. ")")
+function component_mqtt_subscribe:callback(path, data)
+  --print(" ", "component_mqtt_subscribe:callback(" .. tostring(path) .. ", " .. flatten_data(data) .. ")")
 
   path = var_to_path(path)
   self:receive_mqtt(data, path_to_var(path))
 end
 
-function component_mqtt_listener:subscribe()
+function component_mqtt_subscribe:subscribe()
   local subscritions = {}
-  local path = self.data.general.subscribed_topic
+  local path = path_to_var(self.data.general.subscribed_topic)
   local role, address = path:match('(.-)__(.+)')
   if role and address then
     subscritions[#subscritions +1] = {role = role, address = address}
   end
 
   return subscritions
-end
-
-
-
--- TODO much temporary stuff here to hard code the christmas tree lights
-component_field_watcher = component:new()
-
-function component_field_watcher:receive_input(data, label)
-  print(" *", "component_field_watcher:receive_input(", data, label, ")")
-  local reachable, address
-  for key, value in pairs(data) do
-    --print(" ", key, tostring(value))
-    if key == '_reachable' then
-      reachable = value
-    elseif key == '_address' then
-      address = value
-    end
-  end
-
-  if address == '192.168.192.200' then
-    local hour = tonumber(os.date('%H'))
-    local topic = 'homeautomation/0/lighting/extension/jess_warning_lamp'
-    local payload = '_command:'
-    if reachable == 'true' and hour >= 6 and hour <= 22 then
-      payload = payload .. 'on'
-    else
-      payload = payload .. 'off'
-    end
-    print('####', topic, payload)
-    mqtt_instance:publish(topic, payload)
-  end
 end
 
 
@@ -166,6 +134,7 @@ function component_map_values:receive_input(data, l)
     if label == data_label then
       found_label = label
       found_value = data_value
+      print(" ~~", found_label, found_value)
     end
   end
 
@@ -189,6 +158,101 @@ function component_map_values:receive_input(data, l)
     end
   end
 end
+
+
+component_map_labels = component:new()
+
+function component_map_labels:receive_input(data, l)
+  print(" ==", "component_map_labels:receive_input(", data, l, ")")
+  local forward_data = {}
+  local rules = self.data.inputs.default.rules
+
+  for data_label, data_value in pairs(data) do
+    for _, rule in pairs(rules) do
+      if rule.match == data_label or rule.match == '_else' then
+        if rule.action == 'forward' then
+          forward_data[data_label] = data_value
+          break
+        elseif rule.action == 'string' then
+          forward_data[rule.value] = data_value
+          break
+        elseif rule.action == 'drop' then
+          break
+        end
+      end
+    end
+  end
+  print("=====", flatten_data(forward_data))
+  self:send_output(forward_data)
+end
+
+
+component_time_window = component:new()
+
+function component_time_window:receive_input(data, l)
+	-- TODO: Make 2 outputs: one for within_window and one for outside_window.
+  -- TODO: Make this re-send last received data whenever we tick over to within_window/outside_window.
+
+  print(" @@", "component_time_window:receive_input(", data, l, ")")
+  self.last_data = data
+
+	local forward_data = {}
+
+  if in_time_window(tonumber(self.data.general.start_time), tonumber(self.data.general.end_time), tonumber(os.date('%H'))) then
+    if self.data.general.within_window.action == 'forward' then
+      forward_data = data
+    elseif self.data.general.within_window.action == 'custom' then
+      local label = self.data.general.within_window.label
+      local value = self.data.general.within_window.value
+			if label ~= nil and value ~= nil then
+	      forward_data[label] = value
+			end
+    end
+  else
+    if self.data.general.outside_window.action == 'forward' then
+      forward_data = data
+    elseif self.data.general.outside_window.action == 'custom' then
+      local label = self.data.general.outside_window.label
+      local value = self.data.general.outside_window.value
+      if label ~= nil and value ~= nil then
+	      forward_data[label] = value
+			end
+    end
+	end
+	print("@@@@@", flatten_data(forward_data))
+	self:send_output(forward_data)
+end
+
+function in_time_window(time_start, time_end, time_now)
+	while time_now >= 24 do
+		time_now = time_now - 24
+	end
+
+  if time_start < time_end then
+    if time_start <= time_now and time_end > time_now then
+      return true
+    end
+  else
+		-- Time window straddles midnight.
+    if time_start <= time_now and 24 > time_now then
+      return true
+    elseif 0 <= time_now and time_end > time_now then
+      return true
+    end
+	end
+
+  return false
+end
+
+
+component_publish = component:new()
+function component_publish:receive_input(data, l)
+	local topic = 'homeautomation/0/' .. self.data.general.publish_topic
+	local payload = flatten_data(data)
+	print("&&&&& component_publish:receive_input:", topic, payload)
+	mqtt_instance:publish(topic, payload)
+end
+
 
 -- Used to display data for debug
 function flatten_data(data_in)

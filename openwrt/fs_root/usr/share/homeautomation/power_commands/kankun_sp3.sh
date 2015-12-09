@@ -14,7 +14,7 @@ elif [ "$2" == "off" ]; then
   echo "switching OFF"
   echo 0 > /sys/class/leds/tp-link:blue:relay/brightness && echo off > /tmp/homeautomation/$1
 elif [ "$2" == "query" ]; then
-  if [ $(cat /sys/class/leds/tp-link:blue:relay/brightness) == "1" ] ; then
+  if [ "$(cat /sys/class/leds/tp-link:blue:relay/brightness)" == "1" ] ; then
     echo on
   else
     echo off
