@@ -1,8 +1,8 @@
 #!/usr/bin/lua
 
 
---local DEVICE_CONFIG = '/etc/homeautomation/trigger_dhcp.conf'
 local DHCP_FILE = '/tmp/dhcp.leases'
+
 
 local dhcp_parser = {}
 dhcp_parser.__index = dhcp_parser

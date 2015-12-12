@@ -1,6 +1,47 @@
 #!/usr/bin/lua
 
+info.components = {}
 
+
+local control = {}
+control.__index = control
+
+function control.new()
+  print("control.new()")
+  local self = setmetatable({}, control)
+
+	-- init stuff here.
+
+  return self
+end
+
+function control:subscribe()
+	local subscriptions = {}
+
+	subscriptions[#subscriptions +1] = {role = 'component', address = 'test'}
+
+	return subscriptions
+end
+
+-- Publishes topics this module knows about. 
+function control:announce()
+  print("control:announce()")
+  local topic = "homeautomation/0/control/_announce"
+
+	for component_name, component in pairs(info.components) do
+		local payload = flatten_data(component)
+	  mqtt_instance:publish(topic, payload)
+	end
+end
+
+-- This gets called whenever a topic this module is subscribed to appears on the bus.
+function control:callback(path, incoming_data)
+end
+
+
+
+
+-- Parent class.
 component = {}
 
 function component:new(o)
@@ -19,6 +60,18 @@ function component:setup(name)
   self.data.general = {}
   self.data.inputs = {default = {}}
   self.data.outputs = {default = {}}
+
+  -- Add number to any duplicate names.
+  local count = 0
+  while info.components[name] ~= nil do
+    count = count +1
+    name = self.name .. '-' .. tostring(count)
+  end
+  if self.name ~= name then
+    info.components[name] = "ERROR: Duplicate name."
+    return
+  end
+  info.components[name] = self
 end
 
 function component:add_general(label, value)
@@ -43,13 +96,13 @@ function component:add_output(output, label)
   end
 
   local found
-  for index in next, self.data.outputs[label] do
-    if self.data.outputs[label][index] == output then
+  for index, existing_output in pairs(self.data.outputs[label]) do
+    if existing_output == output.name then
       found = true
     end
   end
   if found == nil then
-    self.data.outputs[label][#self.data.outputs +1] = output
+    self.data.outputs[label][#self.data.outputs[label] +1] = output.name
   end
 end
 
@@ -68,13 +121,14 @@ function component:send_output(data)
   end
 end
 
+-- Send data to only one of the targets.
 function component:send_one_output(data, label)
   --print("component:send_output(", data, label, ")")
   label = label or 'default'
 
   if self.data.outputs[label] then
-    for _, target in pairs(self.data.outputs[label]) do
-      target:receive_input(data, label)
+    for _, target_name in pairs(self.data.outputs[label]) do
+      info.components[target_name]:receive_input(data, label)
     end
   end
 end
@@ -124,7 +178,7 @@ end
 component_map_values = component:new()
 
 function component_map_values:receive_input(data, l)
-  print(" ~~", "component_map_values:receive_input(", data, l, ")")
+  print(" ~~", "component_map_values:receive_input(", flatten_data(data), l, ")")
   local label = self.data.inputs.default.label
   local rules = self.data.inputs.default.rules
 
@@ -139,9 +193,10 @@ function component_map_values:receive_input(data, l)
   end
 
   for _, rule in pairs(rules) do
-    if rule.match == found_value or rule.match == '_else' or (rule.match == '_missing' and found_label == nil) then
+    -- TODO: We force everything to be a string here to handle booleans... Think about the implications of this.
+    if tostring(rule.match) == tostring(found_value) or rule.match == '_else' or (rule.match == '_missing' and found_label == nil) then
       if rule.action == 'forward' then
-        print("~~~~~", 'forward', found_label, found_value)
+        print("~~~~~", rule.match, 'forward', found_label, found_value)
         print("~~~~~", flatten_data(data))
         self:send_output(data)
         break
@@ -152,7 +207,7 @@ function component_map_values:receive_input(data, l)
         self:send_output(data)
         break
       elseif rule.action == 'drop' then
-        print("~~~~~", 'drop')
+        print("~~~~~", rule.match, 'drop')
         break
       end
     end
@@ -190,13 +245,13 @@ end
 component_time_window = component:new()
 
 function component_time_window:receive_input(data, l)
-	-- TODO: Make 2 outputs: one for within_window and one for outside_window.
+  -- TODO: Make 2 outputs: one for within_window and one for outside_window.
   -- TODO: Make this re-send last received data whenever we tick over to within_window/outside_window.
 
   print(" @@", "component_time_window:receive_input(", data, l, ")")
   self.last_data = data
 
-	local forward_data = {}
+  local forward_data = {}
 
   if in_time_window(tonumber(self.data.general.start_time), tonumber(self.data.general.end_time), tonumber(os.date('%H'))) then
     if self.data.general.within_window.action == 'forward' then
@@ -204,9 +259,9 @@ function component_time_window:receive_input(data, l)
     elseif self.data.general.within_window.action == 'custom' then
       local label = self.data.general.within_window.label
       local value = self.data.general.within_window.value
-			if label ~= nil and value ~= nil then
-	      forward_data[label] = value
-			end
+      if label ~= nil and value ~= nil then
+        forward_data[label] = value
+      end
     end
   else
     if self.data.general.outside_window.action == 'forward' then
@@ -246,6 +301,7 @@ end
 
 
 component_publish = component:new()
+
 function component_publish:receive_input(data, l)
 	local topic = 'homeautomation/0/' .. self.data.general.publish_topic
 	local payload = flatten_data(data)
@@ -254,14 +310,146 @@ function component_publish:receive_input(data, l)
 end
 
 
--- Used to display data for debug
-function flatten_data(data_in)
-  local data_out = ''
-  for key, value in pairs(data_in) do
-    data_out = data_out .. key .. ' : ' .. value .. ' , '
-  end
+component_read_file = component:new()
 
-  return data_out:sub(0, -3)
+function component_read_file:add_output(output, label)
+  component.add_output(self, output, label)
+
+  -- First check file and read if new data:
+  self:parse_data_from_file()
+
+  -- Now send data.
+  self:send_output()
+end
+
+function component_read_file:parse_data_from_file()
+	local filename = self.data.general.filename
+
+  if is_file_or_dir(filename) then
+    local file_last_read_at = file_mod_time(filename)
+    if file_last_read_at ~= self.file_last_read_at then
+      self.file_last_read_at = file_last_read_at
+      self.data_entries = {}
+      local file_handle = io.input(filename)
+      for line in io.lines() do
+        table.insert(self.data_entries, line)
+      end
+      file_handle:close()
+    end
+  end
+end
+
+function component_read_file:receive_input(data, input_label)
+	-- If data is sent to this Component, make it send data.
+
+  local match_data_label = self.data.general.match_data_label
+  local match_data_value = self.data.general.match_data_value
+
+  if match_data_label ~= nil and data[match_data_label] == nil then
+		-- Requested label not in incoming data.
+    return
+  end
+	if match_data_label ~= nil and match_data_value == nil then
+		-- Value has not been specified so match all entries equal to the one in data.
+		match_data_value = data[match_data_label]
+	end
+
+  -- First check file and read if new data:
+  self:parse_data_from_file()
+  -- Now send data.
+  self:send_output(match_data_label, match_data_value)
+end
+
+function component_read_file:send_output(match_data_label, match_data_value)
+  for _, file_data in pairs(self.data_entries) do
+    local parsed_file_data = parse_payload(file_data)
+    if parsed_file_data then
+      if match_data_label == nil or parsed_file_data[match_data_label] == match_data_value then
+        print('+++++', match_data_label, match_data_value, flatten_data(parsed_file_data))
+	      component.send_output(self, parsed_file_data)
+      end
+    end
+  end
 end
 
 
+component_combine = component:new()
+
+function component_combine:setup(name)
+  component.setup(self, name)
+  self.data.data = {}
+end
+
+function component_combine:receive_input(data, input_label)
+  local primary_key_label = self.data.general.primary_key_label
+
+  if data[primary_key_label] ~= nil then
+    local primary_key = data[primary_key_label]
+    for label, value in pairs(data) do
+      if self.data.data[primary_key] == nil then
+        self.data.data[primary_key] = {}
+      end
+      self.data.data[primary_key][label] = value
+    end
+    print("-----", flatten_data(self.data.data[primary_key]))
+		self:send_output(self.data.data[primary_key])
+  end
+end
+
+
+component_add_messages  = component:new()
+
+function component_add_messages:setup(name)
+  component.setup(self, name)
+  self.data.data = {}
+end
+
+function component_add_messages:receive_input(data, input_label)
+  print("'''''", flatten_data(data))
+	local primary_key_label = self.data.general.primary_key_label
+
+	if data[primary_key_label] ~= nil then
+    local primary_key = data[primary_key_label]
+    for label, value in pairs(data) do
+      if self.data.data[primary_key] == nil then
+        self.data.data[primary_key] = {}
+      end
+      self.data.data[primary_key][label] = value
+    end
+  end
+
+	local combined_entry = {}
+	for _, entry in pairs(self.data.data) do
+		for label, value in pairs(entry) do
+			if label ~= primary_key_label then
+				if tonumber(value) ~= nil and (combined_entry[label] == nil or type(combined_entry[label]) == number) then
+					if combined_entry[label] == nil then
+						combined_entry[label] = 0
+					end
+					combined_entry[label] = combined_entry[label] + tonumber(value)
+        elseif (value == 'true' or value == 'false') and (combined_entry[label] == nil or type(combined_entry[label]) == boolean) then
+          if combined_entry[label] == nil then
+            combined_entry[label] = false
+          end
+          combined_entry[label] = combined_entry[label] or (value == 'true')
+				end
+			end
+		end
+	end
+	print("'''''", flatten_data(combined_entry))
+	self:send_output(combined_entry)
+end
+
+
+function flatten_data(data_in)
+  if data_in then
+    local data_out = ''
+    for key, value in pairs(data_in) do
+      data_out = data_out .. key .. ' : ' .. tostring(value) .. ' , '
+    end
+
+    return data_out:sub(0, -3)
+  end
+end
+
+return control

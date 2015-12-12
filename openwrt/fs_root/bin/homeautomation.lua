@@ -47,7 +47,7 @@ function mqtt_instance_ON_MESSAGE(mid, topic, payload)
 
   -- Only match alphanumeric characters and a very limited range of special characters here to prevent easy injection type attacks.
   local unique_ID, incoming_broker_level, incoming_role, incoming_address = string.match(topic, "^([%w_%-]+)/([%w_%-]+)/([%w_%-]+)/([%w_%-/]+)")
-  local incoming_data = parse_incoming_data(payload)
+  local incoming_data = parse_payload(payload)
 
   -- Now we have parsed topic and payload, lets remove the temptation to use them again.
   topic = nil
@@ -97,16 +97,27 @@ function mqtt_instance_ON_CONNECT()
   end
 end
 
-function parse_incoming_data(data)
+function parse_payload(data)
   local return_table = {}
   local atoms = split(data, ',')
+  local valid_data
+  
   for _, atom in pairs(atoms) do
     local key, value = atom:match("^%s*([%w_]+)%s*:%s*([%w_./]+)")
+    if key == nil then
+      -- Values with whitespace in them bust be surrounded by quotes. (")
+      key, value = atom:match("^%s*([%w_]+)%s*:%s*\"([%s%w_./]+)\"")
+    end
     if key ~= nil then
+      valid_data = true
       return_table[key] = value
     end
   end
-  return return_table
+
+  if valid_data == true then
+    return return_table
+  end
+  return nil
 end
 
 function subscribe_to_all(class_instance, role, address)
@@ -251,6 +262,11 @@ function initilize()
 
   if is_file_or_dir('/usr/share/homeautomation/control.lua') then
     local control_class = require 'control'
+    if control_class then
+      info.config.component.control = true
+      control_instance = control_class:new()
+      info.mqtt.callbacks['control'] = control_instance
+
     
     --local c1 = component:new()
     --c1:setup('c1')
@@ -276,35 +292,44 @@ function initilize()
     dhcp_watcher:setup('dhcp_watcher')
     dhcp_watcher:add_general('subscribed_topic', 'dhcp/_announce')
 
---		local registered_users = component_read_file:new()
---    registered_users:setup('registered_users')
---    registered_users:add_general('filename', '/etc/homeautomation/registered_users.conf')
+    local registered_users = component_read_file:new()
+    registered_users:setup('registered_users')
+    --registered_users:add_general('match_data_label', '_subject')
+    registered_users:add_general('filename', '/etc/homeautomation/registered_users.conf')
 
-    local jess_watcher = component_map_values:new()
-    jess_watcher:setup('jess_watcher')
-    jess_watcher:add_input('default', {label = '_subject',
-                                         rules = { _a = {match = 'dhcp/ec_9b_f3_83_d9_23',
-                                                         action = 'forward'}, 
-                                                   _b = {match = '_else', 
-                                                         action = 'drop'} } })
+    local consolidate = component_combine:new()
+    consolidate:setup("consolidate")
+    consolidate:add_general('primary_key_label', '_subject')
 
-    local jess_modifier = component_map_labels:new()
-    jess_modifier:setup('jess_modifier')
-    jess_modifier:add_input('default', {rules = { _a = {match = '_reachable',
+    local someone_home = component_map_values:new()
+    someone_home:setup('someone_home')
+    someone_home:add_input('default', {label = '_user_name',
+                                         rules = { _a = {match = '_missing',
+                                                         action = 'drop'},
+                                                   _b = {match = '_else',
+                                                         action = 'forward'} } })
+
+    local combine_users = component_add_messages:new()
+    combine_users:setup("combine_users")
+    combine_users:add_general('primary_key_label', '_subject')
+
+    local modify_label = component_map_labels:new()
+    modify_label:setup('modify_label')
+    modify_label:add_input('default', {rules = { _a = {match = '_reachable',
                                                         action = 'string',
                                                         value = '_command'},
                                                   _b = {match = '_else',
                                                          action = 'drop'} } } )
 
-    local jess_modify_value = component_map_values:new()
-    jess_modify_value:setup('jess_modify_value')
-    jess_modify_value:add_input('default', {label = '_command',
-                                          rules = { _a = {match = 'true',
-                                                          action = 'string',
-                                                          value = 'on'},
-                                                    _b = {match = 'false',
-                                                          action = 'string',
-                                                          value = 'off'} } })
+    local modify_value = component_map_values:new()
+    modify_value:setup('modify_value')
+    modify_value:add_input('default', {label = '_command',
+                                       rules = { _a = {match = 'true',
+                                                       action = 'string',
+                                                       value = 'on'},
+                                                 _b = {match = 'false',
+                                                       action = 'string',
+                                                       value = 'off'} } })
 
     local time_window = component_time_window:new()
     time_window:setup('time_window')
@@ -312,17 +337,25 @@ function initilize()
     time_window:add_general('end_time', '22')
     time_window:add_general('within_window', {action = 'forward'})
     time_window:add_general('outside_window', {action = 'custom', label = '_command', value = 'off'})
-    
+ 
     local set_jess_warning_lamp = component_publish:new()
     set_jess_warning_lamp:setup('set_jess_warning_lamp')
     set_jess_warning_lamp:add_general('publish_topic', 'lighting/extension/jess_warning_lamp')
 
-    dhcp_watcher:add_output(jess_watcher, 'jess_watcher')
-    jess_watcher:add_output(jess_modifier, 'jess_modifier')
-    jess_modifier:add_output(jess_modify_value, 'jess_modify_value')
-		jess_modify_value:add_output(time_window, 'time_window')
-    time_window:add_output(set_jess_warning_lamp)
+    --dhcp_watcher:add_output(registered_users, 'default_in')
+    registered_users:add_output(consolidate, 'default_in')
+    dhcp_watcher:add_output(consolidate, 'default_in')
+    consolidate:add_output(someone_home, 'default_in')
+    someone_home:add_output(combine_users, 'default_in')
+    combine_users:add_output(modify_label, 'default_in')
+
+    modify_label:add_output(modify_value, 'default_in')
+    modify_value:add_output(time_window, 'default_in')
+--    modify_label:add_output(time_window, 'default_in')
+
+    time_window:add_output(set_jess_warning_lamp, 'default_in')
   end
+	end
 
   -- Set required files and directories.
   if not is_file_or_dir(WEB_DIR) then
