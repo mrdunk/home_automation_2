@@ -1,5 +1,8 @@
 #!/usr/bin/lua
 
+-- # opkg install luci-lib-json
+local json = require "luci.json"
+
 info.components = {}
 
 
@@ -18,7 +21,7 @@ end
 function control:subscribe()
 	local subscriptions = {}
 
-	subscriptions[#subscriptions +1] = {role = 'component', address = 'test'}
+	subscriptions[#subscriptions +1] = {role = 'component', address = 'current'}
 
 	return subscriptions
 end
@@ -29,19 +32,30 @@ function control:announce()
   local topic = "homeautomation/0/control/_announce"
 
 	for component_name, component in pairs(info.components) do
-		local payload = flatten_data(component)
+		local payload = json.encode(component)
 	  mqtt_instance:publish(topic, payload)
 	end
 end
 
 -- This gets called whenever a topic this module is subscribed to appears on the bus.
 function control:callback(path, incoming_data)
+	print("control:callback(", path, incoming_data, ")")
+  path = var_to_path(path)
+  local role, address = path:match('(.-)/(.+)')
+  if role == '_all' then
+    role = 'control'
+  end
+
+	local incoming_command = incoming_data._command
+	if incoming_command == 'solicit' then
+		self:announce()
+	end
 end
 
 
 
 
--- Parent class.
+-- Parent class for control components.
 component = {}
 
 function component:new(o)
@@ -54,8 +68,9 @@ function component:new(o)
   return o
 end
 
-function component:setup(name)
-  self.name = name
+function component:setup(class_name, instance_name)
+  self.class_name = class_name
+  self.instance_name = instance_name
   self.data = {}
   self.data.general = {}
   self.data.inputs = {default = {}}
@@ -63,15 +78,15 @@ function component:setup(name)
 
   -- Add number to any duplicate names.
   local count = 0
-  while info.components[name] ~= nil do
+  while info.components[instance_name] ~= nil do
     count = count +1
-    name = self.name .. '-' .. tostring(count)
+    instance_name = self.instance_name .. '-' .. tostring(count)
   end
-  if self.name ~= name then
-    info.components[name] = "ERROR: Duplicate name."
+  if self.instance_name ~= instance_name then
+    info.components[instance_name] = "ERROR: Duplicate instance_name."
     return
   end
-  info.components[name] = self
+  info.components[instance_name] = self
 end
 
 function component:add_general(label, value)
@@ -97,20 +112,24 @@ function component:add_output(output, label)
 
   local found
   for index, existing_output in pairs(self.data.outputs[label]) do
-    if existing_output == output.name then
+    if existing_output == output.instance_name then
       found = true
     end
   end
   if found == nil then
-    self.data.outputs[label][#self.data.outputs[label] +1] = output.name
+    self.data.outputs[label][#self.data.outputs[label] +1] = output.instance_name
   end
 end
 
+function component:serialise()
+	
+end
+
 function component:display()
-  print('Name: ' .. self.name)
+  print('Name: ' .. self.instance_name)
   for label, targets in pairs(self.data.outputs) do
     for _, target in pairs(targets) do
-      print('  Output ' .. label .. ': ' .. target.name)
+      print('  Output ' .. label .. ': ' .. target.instance_name)
     end
   end
 end
@@ -146,9 +165,9 @@ end
 
 component_mqtt_subscribe = component:new()
 
-function component_mqtt_subscribe:setup(name)
-  component.setup(self, name)
-  info.mqtt.callbacks[name] = self
+function component_mqtt_subscribe:setup(class_name, instance_name)
+  component.setup(self, class_name, instance_name)
+  info.mqtt.callbacks[instance_name] = self
 end
 
 function component_mqtt_subscribe:receive_mqtt(data, label)
@@ -375,8 +394,8 @@ end
 
 component_combine = component:new()
 
-function component_combine:setup(name)
-  component.setup(self, name)
+function component_combine:setup(class_name, instance_name)
+  component.setup(self, class_name, instance_name)
   self.data.data = {}
 end
 
@@ -399,8 +418,8 @@ end
 
 component_add_messages  = component:new()
 
-function component_add_messages:setup(name)
-  component.setup(self, name)
+function component_add_messages:setup(class_name, instance_name)
+  component.setup(self, class_name, instance_name)
   self.data.data = {}
 end
 

@@ -289,20 +289,20 @@ function initilize()
     print('----------')
 
     local dhcp_watcher = component_mqtt_subscribe:new()
-    dhcp_watcher:setup('dhcp_watcher')
+    dhcp_watcher:setup('component_mqtt_subscribe', 'dhcp_watcher')
     dhcp_watcher:add_general('subscribed_topic', 'dhcp/_announce')
 
     local registered_users = component_read_file:new()
-    registered_users:setup('registered_users')
+    registered_users:setup('component_read_file', 'registered_users')
     --registered_users:add_general('match_data_label', '_subject')
     registered_users:add_general('filename', '/etc/homeautomation/registered_users.conf')
 
     local consolidate = component_combine:new()
-    consolidate:setup("consolidate")
+    consolidate:setup('component_combine', 'consolidate')
     consolidate:add_general('primary_key_label', '_subject')
 
     local someone_home = component_map_values:new()
-    someone_home:setup('someone_home')
+    someone_home:setup('component_map_values', 'someone_home')
     someone_home:add_input('default', {label = '_user_name',
                                          rules = { _a = {match = '_missing',
                                                          action = 'drop'},
@@ -310,11 +310,11 @@ function initilize()
                                                          action = 'forward'} } })
 
     local combine_users = component_add_messages:new()
-    combine_users:setup("combine_users")
+    combine_users:setup('component_add_messages', 'combine_users')
     combine_users:add_general('primary_key_label', '_subject')
 
     local modify_label = component_map_labels:new()
-    modify_label:setup('modify_label')
+    modify_label:setup('component_map_labels', 'modify_label')
     modify_label:add_input('default', {rules = { _a = {match = '_reachable',
                                                         action = 'string',
                                                         value = '_command'},
@@ -322,7 +322,7 @@ function initilize()
                                                          action = 'drop'} } } )
 
     local modify_value = component_map_values:new()
-    modify_value:setup('modify_value')
+    modify_value:setup('component_map_values', 'modify_value')
     modify_value:add_input('default', {label = '_command',
                                        rules = { _a = {match = 'true',
                                                        action = 'string',
@@ -332,14 +332,14 @@ function initilize()
                                                        value = 'off'} } })
 
     local time_window = component_time_window:new()
-    time_window:setup('time_window')
+    time_window:setup('component_time_window', 'time_window')
     time_window:add_general('start_time', '6')
     time_window:add_general('end_time', '22')
     time_window:add_general('within_window', {action = 'forward'})
     time_window:add_general('outside_window', {action = 'custom', label = '_command', value = 'off'})
  
     local set_jess_warning_lamp = component_publish:new()
-    set_jess_warning_lamp:setup('set_jess_warning_lamp')
+    set_jess_warning_lamp:setup('component_publish', 'set_jess_warning_lamp')
     set_jess_warning_lamp:add_general('publish_topic', 'lighting/extension/jess_warning_lamp')
 
     --dhcp_watcher:add_output(registered_users, 'default_in')
@@ -525,7 +525,7 @@ function local_network()
     proc_handle:close()
 
     for interface in pairs(info.host.interfaces) do
-      local ifconfig_command = 'ifconfig ' .. interface .. ' | grep "HWaddr\\|inet"'
+      local ifconfig_command = 'ifconfig ' .. interface .. ' | grep -E "HWaddr\|inet"'
       local ifconfig_handle = io.popen(ifconfig_command)
       local result = ifconfig_handle:read("*line")
       while result do
@@ -587,10 +587,12 @@ function _itterate_info(info_branch, key, output)
       end
     end
     if table_populated == nil then
-      output = output .. key .. ' : ' .. tostring(info_branch) .. '\r\n'
+      local table_string = tostring(info_branch)
+      table_string = table_string:gsub('^table: (.*)', '%1')
+      output = output .. key .. ' : (table)' .. table_string .. '\r\n'
     end
   else
-    output = output .. key .. ' : ' .. tostring(info_branch) .. '\r\n'
+    output = output .. key .. ' : (' .. type(info_branch) .. ')' .. tostring(info_branch) .. '\r\n'
   end
   return output
 end

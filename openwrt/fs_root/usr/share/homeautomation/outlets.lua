@@ -178,7 +178,6 @@ function outlets:operate_one(role, address, incoming_data)
     elseif incoming_command == "solicit" then
       device_announce(role, address, command)
     end
-
   end
 end
 
