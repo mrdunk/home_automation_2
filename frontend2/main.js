@@ -33,6 +33,9 @@ var Data = { mqtt_data: {} };
 
 Data.storeIncomingMqtt = function(topic, data) {
   'use strict';
+  if(topic === undefined || data === undefined) {
+    return
+  }
   topic = topic.split('/').slice(2).join('/');
 
   if(Data.mqtt_data[topic] === undefined){
@@ -107,6 +110,7 @@ Data.getLabels = function(){
 
 var Mqtt = {};
 Mqtt.reconnectTimeout = 2000;
+Mqtt.regex_topic = /^(\w+\/?)+$/ ;
 
 Mqtt.MQTTconnect = function() {
   'use strict';
@@ -152,31 +156,43 @@ Mqtt.onConnectionLost = function(response) {
 Mqtt.onMessageArrived = function(message) {
   'use strict';
   // Make sure topic looks like valid MQTT addresses.
-  var regex_topic = /^(\w+\/?)+$/ ;
   var topic;
-  if (message.destinationName.match(regex_topic)) {
-    topic = regex_topic.exec(message.destinationName)[0];
+  if (message.destinationName.match(Mqtt.regex_topic)) {
+    topic = Mqtt.regex_topic.exec(message.destinationName)[0];
   }
   if (!topic) {
     console.log('Mqtt.onMessageArrived: Malformed topic: ' + message.destinationName);
     return;
   }
 
-  var data;
-  var regex_data = /^s*([\s\w\/:,._]+)s*$/ ;
-  if (message.payloadString.match(regex_data)) {
-    data = regex_data.exec(message.payloadString)[0];
-  }
-  if (!data) {
-    console.log('Mqtt.onMessageArrived: Illegal charicter in payload: ' + message.payloadString);
-    return;
+  var data_object = Mqtt.data_to_object(message.payloadString);
+  if (typeof data_object !== 'object') {
+    try {
+      // Try and see if it's JSON encoded:
+      data_object = JSON.parse(message.payloadString);
+    }
+    catch (e) { 
+      console.log('Mqtt.onMessageArrived: Illegal charicter in payload: ' + message.payloadString);
+      return;
+    }
   }
 
-  // data will be a list of key:value pairs, separated by a colon (:).
+  console.log(topic + ' = ', data_object);
+  Data.storeIncomingMqtt(topic, data_object);
+}
+
+Mqtt.data_to_object = function(data) {
+  // data should be a list of key:value pairs, separated by a colon (:).
   // eg the following is valid:
   //    _subject : users/104167545338599232229, _count : 1, _display_name : Duncan Law
   // Ideally there will be a _subject key and the value should be a valid topic fragment.
   // If no _subject is set, we can presume the packet applies to the address of the topic.
+  var regex_data = /^s*([\s\w\/:,._]+)s*$/ ;
+  if (data.match(regex_data)) {
+    data = regex_data.exec(data)[0];
+  } else {
+    return
+  }
   data = data.replace(/:/g, ' : ');
   data = data.replace(/,/g, ' , ');
   data = data.split(' ');
@@ -184,6 +200,7 @@ Mqtt.onMessageArrived = function(message) {
   var data_object = {};
   var key_or_val;
   for(var index in data){
+
     if (data[index] === ''){
       // pass.
     } else if(!key_or_val){
@@ -207,13 +224,12 @@ Mqtt.onMessageArrived = function(message) {
 
   // The "_subject" in data_object refers to the target that this MQTT packet is about and
   // should also look like a topic.
-  if (!data_object._subject.match(regex_topic)) {
+  if (!data_object._subject.match(Mqtt.regex_topic)) {
     console.log('Mqtt.onMessageArrived: Malformed _subject: ' + data_object._subject);
     return;
   }
 
-  console.log(topic + ' = ', data_object);
-  Data.storeIncomingMqtt(topic, data_object);
+  return data_object
 };
 
 Mqtt.send = function(send_topic, data) {

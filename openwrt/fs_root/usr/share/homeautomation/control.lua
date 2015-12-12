@@ -40,6 +40,10 @@ end
 -- This gets called whenever a topic this module is subscribed to appears on the bus.
 function control:callback(path, incoming_data)
 	print("control:callback(", path, incoming_data, ")")
+  if path == nil or incoming_data == nil then 
+    return
+  end
+
   path = var_to_path(path)
   local role, address = path:match('(.-)/(.+)')
   if role == '_all' then
@@ -71,6 +75,10 @@ end
 function component:setup(class_name, instance_name)
   self.class_name = class_name
   self.instance_name = instance_name
+
+  -- self._subject is the unique identifier on the web interface.
+  self._subject = 'control/' .. instance_name
+  
   self.data = {}
   self.data.general = {}
   self.data.inputs = {default = {}}
@@ -135,6 +143,10 @@ function component:display()
 end
 
 function component:send_output(data)
+  if data == nil then
+    return
+  end
+
   for label, _ in pairs(self.data.outputs) do
     self:send_one_output(data, label)
   end

@@ -48,6 +48,9 @@ function mqtt_instance_ON_MESSAGE(mid, topic, payload)
   -- Only match alphanumeric characters and a very limited range of special characters here to prevent easy injection type attacks.
   local unique_ID, incoming_broker_level, incoming_role, incoming_address = string.match(topic, "^([%w_%-]+)/([%w_%-]+)/([%w_%-]+)/([%w_%-/]+)")
   local incoming_data = parse_payload(payload)
+  if incoming_data == nil then
+    return
+  end
 
   -- Now we have parsed topic and payload, lets remove the temptation to use them again.
   topic = nil
