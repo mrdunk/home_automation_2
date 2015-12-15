@@ -56,6 +56,7 @@ Data.storeIncomingMqtt = function(topic, data) {
     Data.mqtt_data[topic].push(data);
   }
 
+  dataReceived(topic, data);
   Data.cleanOutOfDateMqtt(MQTT_CACHE_TIME);
 };
 
@@ -280,6 +281,7 @@ function ExpandTopicsObject(input_topics){
   topic_object['#'] = {};
   return topic_object;
 }
+
 function ExpandTopicsList(topic_object){
   'use strict';
   if(Array.isArray(topic_object)){
@@ -302,6 +304,7 @@ function ExpandTopicsList(topic_object){
   }
   return topic_list;
 }
+
 Data.ExpandTopics = function(topic_list){
   'use strict';
   topic_list = ExpandTopicsList(topic_list);

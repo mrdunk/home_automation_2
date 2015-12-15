@@ -3,6 +3,26 @@
 
 INPUT_PORT = { description: 'Trigger label', value: '_any', updater: 'ha-general-attribute' };
 
+var getFlowObjectByUniqueId = function(unique_id){
+  var flowObjects = document.getElementsByTagName('ha-control')[0].flowObjects;
+  for(index in flowObjects){
+    if(flowObjects[index].unique_id === unique_id){
+      return flowObjects[index]
+    }
+  }
+  return
+}
+
+var getFlowObjectByInstanceName = function(instance_name){
+  var flowObjects = document.getElementsByTagName('ha-control')[0].flowObjects;
+  for(index in flowObjects){
+    if(flowObjects[index].data.data.general.instance_name.value === instance_name){
+      return flowObjects[index]
+    }
+  }
+  return
+}
+
 var FlowObject = function(paper, sidebar, shareBetweenShapes, shape){
   'use strict';
   console.log('FlowObject');
@@ -18,11 +38,28 @@ var FlowObject = function(paper, sidebar, shareBetweenShapes, shape){
   this.shape.mouseover(this.onmouseover);
   this.shape.mouseout(this.onmouseout);
   this.shape.mouseup(this.onmouseup);
+
   this.shareBetweenShapes.unique_id++;
   this.unique_id = this.shareBetweenShapes.unique_id;
 };
 
-FlowObject.prototype.setup = function(){
+FlowObject.prototype.setInstanceName = function(instance_name){
+  instance_name = instance_name || 'Object_' + this.shareBetweenShapes.unique_id
+  var flowObjects = document.getElementsByTagName('ha-control')[0].flowObjects;
+  var append_to_name = 1;
+  var instance_name_base = instance_name;
+
+  while(this.data.data.general.instance_name.value !== instance_name){
+    if(getFlowObjectByInstanceName(instance_name) === undefined){
+      this.data.data.general.instance_name.value = instance_name;
+      break;
+		}
+    append_to_name++;
+    instance_name = instance_name_base + '_' + append_to_name;
+  }
+}
+
+FlowObject.prototype.setup = function(instance_name){
   'use strict';
   for(var port_out in this.data.data.outputs){
     this.data.data.outputs[port_out].path = {};
@@ -33,6 +70,9 @@ FlowObject.prototype.setup = function(){
     this.data.data.inputs[port_in].links = [];
     this.FilterInputToOutput(port_in);
   }
+
+  this.setInstanceName(instance_name);
+  this.setContents(this.data);
 };
 
 FlowObject.prototype.replaceShape = function(newShape){
@@ -299,15 +339,17 @@ FlowObject.prototype.FilterInputToOutput = function(){
   'use strict';
 };
 
+// Must be used *before* re-defining any class methods.
 var inheritsFrom = function (child, parent) {
   'use strict';
   child.prototype = Object.create(parent.prototype);
   child.prototype.$super = parent.prototype;
+  child.prototype.constructor = child;
 };
 
 
 
-var FlowObjectMqttSubscribe = function(paper, sidebar, shareBetweenShapes, shape){
+var FlowObjectMqttSubscribe = function(paper, sidebar, shareBetweenShapes, shape, instance_name){
   'use strict';
   console.log("FlowObjectMqttSubscribe");
 
@@ -321,7 +363,9 @@ var FlowObjectMqttSubscribe = function(paper, sidebar, shareBetweenShapes, shape
                     instance_name: { 
                       description: 'Name',
                       updater: 'ha-general-attribute',
-                      value: 'Object_' + shareBetweenShapes.unique_id },
+                      update_on_change: this.setup,
+                      //value: 'Object_' + shareBetweenShapes.unique_id
+                      },
                     subscribed_topic: {
                       description: 'MQTT topic subscription',
                       updater: 'ha-topic-chooser',
@@ -334,15 +378,31 @@ var FlowObjectMqttSubscribe = function(paper, sidebar, shareBetweenShapes, shape
                       sample_data: {}
                       } } }
               };
-  this.shape.setContents(this.data);
-  this.setup();
+  this.setup(instance_name);
 };
 
 inheritsFrom(FlowObjectMqttSubscribe, FlowObject);
 
+FlowObjectMqttSubscribe.prototype.setContents = function(contents){
+  'use strict';
+	// Update sample_data according to subscribed topic.
+  this.data.data.outputs[0].sample_data = {};
+	var topic = this.data.data.general.subscribed_topic.value.split('/').slice(2).join('/');
+	var topics = Data.GetMatchingTopics(topic);
+	for(var i = 0; i < topics.length; i++){
+		console.log(Data.mqtt_data[topics[i]]);
+		for(var j = 0; j < Data.mqtt_data[topics[i]].length; j++){
+			var sample_payload = Data.mqtt_data[topics[i]][j];
+			this.data.data.outputs[0].sample_data[sample_payload._subject] = sample_payload;
+		}
+	}
+
+  this.$super.setContents.call(this);
+}
 
 
-var FlowObjectMqttPublish = function(paper, sidebar, shareBetweenShapes, shape){
+
+var FlowObjectMqttPublish = function(paper, sidebar, shareBetweenShapes, shape, instance_name){
   'use strict';
   console.log("FlowObjectMqttPublish");
 
@@ -356,7 +416,9 @@ var FlowObjectMqttPublish = function(paper, sidebar, shareBetweenShapes, shape){
                     instance_name: {
                       description: 'Name',
                       updater: 'ha-general-attribute',
-                      value: 'Object_' + shareBetweenShapes.unique_id },
+                      update_on_change: this.setup,
+                      //value: 'Object_' + shareBetweenShapes.unique_id
+                      },
                     publish_topic: {
                       description: 'MQTT topic to Publish to',
                       updater: 'ha-general-attribute',
@@ -378,15 +440,14 @@ var FlowObjectMqttPublish = function(paper, sidebar, shareBetweenShapes, shape){
                       trigger_success: [] }},
                   outputs: {}}
               };
-  this.shape.setContents(this.data);
-  this.setup();
+  this.setup(instance_name);
 };
 
 inheritsFrom(FlowObjectMqttPublish, FlowObject);
 
 
 
-var FlowObjectTimer = function(paper, sidebar, shareBetweenShapes, shape){
+var FlowObjectTimer = function(paper, sidebar, shareBetweenShapes, shape, instance_name){
   'use strict';
   console.log("FlowObjectTimer");
 
@@ -400,7 +461,9 @@ var FlowObjectTimer = function(paper, sidebar, shareBetweenShapes, shape){
                     instance_name: {
                       description: 'Name',
                       updater: 'ha-general-attribute',
-                      value: 'Object_' + shareBetweenShapes.unique_id },
+                      update_on_change: this.setup,
+                      //value: 'Object_' + shareBetweenShapes.unique_id 
+                      },
                     period: {
                       description: 'Time between output trigger. (seconds)',
                       updater: 'ha-general-attribute',
@@ -457,14 +520,13 @@ var FlowObjectTimer = function(paper, sidebar, shareBetweenShapes, shape){
                       sample_data: {},
                       } } }
               };
-  this.shape.setContents(this.data);
-  this.setup();
+  this.setup(instance_name);
 };
 
 inheritsFrom(FlowObjectTimer, FlowObject);
 
 
-var FlowObjectMapValues = function(paper, sidebar, shareBetweenShapes, shape){
+var FlowObjectMapValues = function(paper, sidebar, shareBetweenShapes, shape, instance_name){
   'use strict';
   console.log("FlowObjectMapValues");
 
@@ -478,7 +540,9 @@ var FlowObjectMapValues = function(paper, sidebar, shareBetweenShapes, shape){
                     instance_name: {
                       description: 'Name',
                       updater: 'ha-general-attribute',
-                      value: 'Object_' + shareBetweenShapes.unique_id },
+                      update_on_change: this.setup,
+                      //value: 'Object_' + shareBetweenShapes.unique_id
+                      },
                     },
                   inputs: {
                     0: {
@@ -499,8 +563,7 @@ var FlowObjectMapValues = function(paper, sidebar, shareBetweenShapes, shape){
                       sample_data: {}
                       }
                     }}};
-  this.shape.setContents(this.data);
-  this.setup();
+  this.setup(instance_name);
 };
 
 inheritsFrom(FlowObjectMapValues, FlowObject);
@@ -623,7 +686,7 @@ FlowObjectMapValues.prototype.FilterOutput = function(input_payload, filter_outp
 };
 
 
-var FlowObjectTestData = function(paper, sidebar, shareBetweenShapes, shape){
+var FlowObjectTestData = function(paper, sidebar, shareBetweenShapes, shape, instance_name){
   'use strict';
   console.log("FlowObjectTestData");
 
@@ -637,7 +700,9 @@ var FlowObjectTestData = function(paper, sidebar, shareBetweenShapes, shape){
                     instance_name: { 
                       description: 'Name',
                       updater: 'ha-general-attribute',
-                      value: 'Object_' + shareBetweenShapes.unique_id },
+                      update_on_change: this.setup,
+                      //value: 'Object_' + shareBetweenShapes.unique_id
+                      },
                     test_data: {
                       description: 'Test data',
                       updater: 'ha-general-attribute',
@@ -657,9 +722,7 @@ var FlowObjectTestData = function(paper, sidebar, shareBetweenShapes, shape){
                         }
                       } } }
               };
-  this.shape.setContents(this.data);
-  this.setup();
-  console.log(this.data.data);
+  this.setup(instance_name);
 };
 
 inheritsFrom(FlowObjectTestData, FlowObject);
@@ -672,7 +735,7 @@ FlowObjectTestData.prototype.displaySideBar = function(){
 }
 
 
-var FlowObjectCombineData = function(paper, sidebar, shareBetweenShapes, shape){
+var FlowObjectCombineData = function(paper, sidebar, shareBetweenShapes, shape, instance_name){
   'use strict';
   console.log("FlowObjectCombineData");
 
@@ -686,7 +749,9 @@ var FlowObjectCombineData = function(paper, sidebar, shareBetweenShapes, shape){
                     instance_name: {
                       description: 'Name',
                       updater: 'ha-general-attribute',
-                      value: 'Object_' + shareBetweenShapes.unique_id }
+                      update_on_change: this.setup,
+                      //value: 'Object_' + shareBetweenShapes.unique_id
+                      }
                   },
                   inputs: {
                     0: {
@@ -716,9 +781,7 @@ var FlowObjectCombineData = function(paper, sidebar, shareBetweenShapes, shape){
                   }
                 }
 	}
-
-  this.shape.setContents(this.data);
-  this.setup();
+  this.setup(instance_name);
 };
 
 inheritsFrom(FlowObjectCombineData, FlowObject);

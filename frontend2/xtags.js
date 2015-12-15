@@ -19,7 +19,7 @@ var buttonTypes = {'alarm':              {'action':'new_object', callback: FlowO
                    'cloud-download':     {'action':'new_object', callback: FlowObjectMqttSubscribe},
                    'cloud-upload':       {'action':'new_object', callback: FlowObjectMqttPublish},
                    'trending-flat':      {'action':'new_object', callback: FlowObjectMapValues},
-									 'unfold-less':      {'action':'new_object', callback: FlowObjectCombineData},
+									 'unfold-less':        {'action':'new_object', callback: FlowObjectCombineData},
                    'content-copy':       {'action':'new_object'},
                    'redo':               {'action':'join'},
                    'settings':           {'action':'edit'}
@@ -34,28 +34,28 @@ xtag.register('ha-control', {
       this.header = document.getElementsByTagName('ha-control-heading')[0];
       this.header.setParent(this);
       this.sidebar = document.getElementsByTagName('ha-sidebar')[0];
-      this.shapes = [];
+      this.flowObjects = [];
       this.shareBetweenShapes = {unique_id: 0};
     }
   },
   methods: {
     buttonClicked: function(button_settings){
       if(button_settings.action === 'new_object'){
-        this.addShape(button_settings);
+        this.addFlowObject(button_settings);
       }
     },
-    addShape: function(object_type){
-      var shape;
+    addFlowObject: function(object_type){
+      var flowObject;
       console.log(object_type);
       if(object_type.callback){
-        shape = new object_type.callback(this.paper, this.sidebar, this.shareBetweenShapes);
+        flowObject = new object_type.callback(this.paper, this.sidebar, this.shareBetweenShapes);
       } else {
-        shape = new FlowObject(this.paper, this.sidebar, this.shareBetweenShapes, this.paper.box(0, 0, 50, 50, 2, 3, object_type.color));
+        return;
       }
-      shape.setBoxPosition(100,100);
+      flowObject.setBoxPosition(100,100);
 
-      shape.select();
-      this.shapes.push(shape);
+      flowObject.select();
+      this.flowObjects.push(flowObject);
     },
   }
 });
@@ -194,7 +194,7 @@ xtag.register('ha-flowobject-data', {
 
       var list_content = this.getElementsByClassName('general')[0];
 			for(var general_id in data.general){
-      	var general_attributes = document.createElement(data.general[general_id].updater);
+        var general_attributes = document.createElement(data.general[general_id].updater);
         general_attributes.populate(data.general[general_id], flow_object);
       	list_content.appendChild(general_attributes);
 			}
@@ -324,12 +324,23 @@ xtag.register('ha-general-attribute', {
     },
     update_callback: function(update_event){
       console.log('update_callback', this, update_event);
-      this.data.value = this.element.value;
 
-      if(this.data.description === 'Name' || this.data.update_on_change){
-        // Redraw sidebar and shape.
+      if(this.data.update_on_change){
+        // Some special activity is requested when this field changes.
+        console.log(this.data.update_on_change, typeof this.data.update_on_change);
+        if(typeof this.data.update_on_change === 'function'){
+          // We have a callback function to deal with this field.
+          this.data.update_on_change.call(this.flow_object, this.element.value);
+        } else {
+          // Just save the data.
+          this.data.value = this.element.value;
+        }
+
+        // Update the sidebar.
         this.flow_object.displaySideBar();
-        this.flow_object.shape.setContents(this.flow_object.data);
+      } else {
+        // No special activity requested when this field changes. Just save the data.
+        this.data.value = this.element.value;
       }
     }
   }
@@ -718,16 +729,8 @@ xtag.register('ha-topic-chooser', {
     change: function(event){
       console.log('ha-topic-chooser: change', event, event.target.value);
       this.flow_object.data.data.general.subscribed_topic.value = event.target.value;
-      this.flow_object.data.data.outputs[0].sample_data = {};
-      var topic = event.target.value.split('/').slice(2).join('/');
-      var topics = Data.GetMatchingTopics(topic);
-      for(var i = 0; i < topics.length; i++){
-        console.log(Data.mqtt_data[topics[i]]);
-        for(var j = 0; j < Data.mqtt_data[topics[i]].length; j++){
-          var sample_payload = Data.mqtt_data[topics[i]][j];
-          this.flow_object.data.data.outputs[0].sample_data[sample_payload._subject] = sample_payload;
-        }
-      }
+      
+      this.flow_object.setContents();
       this.flow_object.displaySideBar();
       this.flow_object.setAdjacentInputSamples();
       console.log(this.flow_object.data.data.outputs[0]);
