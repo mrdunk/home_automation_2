@@ -9,6 +9,7 @@
 
 /*global Messaging*/
 
+/*global dataReceived*/
 
 var Page = {};
 
@@ -34,7 +35,7 @@ var Data = { mqtt_data: {} };
 Data.storeIncomingMqtt = function(topic, data) {
   'use strict';
   if(topic === undefined || data === undefined) {
-    return
+    return;
   }
   topic = topic.split('/').slice(2).join('/');
 
@@ -180,9 +181,10 @@ Mqtt.onMessageArrived = function(message) {
 
   console.log(topic + ' = ', data_object);
   Data.storeIncomingMqtt(topic, data_object);
-}
+};
 
 Mqtt.data_to_object = function(data) {
+  'use strict';
   // data should be a list of key:value pairs, separated by a colon (:).
   // eg the following is valid:
   //    _subject : users/104167545338599232229, _count : 1, _display_name : Duncan Law
@@ -192,7 +194,7 @@ Mqtt.data_to_object = function(data) {
   if (data.match(regex_data)) {
     data = regex_data.exec(data)[0];
   } else {
-    return
+    return;
   }
   data = data.replace(/:/g, ' : ');
   data = data.replace(/,/g, ' , ');
@@ -230,7 +232,7 @@ Mqtt.data_to_object = function(data) {
     return;
   }
 
-  return data_object
+  return data_object;
 };
 
 Mqtt.send = function(send_topic, data) {

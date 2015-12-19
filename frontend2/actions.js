@@ -1,6 +1,9 @@
+/*global FlowObjectMqttSubscribe*/
+/*global FlowObjectMqttPublish*/
+/*exported dataReceived*/
 
-
-var flow_objects = {component_mqtt_subscribe: FlowObjectMqttSubscribe};
+var flow_objects = {component_mqtt_subscribe: FlowObjectMqttSubscribe,
+                    component_mqtt_publish: FlowObjectMqttPublish};
 
 var dataReceived = function(topic, data){
   'use strict';
@@ -18,10 +21,4 @@ var dataReceived = function(topic, data){
 
     }
   }
-}
-
-var findFlowObjectByName = function(name){
-  var flowObjects = document.getElementsByTagName('ha-control')[0].flowObjects;
-  console.log('!', name, flowObjects);
-  
-}
+};

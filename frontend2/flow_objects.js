@@ -1,27 +1,31 @@
+/*global Data*/
+
 /*global PORT_WIDTH*/
 /*global PORT_HEIGHT*/
 
-INPUT_PORT = { description: 'Trigger label', value: '_any', updater: 'ha-general-attribute' };
+var INPUT_PORT = { description: 'Trigger label', value: '_any', updater: 'ha-general-attribute' };
 
 var getFlowObjectByUniqueId = function(unique_id){
+  'use strict';
   var flowObjects = document.getElementsByTagName('ha-control')[0].flowObjects;
-  for(index in flowObjects){
+  for(var index in flowObjects){
     if(flowObjects[index].unique_id === unique_id){
-      return flowObjects[index]
+      return flowObjects[index];
     }
   }
-  return
-}
+  return;
+};
 
 var getFlowObjectByInstanceName = function(instance_name){
+  'use strict';
   var flowObjects = document.getElementsByTagName('ha-control')[0].flowObjects;
-  for(index in flowObjects){
+  for(var index in flowObjects){
     if(flowObjects[index].data.data.general.instance_name.value === instance_name){
-      return flowObjects[index]
+      return flowObjects[index];
     }
   }
-  return
-}
+  return;
+};
 
 var FlowObject = function(paper, sidebar, shareBetweenShapes, shape){
   'use strict';
@@ -44,20 +48,29 @@ var FlowObject = function(paper, sidebar, shareBetweenShapes, shape){
 };
 
 FlowObject.prototype.setInstanceName = function(instance_name){
-  instance_name = instance_name || 'Object_' + this.shareBetweenShapes.unique_id
-  var flowObjects = document.getElementsByTagName('ha-control')[0].flowObjects;
+  'use strict';
+
+  // Remove any existing pointer to an instance with the old name.
+  var old_name = this.data.data.general.instance_name.value;
+  if(document.getElementsByTagName('ha-control')[0].flowObjects[old_name] !== undefined){
+    console.log('Deleting old entry:', old_name);
+    delete document.getElementsByTagName('ha-control')[0].flowObjects[old_name];
+  }
+
+  instance_name = instance_name || 'Object_' + this.shareBetweenShapes.unique_id;
   var append_to_name = 1;
   var instance_name_base = instance_name;
 
   while(this.data.data.general.instance_name.value !== instance_name){
     if(getFlowObjectByInstanceName(instance_name) === undefined){
       this.data.data.general.instance_name.value = instance_name;
+      document.getElementsByTagName('ha-control')[0].flowObjects[instance_name] = this;
       break;
 		}
     append_to_name++;
     instance_name = instance_name_base + '_' + append_to_name;
   }
-}
+};
 
 FlowObject.prototype.setup = function(instance_name){
   'use strict';
@@ -397,8 +410,8 @@ FlowObjectMqttSubscribe.prototype.setContents = function(contents){
 		}
 	}
 
-  this.$super.setContents.call(this);
-}
+  this.$super.setContents.call(this, contents);
+};
 
 
 
@@ -732,7 +745,7 @@ FlowObjectTestData.prototype.displaySideBar = function(){
   this.data.data.outputs[0].sample_data = JSON.parse(this.data.data.general.test_data.value);
 
   this.$super.displaySideBar.call(this);
-}
+};
 
 
 var FlowObjectCombineData = function(paper, sidebar, shareBetweenShapes, shape, instance_name){
@@ -780,7 +793,7 @@ var FlowObjectCombineData = function(paper, sidebar, shareBetweenShapes, shape, 
                     }
                   }
                 }
-	}
+	};
   this.setup(instance_name);
 };
 

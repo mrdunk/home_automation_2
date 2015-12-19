@@ -3,13 +3,12 @@
 
 /*global Data*/
 
-/*global FlowObject*/
 /*global FlowObjectTimer*/
 /*global FlowObjectMqttSubscribe*/
 /*global FlowObjectMqttPublish*/
 /*global FlowObjectMapValues*/
 /*global FlowObjectTestData*/
-
+/*global FlowObjectCombineData*/
 
 (function() {
 'use strict';
@@ -55,7 +54,6 @@ xtag.register('ha-control', {
       flowObject.setBoxPosition(100,100);
 
       flowObject.select();
-      this.flowObjects.push(flowObject);
     },
   }
 });
@@ -353,7 +351,7 @@ xtag.register('ha-select-label', {
     },
   },
   methods: {
-    populate: function(data, flow_object){
+    populate: function(data){
 			var label = data.value;
       var value_tag = document.createElement('input');
       value_tag.setAttribute('list', 'label|' + label);
