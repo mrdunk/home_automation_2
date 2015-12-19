@@ -7,7 +7,7 @@ local CONFIG_FILE =  "/etc/homeautomation/client_devices.conf"
 local outlets = {}
 
 function outlets:new(o)
-  print("outlets.new()")
+  log("outlets.new()")
 
   o = o or {}
   setmetatable(o, self)
@@ -42,7 +42,7 @@ end
 function outlets:read_config()
   if not is_file_or_dir(CONFIG_FILE) then
     if info.io.lighting.ERROR == nil then
-      print(CONFIG_FILE .. " does not exist. No client configuration.")
+      log(CONFIG_FILE .. " does not exist. No client configuration.")
     end
     info.io.lighting.ERROR = CONFIG_FILE .. " does not exist. No client configuration."
     return
@@ -55,7 +55,7 @@ function outlets:read_config()
     return
   end
 
-  print("Reading: " .. CONFIG_FILE)
+  log("Reading: " .. CONFIG_FILE)
 
   local file_handle = io.open(CONFIG_FILE, "r")
   if file_handle then
@@ -84,13 +84,13 @@ function outlets:read_config()
       elseif key == nil then
         -- pass
       else
-        print("Error in " .. client_config .. " at \"" .. key .. " : " .. value .. "\"")
+        log("Error in " .. client_config .. " at \"" .. key .. " : " .. value .. "\"")
         file_handle:close()
         return
       end
 
       if address and role and command then
-        --print("Storing: ", address, role, command)
+        --log("Storing: ", address, role, command)
         if info.io[role] == nil then
           info.io[role] = {}
         end
@@ -148,7 +148,7 @@ end
 
 -- This gets called whenever a topic this module is subscribed to appears on the bus.
 function outlets:callback(path, incoming_data)
-  print("outlets:callback(", path, incoming_data, ")")
+  log("outlets:callback(", path, incoming_data, ")")
   path = var_to_path(path)
   local role, address = path:match('(.-)/(.+)')
   if role == '_all' then
@@ -166,7 +166,7 @@ function outlets:callback(path, incoming_data)
 end
 
 function outlets:operate_one(role, address, incoming_data)
-  print("   outlets:operate_one(", role, address, incoming_data, ")")
+  log("   outlets:operate_one(", role, address, incoming_data, ")")
   if self.io_local_copy[role] and self.io_local_copy[role][address] then
     local incoming_command = incoming_data._command
     local command = info.io[role][address].command
@@ -202,7 +202,7 @@ end
 -- Works by calling a bash program that contains the necessary code to perform the operation.
 -- The name of this bash program can be set in the main configuration file.
 function device_set_on(role, address, command)
-  print("device_set_on: " .. address)
+  log("device_set_on: " .. address)
   local device_tmp_filename = string.gsub(address, "/", "__")
   local ret_val = os.execute(POWER_SCRIPT_DIR .. command .. " " .. device_tmp_filename .. " on")
   device_announce(role, address, command)
@@ -213,7 +213,7 @@ end
 -- Works by calling a bash program that contains the necessary code to perform the operation.
 -- The name of this bash program can be set in the main configuration file.
 function device_set_off(role, address, command)
-  print("device_set_off: " .. address)
+  log("device_set_off: " .. address)
   local device_tmp_filename = string.gsub(address, "/", "__")
   local ret_val = os.execute(POWER_SCRIPT_DIR .. command .. " " .. device_tmp_filename .. " off")
   device_announce(role, address, command)
@@ -225,7 +225,7 @@ function device_announce(role, address, command)
   local value = device_get_value(role, address, command)
   local topic = "homeautomation/0/" .. role .. "/_announce"
   local data = "_subject : " .. role .. "/" .. address .. " , _state : " .. value
-  print("Announcing: " .. topic, data)
+  log("Announcing: " .. topic, data)
   mqtt_instance:publish(topic, data)
   if DEBUG then
     local found_match

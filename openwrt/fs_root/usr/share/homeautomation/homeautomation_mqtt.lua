@@ -17,16 +17,16 @@ local topic_log = '/tmp/mqtt_topic.log'
 local max_filesize = 100000
 
 function mqtt.ON_CONNECT()
-  --print("Default mqtt.ON_CONNECT")
+  --log("Default mqtt.ON_CONNECT")
 end
 
 
 function mqtt.ON_MESSAGE(mid, topic, payload)
-  --print("Default mqtt.ON_MESSAGE", mid, topic, payload)
+  --log("Default mqtt.ON_MESSAGE", mid, topic, payload)
 end
 
 function mqtt.ON_PUBLISH()
-  --print("Default mqtt.ON_PUBLISH")
+  --log("Default mqtt.ON_PUBLISH")
 end
 
 
@@ -57,11 +57,11 @@ function mqtt:connect(broker, port)
   local return_value = self.test(broker, port)
 
   if not return_value then
-    --print('Could not connect to:', self.connection.broker, self.connection.port)
+    --log('Could not connect to:', self.connection.broker, self.connection.port)
     return nil
   end
 
-  --print("Connected to: ", broker, port)
+  --log("Connected to: ", broker, port)
 
   self.ON_CONNECT()
 
@@ -86,7 +86,7 @@ function mqtt:loop()
     local filesize
     if data.filehandle == nul then
       self.subscriptions[filename].filehandle = io.open(filename, "r")
-      --print(self.subscriptions[filename].filehandle)
+      --log(self.subscriptions[filename].filehandle)
     end
     filehandle = self.subscriptions[filename].filehandle
     if filehandle then
@@ -104,8 +104,8 @@ function mqtt:loop()
 
     -- If file getting too big...
     if filesize and filesize > max_filesize then
-      print("file: ", filename, "\tfilesize: ", filesize)
-      print("Restarting to clear cache files.")
+      log("file: ", filename, "\tfilesize: ", filesize)
+      log("Restarting to clear cache files.")
       keep_looping = false
     end
   end
@@ -141,11 +141,11 @@ function mqtt:subscribe(topic)
   local filename = topic_log .. '..' .. sanitised_topic
   
 
-  print("Starting subscription for " .. topic)
+  log("Starting subscription for " .. topic)
   local redirect = ' > ' .. filename .. ' &'
   local return_value = os.execute(command .. redirect)
   if return_value ~= 0 then
-    print('Problem starting "' .. command .. redirect .. '"')
+    log('Problem starting "' .. command .. redirect .. '"')
     self.subscribe_error = true
     return
   end

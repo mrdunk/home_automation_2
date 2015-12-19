@@ -9,7 +9,7 @@ dhcp_parser.__index = dhcp_parser
 
 
 function dhcp_parser.new()
-  print("dhcp_parser.new()")
+  log("dhcp_parser.new()")
 
   local self = setmetatable({}, dhcp_parser)
   
@@ -41,7 +41,7 @@ function dhcp_parser:read_dhcp()
   local file_mod_time_string = file_mod_time(DHCP_FILE)
   if file_mod_time_string ~= info.io.dhcp.file_update_time then
     info.io.dhcp.file_update_time = file_mod_time_string
-    print('dhcp_parser:read_dhcp():  reading:', DHCP_FILE)
+    log('dhcp_parser:read_dhcp():  reading:', DHCP_FILE)
 
     -- Read dhcp leases file to see what's actually been on the network recently.
     local file_handle = io.open(DHCP_FILE, "r")
@@ -53,17 +53,17 @@ function dhcp_parser:read_dhcp()
         name = sanitize_text(name)
       
         if info.io.dhcp[mac] == nil then
-          print('dhcp_parser:read_dhcp():  new record:', mac)
+          log('dhcp_parser:read_dhcp():  new record:', mac)
           info.io.dhcp[mac] = {}
           update = true
         end
         if info.io.dhcp[mac].address ~= address then
-          print('dhcp_parser:read_dhcp():  updated network address:', address)
+          log('dhcp_parser:read_dhcp():  updated network address:', address)
           info.io.dhcp[mac].address = address
           update = true
         end
         if info.io.dhcp[mac].dhcp_name ~= name then
-          print('dhcp_parser:read_dhcp():  updated dhcp_name:', name)
+          log('dhcp_parser:read_dhcp():  updated dhcp_name:', name)
           info.io.dhcp[mac].dhcp_name = name
           update = true
         end
@@ -81,7 +81,7 @@ function dhcp_parser:read_dhcp()
         reachable = true
       end
       if info.io.dhcp[stored_mac].reachable ~= reachable then
-        print('dhcp_parser:read_dhcp():  updated reachable:', reachable)
+        log('dhcp_parser:read_dhcp():  updated reachable:', reachable)
         info.io.dhcp[stored_mac].reachable = reachable
         update = true
       end
@@ -89,7 +89,7 @@ function dhcp_parser:read_dhcp()
   end
 
   if update then
-    print("update")
+    log("update")
     self:publish_dhcp()
   end
 
@@ -108,7 +108,7 @@ function dhcp_parser:publish_one_record(mac_address)
       payload = payload .. ", _" .. label .. " : " .. tostring(data)
     end
   end
-  print(topic, payload)
+  log(topic, payload)
   mqtt_instance:publish(topic, payload)
 
   -- Make sure we are subscribed to messages sent to this target.
@@ -139,13 +139,13 @@ end
 
 -- Publishes topics this module knows about. 
 function dhcp_parser:announce()
-  print("dhcp_parser:announce()")
+  log("dhcp_parser:announce()")
   self:publish_dhcp()
 end
 
 -- This gets called whenever a topic this module is subscribed to appears on the bus.
 function dhcp_parser:callback(path, incoming_data)
-  print("dhcp_parser:callback", path, incoming_data._command)
+  log("dhcp_parser:callback", path, incoming_data._command)
   path = var_to_path(path)
   local incoming_command = incoming_data._command
   local role, identifier = path:match('(.-)/(.+)')

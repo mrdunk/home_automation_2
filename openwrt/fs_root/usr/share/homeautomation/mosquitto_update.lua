@@ -28,7 +28,7 @@ function update_mosquitto_config()
     end
     file_handle:close()
   else
-    print('No file: /tmp/homeautomation/mosquitto/bridges.conf')
+    log('No file: /tmp/homeautomation/mosquitto/bridges.conf')
   end
 
 
@@ -80,7 +80,7 @@ function update_mosquitto_config()
 
     -- And restart mosquitto.
     if info.needs_reload == true then
-      print("restarting mosquitto")
+      log("restarting mosquitto")
       info.needs_reload = os.execute("/etc/init.d/mosquitto restart") ~= 0
     end
   end

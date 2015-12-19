@@ -6,14 +6,30 @@ local json = require "luci.json"
 info.components = {}
 
 
+
 local control = {}
 control.__index = control
 
 function control.new()
-  print("control.new()")
+  log("control.new()")
   local self = setmetatable({}, control)
 
-	-- init stuff here.
+
+  if not is_file_or_dir(WEB_DIR) then
+    log('Creating ' .. WEB_DIR)
+    mkdir(WEB_DIR)
+  end
+
+  if not is_file_or_dir(TEMP_DIR) then
+    log('Creating ' .. TEMP_DIR)
+    mkdir(TEMP_DIR)
+    mkdir(TEMP_DIR .. 'mosquitto/')
+  end
+
+  if is_file_or_dir(WEB_DIR) and is_file_or_dir(TEMP_DIR) then
+    os.execute('ln -s ' .. TEMP_DIR .. 'control.txt ' .. WEB_DIR .. 'control.txt')
+  end
+
 
   return self
 end
@@ -28,7 +44,7 @@ end
 
 -- Publishes topics this module knows about. 
 function control:announce()
-  print("control:announce()")
+  log("control:announce()")
   local topic = "homeautomation/0/control/_announce"
 
 	for component_name, component in pairs(info.components) do
@@ -39,7 +55,7 @@ end
 
 -- This gets called whenever a topic this module is subscribed to appears on the bus.
 function control:callback(path, incoming_data)
-	print("control:callback(", path, incoming_data, ")")
+	log("control:callback(", path, incoming_data, ")")
   if path == nil or incoming_data == nil then 
     return
   end
@@ -56,6 +72,25 @@ function control:callback(path, incoming_data)
 	end
 end
 
+control.line_count = 0
+function control:open_log()
+  if not control.filehandle then
+    control.filehandle = io.open(TEMP_DIR .. 'control.txt', "w")
+  end
+end
+
+function control:update_log(data)
+  if info.host.processes.uhttpd.enabled == true then
+    if(control.line_count > 300) then
+      control.filehandle:close()
+      control.filehandle = nil
+      control.line_count = 0
+    end
+    self:open_log()
+    control.filehandle:write(tostring(control.line_count) .. '\t' .. data)
+    control.line_count = control.line_count +1
+  end
+end
 
 
 
@@ -63,7 +98,7 @@ end
 component = {}
 
 function component:new(o)
-  print("component.new()")
+  log("component.new()")
 
   o = o or {}
   setmetatable(o, self)
@@ -104,7 +139,7 @@ function component:add_general(label, value)
 end
 
 function component:add_input(label, value)
-  print("component:add_input(", label, ")")
+  log("component:add_input(", label, ")")
   label = label or 'default'
   label = path_to_var(label)
   
@@ -134,10 +169,10 @@ function component:serialise()
 end
 
 function component:display()
-  print('Name: ' .. self.instance_name)
+  log('Name: ' .. self.instance_name)
   for label, targets in pairs(self.data.outputs) do
     for _, target in pairs(targets) do
-      print('  Output ' .. label .. ': ' .. target.instance_name)
+      log('  Output ' .. label .. ': ' .. target.instance_name)
     end
   end
 end
@@ -154,11 +189,12 @@ end
 
 -- Send data to only one of the targets.
 function component:send_one_output(data, label)
-  --print("component:send_output(", data, label, ")")
+  --log("component:send_output(", data, label, ")")
   label = label or 'default'
 
   if self.data.outputs[label] then
     for _, target_name in pairs(self.data.outputs[label]) do
+      control_instance:update_log('(' .. self.class_name .. ')' .. self.instance_name .. ' -> ' .. flatten_data(data) .. ' -> ' .. target_name .. '\n')
       info.components[target_name]:receive_input(data, label)
     end
   end
@@ -183,12 +219,12 @@ function component_mqtt_subscribe:setup(class_name, instance_name)
 end
 
 function component_mqtt_subscribe:receive_mqtt(data, label)
-  print(" ", "component_mqtt_subscribe:receive_input() triggered", label)
+  log(" ", "component_mqtt_subscribe:receive_input() triggered", label)
   self:send_output(data)
 end
 
 function component_mqtt_subscribe:callback(path, data)
-  --print(" ", "component_mqtt_subscribe:callback(" .. tostring(path) .. ", " .. flatten_data(data) .. ")")
+  --log(" ", "component_mqtt_subscribe:callback(" .. tostring(path) .. ", " .. flatten_data(data) .. ")")
 
   path = var_to_path(path)
   self:receive_mqtt(data, path_to_var(path))
@@ -209,7 +245,7 @@ end
 component_map_values = component:new()
 
 function component_map_values:receive_input(data, l)
-  print(" ~~", "component_map_values:receive_input(", flatten_data(data), l, ")")
+  log(" ~~", "component_map_values:receive_input(", flatten_data(data), l, ")")
   local label = self.data.inputs.default.label
   local rules = self.data.inputs.default.rules
 
@@ -219,7 +255,7 @@ function component_map_values:receive_input(data, l)
     if label == data_label then
       found_label = label
       found_value = data_value
-      print(" ~~", found_label, found_value)
+      log(" ~~", found_label, found_value)
     end
   end
 
@@ -227,18 +263,18 @@ function component_map_values:receive_input(data, l)
     -- TODO: We force everything to be a string here to handle booleans... Think about the implications of this.
     if tostring(rule.match) == tostring(found_value) or rule.match == '_else' or (rule.match == '_missing' and found_label == nil) then
       if rule.action == 'forward' then
-        print("~~~~~", rule.match, 'forward', found_label, found_value)
-        print("~~~~~", flatten_data(data))
+        log("~~~~~", rule.match, 'forward', found_label, found_value)
+        log("~~~~~", flatten_data(data))
         self:send_output(data)
         break
       elseif rule.action == 'string' or rule.action == 'boolean' then
-        print("~~~~~", 'modify', found_label, found_value, rule.value)
+        log("~~~~~", 'modify', found_label, found_value, rule.value)
         data[found_label] = rule.value
-        print("~~~~~", flatten_data(data))
+        log("~~~~~", flatten_data(data))
         self:send_output(data)
         break
       elseif rule.action == 'drop' then
-        print("~~~~~", rule.match, 'drop')
+        log("~~~~~", rule.match, 'drop')
         break
       end
     end
@@ -249,7 +285,7 @@ end
 component_map_labels = component:new()
 
 function component_map_labels:receive_input(data, l)
-  print(" ==", "component_map_labels:receive_input(", data, l, ")")
+  log(" ==", "component_map_labels:receive_input(", data, l, ")")
   local forward_data = {}
   local rules = self.data.inputs.default.rules
 
@@ -268,7 +304,7 @@ function component_map_labels:receive_input(data, l)
       end
     end
   end
-  print("=====", flatten_data(forward_data))
+  log("=====", flatten_data(forward_data))
   self:send_output(forward_data)
 end
 
@@ -279,7 +315,7 @@ function component_time_window:receive_input(data, l)
   -- TODO: Make 2 outputs: one for within_window and one for outside_window.
   -- TODO: Make this re-send last received data whenever we tick over to within_window/outside_window.
 
-  print(" @@", "component_time_window:receive_input(", data, l, ")")
+  log(" @@", "component_time_window:receive_input(", data, l, ")")
   self.last_data = data
 
   local forward_data = {}
@@ -305,7 +341,7 @@ function component_time_window:receive_input(data, l)
 			end
     end
 	end
-	print("@@@@@", flatten_data(forward_data))
+	log("@@@@@", flatten_data(forward_data))
 	self:send_output(forward_data)
 end
 
@@ -336,7 +372,7 @@ component_publish = component:new()
 function component_publish:receive_input(data, l)
 	local topic = 'homeautomation/0/' .. self.data.general.publish_topic
 	local payload = flatten_data(data)
-	print("&&&&& component_publish:receive_input:", topic, payload)
+	log("&&&&& component_publish:receive_input:", topic, payload)
 	mqtt_instance:publish(topic, payload)
 end
 
@@ -396,7 +432,7 @@ function component_read_file:send_output(match_data_label, match_data_value)
     local parsed_file_data = parse_payload(file_data)
     if parsed_file_data then
       if match_data_label == nil or parsed_file_data[match_data_label] == match_data_value then
-        print('+++++', match_data_label, match_data_value, flatten_data(parsed_file_data))
+        log('+++++', match_data_label, match_data_value, flatten_data(parsed_file_data))
 	      component.send_output(self, parsed_file_data)
       end
     end
@@ -422,7 +458,7 @@ function component_combine:receive_input(data, input_label)
       end
       self.data.data[primary_key][label] = value
     end
-    print("-----", flatten_data(self.data.data[primary_key]))
+    log("-----", flatten_data(self.data.data[primary_key]))
 		self:send_output(self.data.data[primary_key])
   end
 end
@@ -436,7 +472,7 @@ function component_add_messages:setup(class_name, instance_name)
 end
 
 function component_add_messages:receive_input(data, input_label)
-  print("'''''", flatten_data(data))
+  log("'''''", flatten_data(data))
 	local primary_key_label = self.data.general.primary_key_label
 
 	if data[primary_key_label] ~= nil then
@@ -467,7 +503,7 @@ function component_add_messages:receive_input(data, input_label)
 			end
 		end
 	end
-	print("'''''", flatten_data(combined_entry))
+	log("'''''", flatten_data(combined_entry))
 	self:send_output(combined_entry)
 end
 

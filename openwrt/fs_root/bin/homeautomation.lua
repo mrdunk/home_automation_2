@@ -24,22 +24,33 @@ info.config.component = {}
 mqtt_instance = {}            -- Will get assigned mqtt instance during initilize() function.
 dhcp_instance = {}          -- Will get assigned parse_dhcp instance during initilize() function.
 outlets_instance = {}       -- Will get assigned outlets instance during initilize() function.
-DEBUG = true
+control_instance = {}
+DEBUG = false
 
 -- Constants
-local WEB_DIR = '/www/info/'
-local TEMP_DIR = '/tmp/homeautomation/'
+WEB_DIR = '/www/info/'
+TEMP_DIR = '/tmp/homeautomation/'
 local MOSQUITTO_CONF = '/etc/mosquitto/mosquitto.conf'
 POWER_SCRIPT_DIR = '/usr/share/homeautomation/power_commands/'
 
 
 
+function log(...)
+  if DEBUG and arg then
+    local result = ''
+    for i,v in ipairs(arg) do
+      result = result .. tostring(v) .. "\t"
+    end
+    print(result)
+  end
+end
+
 function mqtt_instance_ON_PUBLISH()
-  --print(" ** mqtt_instance_ON_PUBLISH")
+  --log(" ** mqtt_instance_ON_PUBLISH")
 end
 
 function mqtt_instance_ON_MESSAGE(mid, topic, payload)
-  --print(" ** mqtt_instance_ON_MESSAGE", mid, topic, payload)
+  --log(" ** mqtt_instance_ON_MESSAGE", mid, topic, payload)
 
   if topic == nil or payload == nil then
     return
@@ -69,7 +80,7 @@ function mqtt_instance_ON_MESSAGE(mid, topic, payload)
 end
 
 function mqtt_instance_ON_CONNECT()
-  print(" ** mqtt_instance_ON_CONNECT")
+  log(" ** mqtt_instance_ON_CONNECT")
 
   -- Presume all existing subscriptions are dead.
   for key in pairs(info.mqtt.subscriptions) do
@@ -129,12 +140,12 @@ function subscribe_to_all(class_instance, role, address)
   local address_partial = ''
 
   for address_section in address:gmatch("[^/]+") do
-    --print("###", role, address_partial .. '/all')
+    --log("###", role, address_partial .. '/all')
     subscribe_to(class_instance, '_all' .. address_partial .. '/_all')
     subscribe_to(class_instance, role .. address_partial .. '/_all')
     address_partial = address_partial .. '/' .. address_section
   end
-  --print("###", role, address_partial)
+  --log("###", role, address_partial)
   subscribe_to(class_instance, '_all' .. address_partial)
   subscribe_to(class_instance, role .. address_partial)
 end
@@ -142,15 +153,15 @@ end
 function subscribe_to(class_instance, subscription)
   if mqtt_instance:subscribe('homeautomation/+/' .. var_to_path(subscription)) == nil then
     -- Probably not connected to broker yet.
-    print('...subscription failed.')
+    log('...subscription failed.')
     return
   end
   if info.mqtt.subscriptions[path_to_var(subscription)] == nil then
-    print('First subscribing to: homeautomation/+/' .. var_to_path(subscription))
+    log('First subscribing to: homeautomation/+/' .. var_to_path(subscription))
     info.mqtt.subscriptions[path_to_var(subscription)] = {}
   end
   if info.mqtt.subscriptions[path_to_var(subscription)][class_instance] == nil then
-    print('Subscribing to: homeautomation/+/' .. var_to_path(subscription))
+    log('Subscribing to: homeautomation/+/' .. var_to_path(subscription))
     info.mqtt.subscriptions[path_to_var(subscription)][class_instance] = true
   end
 end
@@ -177,7 +188,7 @@ function match_paths(path_one, path_two, all)
       return
     end
   end
-  print("Match:", path_one, path_two)
+  log("Match:", path_one, path_two)
   return true
 end
 
@@ -206,14 +217,11 @@ function initilize()
   info.mqtt.callbacks = {}
 
 
-  -- The following data is not strictly required but is useful to know when debugging.
-  if DEBUG then
-    if not info.mqtt.subscriptions then
-      info.mqtt.subscriptions = {}
-    end
-    if not info.mqtt.last_announced then
-      info.mqtt.last_announced = {}
-    end
+  if not info.mqtt.subscriptions then
+    info.mqtt.subscriptions = {}
+  end
+  if not info.mqtt.last_announced then
+    info.mqtt.last_announced = {}
   end
 
 
@@ -244,7 +252,7 @@ function initilize()
   for _, searcher in ipairs(package.searchers or package.loaders) do
     local loader = searcher('mosquitto')
     if type(loader) == 'function' then
-      print('Using lua-mosquitto')
+      log('Using lua-mosquitto')
       found = true
       package.preload['mosquitto'] = loader
       mqtt_class = require "mosquitto"
@@ -253,7 +261,7 @@ function initilize()
   end
   -- Otherwise use our bash wrapper.
   if found == false then
-    print('Using homeautomation_mqtt')
+    log('Using homeautomation_mqtt')
     mqtt_class = require 'homeautomation_mqtt'
   end
 
@@ -287,9 +295,9 @@ function initilize()
     --c2:display()
     --c3:display()
 
-    print('----------')
+    log('----------')
     --c1:send_output()
-    print('----------')
+    log('----------')
 
     local dhcp_watcher = component_mqtt_subscribe:new()
     dhcp_watcher:setup('component_mqtt_subscribe', 'dhcp_watcher')
@@ -362,12 +370,12 @@ function initilize()
 
   -- Set required files and directories.
   if not is_file_or_dir(WEB_DIR) then
-    print('Creating ' .. WEB_DIR)
+    log('Creating ' .. WEB_DIR)
     mkdir(WEB_DIR)
   end
 
   if not is_file_or_dir(TEMP_DIR) then
-    print('Creating ' .. TEMP_DIR)
+    log('Creating ' .. TEMP_DIR)
     mkdir(TEMP_DIR)
     mkdir(TEMP_DIR .. 'mosquitto/')
   end
@@ -388,7 +396,7 @@ function initilize()
     end
 
     if found == false then
-      print('Adding "include_dir" directive to ' .. TEMP_DIR .. 'mosquitto/')
+      log('Adding "include_dir" directive to ' .. TEMP_DIR .. 'mosquitto/')
       file_handle:write('\n# =================================================================\n')
       file_handle:write('# Appended by lua script.\n')  -- TODO get name of script programmatically.
       file_handle:write('# =================================================================\n')
@@ -561,20 +569,20 @@ end
 
 -- Create a webpage of all the information contained in "info".
 -- Currently used as a debugging aid but may be used later so we can create dashboards without access to MQTT.
-function create_web_page()
+function create_web_page(filename, data)
   if info.host.processes.uhttpd.enabled == true then
-    local handle = io.open(TEMP_DIR .. 'tmp.txt', "w") 
+    local handle = io.open(TEMP_DIR .. filename .. '.tmp', "w") 
     if handle then
-      handle:write(_itterate_info(info, '', ''))
+      handle:write(data)
       handle:close()
-      mv(TEMP_DIR .. 'tmp.txt', TEMP_DIR .. 'server.txt')
+      mv(TEMP_DIR .. filename .. '.tmp', TEMP_DIR .. filename)
     else
-      print("Couldn't create: " .. TEMP_DIR .. 'tmp.txt\n')
-      print(_itterate_info(info, '', ''))
+      log("Couldn't create: " .. TEMP_DIR .. filename .. '.tmp\n')
+      log(_itterate_info(info, '', ''))
     end
   else
-    print("uhttpd not running.")
-    print(_itterate_info(info, '', ''))
+    log("uhttpd not running.")
+    log(_itterate_info(info, '', ''))
   end
 end
 
@@ -619,7 +627,7 @@ function poll_mosquitto(stop_at)
       if loop_value ~= true then
         -- Still not true which means no connections are marked active or connection.active is not actually active.
         info.brokers.ERROR = "No active broker found."
-        print("Error: No active broker found.")
+        log("Error: No active broker found.")
         return
       else
         info.brokers.ERROR = nil
@@ -630,11 +638,20 @@ end
 
 -- Main program loop.
 function main()
+  print('Starting.')
+  for i,v in pairs(arg) do
+    if v == '-d' then
+      DEBUG = true
+      print('  debugging on.')
+    end
+  end
+  print()
+
   run = true
   initilize()
 
   while run do
-    print('tick', info.config.last_updated)
+    log('tick', info.config.last_updated)
     process_list()
     local_network()
     broker_list()
@@ -651,7 +668,10 @@ function main()
       dhcp_instance:read_dhcp()
     end
 
-    create_web_page()
+    --if info.config.component.control then
+    --end
+
+    create_web_page('server.txt', _itterate_info(info, '', ''))
     
     poll_mosquitto(info.config.last_updated + info.config.update_delay)
     info.config.last_updated = os.time()
