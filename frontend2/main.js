@@ -87,7 +87,6 @@ Data.cleanOutOfDateMqtt = function(max_age){
     }
   };
   f(pointer, max_age);
-  console.log(Data.mqtt_data);
 };
 
 Data.getLabels = function(){
@@ -143,10 +142,10 @@ Mqtt.onConnect = function() {
   'use strict';
   console.log('Connected to ' + BROKER_ADDRESS + ':' + BROKER_PORT);
   Mqtt.broker.subscribe(ANNOUNCE_SUBSCRIPTION, {qos: 0});
-  console.log('Subscribed to topic: ' + ANNOUNCE_SUBSCRIPTION);
+  console.log('Subscribed: ' + ANNOUNCE_SUBSCRIPTION);
 
   Mqtt.send(Page.topics.all_devices, '_command : solicit');
-  console.log('Sent: topic: ' + Page.topics.all_devices + '  data: _command : solicit');
+  console.log('Sent: ' + Page.topics.all_devices + ' = {_command : solicit}');
 };
 
 Mqtt.onConnectionLost = function(response) {
@@ -344,6 +343,16 @@ Data.GetMatchingTopics = function(topic){
 
   return matches;
 };
+
+
+var session_uid = function(){
+  if(localStorage.getItem('session_uid')){
+    return localStorage.getItem('session_uid');
+  }
+  var uid = '_' + Math.random().toString(36).substr(2, 9);
+  localStorage.setItem('session_uid', uid);
+  return uid;
+}
 
 
 window.onload = function() {

@@ -47,7 +47,7 @@ xtag.register('ha-control', {
       var flowObject;
       console.log(object_type);
       if(object_type.callback){
-        flowObject = new object_type.callback(this.paper, this.sidebar, this.shareBetweenShapes);
+        flowObject = new object_type.callback(this.paper, this.sidebar, this.shareBetweenShapes, undefined, {});
       } else {
         return;
       }
@@ -325,7 +325,6 @@ xtag.register('ha-general-attribute', {
 
       if(this.data.update_on_change){
         // Some special activity is requested when this field changes.
-        console.log(this.data.update_on_change, typeof this.data.update_on_change);
         if(typeof this.data.update_on_change === 'function'){
           // We have a callback function to deal with this field.
           this.data.update_on_change.call(this.flow_object, this.element.value);

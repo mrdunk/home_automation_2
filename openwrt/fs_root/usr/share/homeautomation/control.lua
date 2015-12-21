@@ -81,13 +81,13 @@ end
 
 function control:update_log(data)
   if info.host.processes.uhttpd.enabled == true then
-    if(control.line_count > 300) then
+    if(control.line_count > 1000) then
       control.filehandle:close()
       control.filehandle = nil
       control.line_count = 0
     end
     self:open_log()
-    control.filehandle:write(tostring(control.line_count) .. '\t' .. data)
+    control.filehandle:write(tostring(control.line_count) .. ' ' .. os.date("%Y/%b/%d %I:%M:%S") .. '\t' .. data)
     control.line_count = control.line_count +1
   end
 end
@@ -107,9 +107,10 @@ function component:new(o)
   return o
 end
 
-function component:setup(class_name, instance_name)
+function component:setup(class_name, instance_name, unique_id)
   self.class_name = class_name
   self.instance_name = instance_name
+  self.unique_id = unique_id
 
   -- self._subject is the unique identifier on the web interface.
   self._subject = 'control/' .. instance_name
@@ -213,8 +214,8 @@ end
 
 component_mqtt_subscribe = component:new()
 
-function component_mqtt_subscribe:setup(class_name, instance_name)
-  component.setup(self, class_name, instance_name)
+function component_mqtt_subscribe:setup(class_name, instance_name, unique_id)
+  component.setup(self, class_name, instance_name, unique_id)
   info.mqtt.callbacks[instance_name] = self
 end
 
@@ -367,12 +368,12 @@ function in_time_window(time_start, time_end, time_now)
 end
 
 
-component_publish = component:new()
+component_mqtt_publish = component:new()
 
-function component_publish:receive_input(data, l)
+function component_mqtt_publish:receive_input(data, l)
 	local topic = 'homeautomation/0/' .. self.data.general.publish_topic
 	local payload = flatten_data(data)
-	log("&&&&& component_publish:receive_input:", topic, payload)
+	log("&&&&& component_mqtt_publish:receive_input:", topic, payload)
 	mqtt_instance:publish(topic, payload)
 end
 

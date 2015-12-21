@@ -14,7 +14,8 @@ mqtt.__index = mqtt
 local mosquitto_pub = '/usr/bin/mosquitto_pub'
 local mosquitto_sub = '/usr/bin/mosquitto_sub'
 local topic_log = '/tmp/mqtt_topic.log'
-local max_filesize = 100000
+--local max_filesize = 100000
+local max_filesize = 10000
 
 function mqtt.ON_CONNECT()
   --log("Default mqtt.ON_CONNECT")
@@ -43,7 +44,7 @@ end
 
 function mqtt.test(broker, port)
   if broker and port then
-    local command = mosquitto_pub .. ' -h ' .. broker .. ' -p ' .. port .. ' -t test/test -m test 2> /dev/null'
+    local command = mosquitto_pub .. ' -h ' .. broker .. ' -p ' .. port .. ' -t test/test -m test &> /dev/null'
     return os.execute(command) == 0
   end
   return nil
@@ -73,7 +74,7 @@ function mqtt:disconnect()
 end
 
 function mqtt:publish(topic, payload)
-  local command = mosquitto_pub .. ' -h ' .. self.connection.broker .. ' -p ' .. self.connection.port .. ' -t ' .. topic .. ' -m "' .. payload .. '"'
+  local command = mosquitto_pub .. ' -h ' .. self.connection.broker .. ' -p ' .. self.connection.port .. ' -t ' .. topic .. ' -m "' .. payload .. '" &> /dev/null'
   local return_value = os.execute(command)
 
   self.ON_PUBLISH()
@@ -84,9 +85,9 @@ function mqtt:loop()
   local keep_looping = true
   for filename, data in pairs(self.subscriptions) do
     local filesize
-    if data.filehandle == nul then
+    if data.filehandle == nil then
       self.subscriptions[filename].filehandle = io.open(filename, "r")
-      --log(self.subscriptions[filename].filehandle)
+      log('opened: ', filename, self.subscriptions[filename].filehandle)
     end
     filehandle = self.subscriptions[filename].filehandle
     if filehandle then
@@ -104,6 +105,7 @@ function mqtt:loop()
 
     -- If file getting too big...
     if filesize and filesize > max_filesize then
+      self.subscriptions[filename].filehandle:close()
       log("file: ", filename, "\tfilesize: ", filesize)
       log("Restarting to clear cache files.")
       keep_looping = false
@@ -118,7 +120,7 @@ function mqtt:loop()
   end
 
   if self.loopcount > 0 then
-    os.execute("sleep 1")
+    os.execute("sleep 1 &> /dev/null")
   end
 
   return keep_looping and not self.subscribe_error
@@ -132,17 +134,19 @@ function mqtt:subscribe(topic)
 
   -- See if we already have a subscription running and kill it if we do.
   local bash_kill_old = 'PID=$(echo $(ps | grep -v grep | grep "' .. command .. '") | cut -f1 -d" "); '
-  bash_kill_old = bash_kill_old .. 'if [ $PID ]; then kill $PID; fi '
+  bash_kill_old = bash_kill_old .. 'if [ $PID ]; then kill $PID; fi  &> /dev/null'
   
   os.execute(bash_kill_old)
   os.execute(bash_kill_old)  -- If we somehow ended up with multiple mosquitto_sub commands running...
+  os.execute(bash_kill_old)  -- Can happen if the parent process was killed.
 
   local sanitised_topic = topic:gsub("/", "..")
   local filename = topic_log .. '..' .. sanitised_topic
   
 
   log("Starting subscription for " .. topic)
-  local redirect = ' > ' .. filename .. ' &'
+  local redirect = ' > ' .. filename .. ' 2> /dev/null &'
+  log("", command .. redirect)
   local return_value = os.execute(command .. redirect)
   if return_value ~= 0 then
     log('Problem starting "' .. command .. redirect .. '"')

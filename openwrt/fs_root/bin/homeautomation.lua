@@ -300,20 +300,20 @@ function initilize()
     log('----------')
 
     local dhcp_watcher = component_mqtt_subscribe:new()
-    dhcp_watcher:setup('component_mqtt_subscribe', 'dhcp_watcher')
+    dhcp_watcher:setup('component_mqtt_subscribe', 'dhcp_watcher', '_uid_1')
     dhcp_watcher:add_general('subscribed_topic', 'dhcp/_announce')
 
     local registered_users = component_read_file:new()
-    registered_users:setup('component_read_file', 'registered_users')
+    registered_users:setup('component_read_file', 'registered_users', '_uid_2')
     --registered_users:add_general('match_data_label', '_subject')
     registered_users:add_general('filename', '/etc/homeautomation/registered_users.conf')
 
     local consolidate = component_combine:new()
-    consolidate:setup('component_combine', 'consolidate')
+    consolidate:setup('component_combine', 'consolidate', '_uid_3')
     consolidate:add_general('primary_key_label', '_subject')
 
     local someone_home = component_map_values:new()
-    someone_home:setup('component_map_values', 'someone_home')
+    someone_home:setup('component_map_values', 'someone_home', '_uid_4')
     someone_home:add_input('default', {label = '_user_name',
                                          rules = { _a = {match = '_missing',
                                                          action = 'drop'},
@@ -321,11 +321,11 @@ function initilize()
                                                          action = 'forward'} } })
 
     local combine_users = component_add_messages:new()
-    combine_users:setup('component_add_messages', 'combine_users')
+    combine_users:setup('component_add_messages', 'combine_users', '_uid_5')
     combine_users:add_general('primary_key_label', '_subject')
 
     local modify_label = component_map_labels:new()
-    modify_label:setup('component_map_labels', 'modify_label')
+    modify_label:setup('component_map_labels', 'modify_label', '_uid_6')
     modify_label:add_input('default', {rules = { _a = {match = '_reachable',
                                                         action = 'string',
                                                         value = '_command'},
@@ -333,7 +333,7 @@ function initilize()
                                                          action = 'drop'} } } )
 
     local modify_value = component_map_values:new()
-    modify_value:setup('component_map_values', 'modify_value')
+    modify_value:setup('component_map_values', 'modify_value', '_uid_7')
     modify_value:add_input('default', {label = '_command',
                                        rules = { _a = {match = 'true',
                                                        action = 'string',
@@ -343,14 +343,14 @@ function initilize()
                                                        value = 'off'} } })
 
     local time_window = component_time_window:new()
-    time_window:setup('component_time_window', 'time_window')
+    time_window:setup('component_time_window', 'time_window', '_uid_8')
     time_window:add_general('start_time', '6')
     time_window:add_general('end_time', '22')
     time_window:add_general('within_window', {action = 'forward'})
     time_window:add_general('outside_window', {action = 'custom', label = '_command', value = 'off'})
  
-    local set_jess_warning_lamp = component_publish:new()
-    set_jess_warning_lamp:setup('component_publish', 'set_jess_warning_lamp')
+    local set_jess_warning_lamp = component_mqtt_publish:new()
+    set_jess_warning_lamp:setup('component_mqtt_publish', 'set_jess_warning_lamp', '_uid_9')
     set_jess_warning_lamp:add_general('publish_topic', 'lighting/extension/jess_warning_lamp')
 
     --dhcp_watcher:add_output(registered_users, 'default_in')
