@@ -276,6 +276,7 @@ function component_map_values:receive_input(data, l)
         break
       elseif rule.action == 'drop' then
         log("~~~~~", rule.match, 'drop')
+        control_instance:update_log('(' .. self.class_name .. ')' .. self.instance_name .. ' -> ' .. flatten_data(data) .. ' -> DROP\n')
         break
       end
     end
@@ -474,23 +475,57 @@ end
 
 function component_add_messages:receive_input(data, input_label)
   log("'''''", flatten_data(data))
-	local primary_key_label = self.data.general.primary_key_label
+  local primary_key_label = self.data.general.primary_key_label
 
-	if data[primary_key_label] ~= nil then
-    local primary_key = data[primary_key_label]
-    for label, value in pairs(data) do
-      if self.data.data[primary_key] == nil then
-        self.data.data[primary_key] = {}
-      end
-      self.data.data[primary_key][label] = value
+  if data[primary_key_label] == nil then
+    return
+  end
+
+  local primary_key = data[primary_key_label]
+
+  for label, value in pairs(data) do
+    if self.data.data[primary_key] == nil then
+      self.data.data[primary_key] = {}
     end
+    self.data.data[primary_key][label] = value
   end
 
 	local combined_entry = {}
 	for _, entry in pairs(self.data.data) do
 		for label, value in pairs(entry) do
 			if label ~= primary_key_label then
-				if tonumber(value) ~= nil and (combined_entry[label] == nil or type(combined_entry[label]) == number) then
+        log("'''''", "", label, value)
+        if combined_entry[label] == nil then
+          if tonumber(value) ~= nil then
+            log("'''''", "", 'number')
+            combined_entry[label] = tonumber(value)
+          elseif toBoolean(value) ~= nil then
+            log("'''''", "", 'bool')
+            combined_entry[label] = toBoolean(value)
+          elseif type(value) == 'string' then
+            log("'''''", "", 'string')
+            combined_entry[label] = value
+          end
+        elseif type(combined_entry[label]) == 'string' then
+          if tonumber(value) ~= nil or toBoolean(value) ~= nil then
+            -- A string will take precedence over a number or a boolean.
+          elseif type(value) == 'string' then
+            combined_entry[label] = combined_entry[label] .. ' | ' .. value
+          end            
+        elseif type(combined_entry[label]) == 'number' then
+          if tonumber(value) ~= nil then
+            combined_entry[label] = combined_entry[label] + tonumber(value)
+          elseif toBoolean(value) ~= nil then
+            -- We want a logical OR so   number||bool = number .
+          elseif type(value) == 'string' then
+            -- A string will take precedence over a number or a boolean.
+            combined_entry[label] = value
+          end
+        elseif type(combined_entry[label]) == 'boolean' then
+          combined_entry[label] = combined_entry[label] or value
+        end
+
+--[[				if tonumber(value) ~= nil and (combined_entry[label] == nil or type(combined_entry[label]) == number) then
 					if combined_entry[label] == nil then
 						combined_entry[label] = 0
 					end
@@ -500,7 +535,7 @@ function component_add_messages:receive_input(data, input_label)
             combined_entry[label] = false
           end
           combined_entry[label] = combined_entry[label] or (value == 'true')
-				end
+				end]]--
 			end
 		end
 	end
@@ -508,6 +543,24 @@ function component_add_messages:receive_input(data, input_label)
 	self:send_output(combined_entry)
 end
 
+
+function toBoolean(value)
+  if type(value) == 'boolean' then
+    return value
+  end
+  if type(value) == 'string' then
+    if value:lower() == 'false' then
+      return false
+    end
+    if value:lower() == 'true' then
+      return true
+    end
+  end
+  if type(value) == 'number' then
+    return not not value
+  end
+  return nil
+end
 
 function flatten_data(data_in)
   if data_in then
