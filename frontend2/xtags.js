@@ -32,9 +32,12 @@ xtag.register('ha-control', {
       this.paper = Raphael('ha-control-paper', '100%', '100%');
       this.header = document.getElementsByTagName('ha-control-heading')[0];
       this.header.setParent(this);
-      this.sidebar = document.getElementsByTagName('ha-sidebar')[0];
+      this.menu = document.getElementsByTagName('ha-sidebar')[0];
+      this.sidebar = document.getElementsByTagName('ha-sidebar')[1];
       this.flowObjects = [];
       this.shareBetweenShapes = {unique_id: 0};
+      this.menu.setAlign('left');
+      //this.sidebar.setAlign('left');
     }
   },
   methods: {
@@ -100,18 +103,6 @@ xtag.register('ha-sidebar', {
     }
   },
   events: {
-    'click:delegate(div.sidebar-handle)': function(click_event){
-      var sidebar;
-      for(var i = 0; i < click_event.path.length; i++){
-        if(click_event.path[i].tagName.toLowerCase() === 'ha-sidebar'){
-          sidebar = click_event.path[i];
-          break;
-        }
-      }
-      if(sidebar === undefined){
-        return;
-      }
-    },
     'dragstart:delegate(div.sidebar-handle)': function(drag_event){
       var crt = this.cloneNode(true);
       crt.style.backgroundColor = "blue";
@@ -130,18 +121,18 @@ xtag.register('ha-sidebar', {
         return;
       }
 
-      if(drag_event.clientX && drag_event.clientY){
+      if(drag_event.clientX && drag_event.clientY && drag_event.clientX > this.getBoundingClientRect().width + 2){
         if(sidebar.align === 'right'){
-          this.style.right = (document.body.getBoundingClientRect().right - drag_event.clientX) + 'px';
+          this.style.right = (sidebar.getBoundingClientRect().right - drag_event.clientX) + 'px';
         } else {
-          this.style.left = (drag_event.clientX - (this.clientWidth /2)) + 'px';
+          this.style.left = drag_event.clientX - sidebar.getBoundingClientRect().left + 'px';
         }
-      }
 
-      if(sidebar.align === 'right'){
-        sidebar.style.width = document.body.getBoundingClientRect().right - this.getBoundingClientRect().right -2 + 'px';
-      } else {
-        sidebar.style.width = this.getBoundingClientRect().right -2 + 'px';
+        if(sidebar.align === 'right'){
+          sidebar.style.width = (sidebar.getBoundingClientRect().right - this.getBoundingClientRect().right + this.getBoundingClientRect().width -2) + 'px';
+        } else {
+          sidebar.style.width = (this.getBoundingClientRect().left + this.getBoundingClientRect().width -2 - sidebar.getBoundingClientRect().left) + 'px';
+        }
       }
     }
   },
