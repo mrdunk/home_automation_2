@@ -38,17 +38,35 @@ xtag.register('ha-control', {
       this.shareBetweenShapes = {unique_id: 0};
       this.menu.setAlign('left');
       //this.sidebar.setAlign('left');
+
+      this.populateMenu();
+
+      //this.setAttribute('draggable', true);
     }
   },
   methods: {
+    populateMenu: function(){
+      this.menu.resize(200);
+
+      var container = document.createElement('div');
+      for(var i = 0; i < flow_object_classes.length; i++){
+        var flow_object = new flow_object_classes[i]();
+        var button = document.createElement('dragable-button');
+        button.setContent(flow_object.data.object_name);
+        button.setColor(flow_object.data.shape.color);
+        button.setData({flow_object_id: i});
+        container.appendChild(button);
+      }
+      this.menu.setContent(container);
+    },
     buttonClicked: function(button_settings){
       if(button_settings.action === 'new_object'){
         this.addFlowObject(button_settings);
       }
     },
     addFlowObject: function(object_type){
+      // TODO remove this method?
       var flowObject;
-      console.log(object_type);
       if(object_type.callback){
         flowObject = new object_type.callback(this.paper, this.sidebar, this.shareBetweenShapes, undefined, {});
       } else {
@@ -57,7 +75,32 @@ xtag.register('ha-control', {
       flowObject.setBoxPosition(100,100);
 
       flowObject.select();
+      return flowObject;
     },
+  },
+  events: {
+    drag: function(event){
+      event.preventDefault();
+    },
+    dragover: function(event){
+      event.preventDefault();
+    },
+    dragenter: function(event){
+      event.preventDefault();
+    },
+		drop: function(event){
+      var x = event.x - document.getElementById('ha-control-paper').getBoundingClientRect().left;
+      var y = event.y - document.getElementById('ha-control-paper').getBoundingClientRect().top;
+      if(x > 0 && y > 0 && event.dataTransfer.getData('flow_object_id') !== ""){
+        //var flow_object = this.addFlowObject(buttonTypes['trending-flat']);
+        var constructor = flow_object_classes[event.dataTransfer.getData('flow_object_id')];
+        var flow_object = new constructor(this.paper, this.sidebar, this.shareBetweenShapes, undefined, {});
+        x -= parseFloat(event.dataTransfer.getData('offset_x')) * flow_object.shape[0].attr('width');
+        y -= parseFloat(event.dataTransfer.getData('offset_y')) * flow_object.shape[0].attr('height');
+        console.log('drop:', x, y);
+        flow_object.setBoxPosition(x, y);
+      }
+    }
   }
 });
 
@@ -139,7 +182,13 @@ xtag.register('ha-sidebar', {
   methods: {
     resize: function(width){
       console.log(width);
-      this.width = width;
+      if(this.align === 'right'){
+        this.style.width = width + 'px';
+        this.handle.style.right = width + 'px';
+      } else {
+        this.style.width = width + 'px';
+        this.handle.style.left = (width - this.handle.getBoundingClientRect().width) + 'px';
+      }
     },
     setAlign: function(align){
       this.align = align;
@@ -154,7 +203,6 @@ xtag.register('ha-sidebar', {
 		setHeader: function(name, uid, color){
 			name = name || ' ';
 			uid = uid || ' ';
-			color = color || 'black';
 
 			var header = this.getElementsByClassName('sidebar-header')[0];
 			header.getElementsByClassName('text')[0].innerHTML = '';
@@ -164,10 +212,26 @@ xtag.register('ha-sidebar', {
 			h2.innerHTML = uid;
 			header.getElementsByClassName('text')[0].appendChild(h1);
 			header.getElementsByClassName('text')[0].appendChild(h2);
-			header.getElementsByClassName('object-color')[0].style.height = '2em';
 
-			header.getElementsByClassName('object-color')[0].style.background = color;
-		}
+      if(color === undefined){
+        header.getElementsByClassName('object-color')[0].style.height = '0';
+        header.getElementsByClassName('object-color')[0].style.visibility = "hidden";
+      } else {
+        header.getElementsByClassName('object-color')[0].style.height = '2em';
+        header.getElementsByClassName('object-color')[0].style.visibility = "visible";
+			  header.getElementsByClassName('object-color')[0].style.background = color;
+      }
+		},
+    setContent: function(content){
+      if(typeof(content) === 'string'){
+        var element = document.createElement('div');
+        element.innerHTML = content;
+        content = element;
+      }
+      var container = this.getElementsByClassName('sidebar-content')[0];
+      container.innerHTML = "";
+      container.appendChild(content);
+    }
   },
 });
 
@@ -215,7 +279,7 @@ xtag.register('ha-input-attributes', {
   },
   methods: {
     populate: function(data, flow_object){
-      console.log(data);
+      //console.log(data);
       this.getElementsByClassName('description')[0].innerHTML = data.description;
       var form = this.getElementsByClassName('form')[0];
 
@@ -402,7 +466,7 @@ xtag.register('ha-transitions', {
       this.data = data || this.data;
       this.flow_object = flow_object || this.flow_object;
 
-			console.log(this.data);
+			//console.log(this.data);
 
       if(Object.keys(this.data.values).length === 0){
         this.prePopulateRange();
@@ -753,6 +817,59 @@ xtag.register('ha-topic-chooser', {
         option.setAttribute("value", 'homeautomation/+/' + topic_list[key]);
         datalist.appendChild(option);
       }
+    }
+  }
+});
+
+xtag.register('dragable-button', {
+  lifecycle:{
+    created: function(){
+      xtag.innerHTML(this, '<div>db</div>');
+      this.setAttribute('draggable', true);
+    },
+  },
+  events: {
+    drag: function(event){
+      event.preventDefault();
+    },
+    dragover: function(event){
+      event.preventDefault();
+    },
+    dragenter: function(event){
+      event.preventDefault();
+    },
+    dragstart: function(event){
+      console.log('dragstart:', event, this.data);
+      this.style.opacity = '0.4';
+      event.dataTransfer.effectAllowed = 'move';
+      event.dataTransfer.setData('flow_object_id', this.data.flow_object_id);
+      event.dataTransfer.setData('offset_x', event.offsetX / this.getBoundingClientRect().width);
+      event.dataTransfer.setData('offset_y', event.offsetY / this.getBoundingClientRect().height);
+    },
+    dragend: function(event){
+      //console.log('dragend:', event);
+      this.style.opacity = '1';
+    },
+    drop: function(event){
+      event.preventDefault();
+      //console.log('drop:', event);
+    }
+  },
+  methods: {
+    setContent: function(content){
+      if(typeof(content) === 'string'){
+        var element = document.createElement('div');
+        element.innerHTML = content;
+        content = element;
+      }
+      this.innerHTML = "";
+      this.appendChild(content);
+    },
+    setData: function(data){
+      this.data = data;
+    },
+    setColor: function(color){
+      this.style.background = color;
     }
   }
 });

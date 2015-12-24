@@ -27,15 +27,18 @@ var getFlowObjectByInstanceName = function(instance_name){
   return;
 };
 
-var FlowObject = function(paper, sidebar, shareBetweenShapes, shape){
+var FlowObject = function(paper, sidebar, shareBetweenShapes){
   'use strict';
-  //console.log('FlowObject');
+  //console.log('FlowObject', this);
 
   this.data = {object_name: 'FlowObject',
                data: {outputs: {}, inputs: {}}};
   this.paper = paper;
   this.sidebar = sidebar;
   this.shareBetweenShapes = shareBetweenShapes;
+};
+
+FlowObject.prototype.setShape = function(shape){
   this.shape = shape || paper.rect(0, 0, 30, 30, 5);
   this.shape.data('parent', this);
   this.shape.drag(this.onmove, this.onstart, this.onend);
@@ -73,6 +76,7 @@ FlowObject.prototype.setInstanceName = function(instance_name){
 
 FlowObject.prototype.setup = function(backend_data){
   'use strict';
+  console.log('FlowObject.setup(', backend_data, ')');
   for(var port_out in this.data.data.outputs){
     this.data.data.outputs[port_out].path = {};
     this.data.data.outputs[port_out].links = [];
@@ -82,8 +86,6 @@ FlowObject.prototype.setup = function(backend_data){
     this.data.data.inputs[port_in].links = [];
     this.FilterInputToOutput(port_in);
   }
-
-	console.log(backend_data);
 
   if(backend_data.unique_id){
     this.unique_id = backend_data.unique_id;
@@ -360,6 +362,8 @@ FlowObject.prototype.FilterInputToOutput = function(){
   'use strict';
 };
 
+
+
 // Must be used *before* re-defining any class methods.
 var inheritsFrom = function (child, parent) {
   'use strict';
@@ -369,16 +373,22 @@ var inheritsFrom = function (child, parent) {
 };
 
 
+flow_object_classes = [FlowObjectMqttSubscribe, FlowObjectMqttPublish, FlowObjectMapValues, FlowObjectTimer, FlowObjectCombineData];
+
 
 function FlowObjectMqttSubscribe(paper, sidebar, shareBetweenShapes, shape, backend_data){
   'use strict';
   console.log("FlowObjectMqttSubscribe");
 
-  shape = shape || paper.box(0, 0, 150, 50, 0, 1, 'seagreen');
+  FlowObject.prototype.constructor.call(this, paper, sidebar, shareBetweenShapes);
 
-  FlowObject.prototype.constructor.call(this, paper, sidebar, shareBetweenShapes, shape);
   this.data = { object_name: 'MQTT Subscription',
                 description: 'Monitor MQTT for a specific topic.',
+                shape: {
+                  width: 150,
+                  height: 50,
+                  color: 'seagreen',
+                },
                 data: {
                   general: {
                     instance_name: { 
@@ -399,9 +409,16 @@ function FlowObjectMqttSubscribe(paper, sidebar, shareBetweenShapes, shape, back
                       sample_data: {}
                       } } }
               };
-  this.setup(backend_data);
-  this.data.data.general.subscribed_topic.value = 'homeautomation/+/' + backend_data.data.general.subscribed_topic;
-  this.setContents();
+
+  if(paper){
+    shape = shape || paper.box(0, 0, this.data.shape.width, this.data.shape.height, 0, 1, this.data.shape.color);
+		this.setShape(shape);
+    this.setup(backend_data);
+    if(backend_data.data !== undefined){
+      this.data.data.general.subscribed_topic.value = 'homeautomation/+/' + backend_data.data.general.subscribed_topic;
+      this.setContents();
+    }
+  }
 };
 
 inheritsFrom(FlowObjectMqttSubscribe, FlowObject);
@@ -429,11 +446,14 @@ function FlowObjectMqttPublish(paper, sidebar, shareBetweenShapes, shape, backen
   'use strict';
   console.log("FlowObjectMqttPublish");
 
-  shape = shape || paper.box(0, 0, 150, 50, 1, 0, 'seagreen');
-
-  FlowObject.prototype.constructor.call(this, paper, sidebar, shareBetweenShapes, shape);
+  FlowObject.prototype.constructor.call(this, paper, sidebar, shareBetweenShapes);
   this.data = { object_name: 'MQTT Publish',
                 description: 'Publish MQTT a message for a specific topic.',
+                shape: {
+                  width: 150,
+                  height: 50,
+                  color: 'seagreen',
+                },
                 data: {
                   general: {
                     instance_name: {
@@ -463,7 +483,11 @@ function FlowObjectMqttPublish(paper, sidebar, shareBetweenShapes, shape, backen
                       trigger_success: [] }},
                   outputs: {}}
               };
-  this.setup(backend_data);
+  if(paper){
+    shape = shape || paper.box(0, 0, this.data.shape.width, this.data.shape.height, 1, 0, this.data.shape.color);
+    this.setShape(shape);
+    this.setup(backend_data);
+  }
 };
 
 inheritsFrom(FlowObjectMqttPublish, FlowObject);
@@ -474,11 +498,14 @@ function FlowObjectTimer(paper, sidebar, shareBetweenShapes, shape, backend_data
   'use strict';
   console.log("FlowObjectTimer");
 
-  shape = shape || paper.box(0, 0, 100, 50, 3, 1, 'coral');
-
-  FlowObject.prototype.constructor.call(this, paper, sidebar, shareBetweenShapes, shape);
+  FlowObject.prototype.constructor.call(this, paper, sidebar, shareBetweenShapes);
   this.data = { object_name: 'Timer',
                 description: 'Trigger output after a set delay.',
+                shape: {
+                  width: 100,
+                  height: 50,
+                  color: 'coral',
+                },
                 data: {
                   general: {
                     instance_name: {
@@ -511,7 +538,7 @@ function FlowObjectTimer(paper, sidebar, shareBetweenShapes, shape, backend_data
                       },
                       sample_data: {},
                       },
-                    2: {
+                    1: {
                       description: 'Stop',
                       peramiters:{
                         trigger_label: INPUT_PORT,
@@ -519,7 +546,7 @@ function FlowObjectTimer(paper, sidebar, shareBetweenShapes, shape, backend_data
                       },
                       sample_data: {},
                       },
-                    1: {
+                    2: {
                       description: 'Reset',
                       peramiters:{
                         trigger_label: INPUT_PORT,
@@ -543,7 +570,11 @@ function FlowObjectTimer(paper, sidebar, shareBetweenShapes, shape, backend_data
                       sample_data: {},
                       } } }
               };
-  this.setup(backend_data);
+  if(paper){
+    shape = shape || paper.box(0, 0, this.data.shape.width, this.data.shape.height, 3, 1, this.data.shape.color);
+    this.setShape(shape);
+    this.setup(backend_data);
+  }
 };
 
 inheritsFrom(FlowObjectTimer, FlowObject);
@@ -551,13 +582,16 @@ inheritsFrom(FlowObjectTimer, FlowObject);
 
 function FlowObjectMapValues(paper, sidebar, shareBetweenShapes, shape, backend_data){
   'use strict';
-  console.log("FlowObjectMapValues");
+  console.log("FlowObjectMapValues(", paper, sidebar, shareBetweenShapes, shape, backend_data, ')');
 
-  shape = shape || paper.box(0, 0, 75, 50, 1, 1, 'crimson');
-
-  FlowObject.prototype.constructor.call(this, paper, sidebar, shareBetweenShapes, shape);
+  FlowObject.prototype.constructor.call(this, paper, sidebar, shareBetweenShapes);
   this.data = { object_name: 'Map values',
                 description: 'Filter or modify input variables to different output.',
+                shape: {
+                  width: 75,
+                  height: 50,
+                  color: 'crimson',
+                },
                 data: {
                   general: {
                     instance_name: {
@@ -586,7 +620,11 @@ function FlowObjectMapValues(paper, sidebar, shareBetweenShapes, shape, backend_
                       sample_data: {}
                       }
                     }}};
-  this.setup(backend_data);
+  if(paper){
+    shape = shape || paper.box(0, 0, this.data.shape.width, this.data.shape.height, 1, 1, this.data.shape.color);
+    this.setShape(shape);
+    this.setup(backend_data);
+  }
 };
 
 inheritsFrom(FlowObjectMapValues, FlowObject);
@@ -604,7 +642,7 @@ var stringToBoolean = function(string){
 
 FlowObjectMapValues.prototype.FilterInputToOutput = function(port_in){
   'use strict';
-  console.log('FlowObjectMapValues.FilterInputToOutput(', port_in, ')', this.data.data);
+  //console.log('FlowObjectMapValues.FilterInputToOutput(', port_in, ')', this.data.data);
   
   var port_out = this.data.data.inputs[port_in].peramiters.transitions.port_out;
 
@@ -713,11 +751,14 @@ function FlowObjectTestData(paper, sidebar, shareBetweenShapes, shape, backend_d
   'use strict';
   console.log("FlowObjectTestData");
 
-  shape = shape || paper.box(0, 0, 150, 50, 0, 1, 'gold');
-
-  FlowObject.prototype.constructor.call(this, paper, sidebar, shareBetweenShapes, shape);
+  FlowObject.prototype.constructor.call(this, paper, sidebar, shareBetweenShapes);
   this.data = { object_name: 'Test data',
                 description: 'Generate some fake data for testing this UI.',
+                shape: {
+                  width: 150,
+                  height: 50,
+                  color: 'gold',
+                },
                 data: {
                   general: {
                     instance_name: { 
@@ -745,7 +786,11 @@ function FlowObjectTestData(paper, sidebar, shareBetweenShapes, shape, backend_d
                         }
                       } } }
               };
-  this.setup(backend_data);
+  if(paper){
+    shape = shape || paper.box(0, 0, this.data.shape.width, this.data.shape.height, 0, 1, this.data.shape.color);
+    this.setShape(shape);
+    this.setup(backend_data);
+  }
 };
 
 inheritsFrom(FlowObjectTestData, FlowObject);
@@ -762,11 +807,14 @@ function FlowObjectCombineData(paper, sidebar, shareBetweenShapes, shape, backen
   'use strict';
   console.log("FlowObjectCombineData");
 
-  shape = shape || paper.box(0, 0, 150, 50, 2, 1, 'crimson');
-
-  FlowObject.prototype.constructor.call(this, paper, sidebar, shareBetweenShapes, shape);
+  FlowObject.prototype.constructor.call(this, paper, sidebar, shareBetweenShapes);
   this.data = { object_name: 'Combine data',
                 description: 'Combine data from multiple data payloads.',
+                shape: {
+                  width: 150,
+                  height: 50,
+                  color: 'crimson',
+                },
                 data: {
                   general: {
                     instance_name: {
@@ -788,23 +836,27 @@ function FlowObjectCombineData(paper, sidebar, shareBetweenShapes, shape, backen
                         },
                       sample_data: {} 
                     },
-                    1: {
+                  1: {
                       description: 'Reset',
                       peramiters:{
                         trigger_label: INPUT_PORT,
                         trigger_value: INPUT_PORT },
                       sample_data: {}
                       }
-                    },
-                  outputs: {
+                  },
+                outputs: {
                     0: {
                       description: 'Default output',
                       sample_data: {}
                     }
-                  }
                 }
+              }
 	};
-  this.setup(backend_data);
+  if(paper){
+    shape = shape || paper.box(0, 0, this.data.shape.width, this.data.shape.height, 2, 1, this.data.shape.color);
+    this.setShape(shape);
+    this.setup(backend_data);
+  }
 };
 
 inheritsFrom(FlowObjectCombineData, FlowObject);
