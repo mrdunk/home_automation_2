@@ -305,66 +305,59 @@ function initilize()
 
     local registered_users = component_read_file:new()
     registered_users:setup('component_read_file', 'registered_users', '_uid_2')
-    --registered_users:add_general('match_data_label', '_subject')
     registered_users:add_general('filename', '/etc/homeautomation/registered_users.conf')
 
     local consolidate = component_combine:new()
     consolidate:setup('component_combine', 'consolidate', '_uid_3')
-    consolidate:add_general('primary_key_label', '_subject')
+    consolidate:add_input('default', {primary_key_label = '_subject'})
 
     local someone_home = component_map_values:new()
     someone_home:setup('component_map_values', 'someone_home', '_uid_4')
     someone_home:add_input('default', {label = '_user_name',
                                          rules = { _a = {match = '_missing',
-                                                         action = 'drop'},
+                                                         action = '_drop'},
                                                    _b = {match = '_else',
-                                                         action = 'forward'} } })
+                                                         action = '_forward'} } })
 
     local combine_users = component_add_messages:new()
     combine_users:setup('component_add_messages', 'combine_users', '_uid_5')
-    combine_users:add_general('primary_key_label', '_subject')
+    combine_users:add_input('default', {primary_key_label = '_subject'})
 
     local modify_label = component_map_labels:new()
     modify_label:setup('component_map_labels', 'modify_label', '_uid_6')
     modify_label:add_input('default', {rules = { _a = {match = '_reachable',
-                                                        action = 'string',
-                                                        value = '_command'},
-                                                  _b = {match = '_else',
-                                                         action = 'drop'} } } )
+                                                       action = '_string',
+                                                       value = '_command'},
+                                                 _b = {match = '_else',
+                                                       action = '_drop'} } } )
 
     local modify_value = component_map_values:new()
     modify_value:setup('component_map_values', 'modify_value', '_uid_7')
     modify_value:add_input('default', {label = '_command',
                                        rules = { _a = {match = 'true',
-                                                       action = 'string',
+                                                       action = '_string',
                                                        value = 'on'},
                                                  _b = {match = 'false',
-                                                       action = 'string',
+                                                       action = '_string',
                                                        value = 'off'} } })
 
-    local time_window = component_time_window:new()
-    time_window:setup('component_time_window', 'time_window', '_uid_8')
-    time_window:add_general('start_time', '6')
-    time_window:add_general('end_time', '22')
-    time_window:add_general('within_window', {action = 'forward'})
-    time_window:add_general('outside_window', {action = 'custom', label = '_command', value = 'off'})
+    local tag_time = component_add_time:new()
+    tag_time:setup('component_add_time', 'tag_time', '_uid_10')
  
     local set_jess_warning_lamp = component_mqtt_publish:new()
     set_jess_warning_lamp:setup('component_mqtt_publish', 'set_jess_warning_lamp', '_uid_9')
     set_jess_warning_lamp:add_general('publish_topic', 'lighting/extension/jess_warning_lamp')
 
-    --dhcp_watcher:add_output(registered_users, 'default_in')
-    registered_users:add_output(consolidate, 'default_in')
-    dhcp_watcher:add_output(consolidate, 'default_in')
-    consolidate:add_output(someone_home, 'default_in')
-    someone_home:add_output(combine_users, 'default_in')
-    combine_users:add_output(modify_label, 'default_in')
+    registered_users:add_output(consolidate, 'default_out')
+    dhcp_watcher:add_output(tag_time, 'default_out')
+    tag_time:add_output(consolidate, 'default_out')
+    consolidate:add_output(someone_home, 'default_out')
+    someone_home:add_output(combine_users, 'default_out')
+    combine_users:add_output(modify_label, 'default_out')
 
-    modify_label:add_output(modify_value, 'default_in')
-    modify_value:add_output(time_window, 'default_in')
---    modify_label:add_output(time_window, 'default_in')
+    modify_label:add_output(modify_value, 'default_out')
+    modify_value:add_output(set_jess_warning_lamp, 'default_out')
 
-    time_window:add_output(set_jess_warning_lamp, 'default_in')
   end
 	end
 

@@ -3,6 +3,8 @@
 /*global PORT_WIDTH*/
 /*global PORT_HEIGHT*/
 
+var SNAP = 20;
+
 var INPUT_PORT = { description: 'Trigger label', value: '_any', updater: 'ha-general-attribute' };
 
 var getFlowObjectByUniqueId = function(unique_id){
@@ -132,11 +134,17 @@ FlowObject.prototype.getBoxPosition = function(){
 
 FlowObject.prototype.setBoxPosition = function(x, y){
   'use strict';
+  if(isNaN(parseFloat(x)) && y === undefined){
+    // Has been passed a position object: {x: X_coord, y: Y_coord}.
+    y = x.y;
+    x = x.x;
+  }
   this.shape[0].setBoxPosition(x, y);
 };
 
 FlowObject.prototype.select = function(){
   'use strict';
+  console.log('FlowObject.select:', this);
   if(this.shareBetweenShapes.selected){
     this.shareBetweenShapes.selected.shape.setHighlight(false);
   }
@@ -228,7 +236,7 @@ FlowObject.prototype.onend = function(){
   //console.log('FlowObject.onend()');
   this.data('myset').animate({"fill-opacity": 1}, 500);
   
-  if(this.data('parent').shareBetweenShapes.dragging){
+  if(this.data('parent').shareBetweenShapes.dragging && this.data('parent').shareBetweenShapes.dragging.arrow){
     this.data('parent').shareBetweenShapes.dragging.arrow.remove();  
     delete this.data('parent').shareBetweenShapes.dragging;
 
@@ -236,15 +244,46 @@ FlowObject.prototype.onend = function(){
       this.data('parent').linkOutToIn(this.data('parent').shareBetweenShapes.linked.origin, this.data('parent').shareBetweenShapes.linked.desination);
       delete this.data('parent').shareBetweenShapes.linked;
     }
+  } else {
+    // Finished dragging FlowObject.
+    var position = this.data('parent').getBoxPosition();
+    position.x += SNAP /2 - position.x % SNAP;
+    position.y += SNAP /2 - position.y % SNAP;
+    this.data('parent').setBoxPosition(position);
   }
 };
 
+/* Arguments:
+ *   Can take either the rectangle object provided by an event or an object containing
+  *  enough information to find the port.
+ *   eg: { unique_id: 'instance_id_1', port_number: 0}
+         { flow_object: (object), port_number: 0}
+ */
 FlowObject.prototype.linkOutToIn = function(shape_out, shape_in){
   'use strict';
-  console.log('linked!');
+	console.log('FlowObject.linkOutToIn(', shape_out, shape_in, ')');
+  if(shape_out.type !== 'rect'){
+    if(shape_out.flow_object){
+      shape_out = shape_out.flow_object.shape.getPort('outputs', shape_out.port_number);
+    } else if(shape_out.unique_id){
+      shape_out = getFlowObjectByUniqueId(shape_out.unique_id).shape.getPort('outputs', shape_out.port_number);
+    } else {
+      shape_out = this.shape.getPort('outputs', shape_out.port_number);
+    }
+  }
+  if(shape_in.type !== 'rect'){
+    if(shape_in.flow_object){
+      shape_in = shape_in.flow_object.shape.getPort('inputs', shape_in.port_number);
+    } else if(shape_in.unique_id){
+      shape_in = getFlowObjectByUniqueId(shape_in.unique_id).shape.getPort('inputs', shape_in.port_number);
+    } else {
+      shape_in = this.shape.getPort('inputs', shape_in.port_number);
+    }
+  }
+  console.log('FlowObject.linkOutToIn(', shape_out, shape_in, ')');
+
   var port_out = this.mapShapeToPort(shape_out);
   var port_in = shape_in.data('parent').mapShapeToPort(shape_in);
-  
 
   // Check for the same link already existing.
   for(var i = 0; i < this.data.data.outputs[port_out.number].links.length; i++){
@@ -264,7 +303,7 @@ FlowObject.prototype.linkOutToIn = function(shape_out, shape_in){
 
 
   this.data.data.outputs[port_out.number].links.push({box_object: shape_in.data('parent'), input_port: port_in.number});
-  shape_in.data('parent').data.data.inputs[port_in.number].links.push({box_object: shape_out.data('parent'), output_port: port_out.number});
+  shape_in.data('parent').data.data.inputs[port_in.number].links.push({box_object: this, output_port: port_out.number});
 
   this.shape.setOutputLinks(this.data.data.outputs);
 
@@ -373,7 +412,7 @@ var inheritsFrom = function (child, parent) {
 };
 
 
-flow_object_classes = [FlowObjectMqttSubscribe, FlowObjectMqttPublish, FlowObjectMapValues, FlowObjectTimer, FlowObjectCombineData];
+flow_object_classes = [FlowObjectMqttSubscribe, FlowObjectMqttPublish, FlowObjectReadFile, FlowObjectMapValues, FlowObjectMapLabels, FlowObjectTimer, FlowObjectCombineData, FlowObjectAddData];
 
 
 function FlowObjectMqttSubscribe(paper, sidebar, shareBetweenShapes, shape, backend_data){
@@ -624,6 +663,32 @@ function FlowObjectMapValues(paper, sidebar, shareBetweenShapes, shape, backend_
     shape = shape || paper.box(0, 0, this.data.shape.width, this.data.shape.height, 1, 1, this.data.shape.color);
     this.setShape(shape);
     this.setup(backend_data);
+
+    if(backend_data.data !== undefined){
+      var label = backend_data.data.inputs.default.label;
+      this.data.data.inputs[0].peramiters.transitions.values[label] = [];
+      var found_else;
+      for(var key in backend_data.data.inputs.default.rules){
+        var input = backend_data.data.inputs.default.rules[key].match;
+        if(typeof(input) === 'string' && input.toLowerCase().trim() === 'true'){
+          input = true;
+        }
+        if(typeof(input) === 'string' && input.toLowerCase().trim() === 'false'){
+          input = false;
+        }
+        var output = backend_data.data.inputs.default.rules[key].action;
+        if(output === '_string'){
+          output = backend_data.data.inputs.default.rules[key].value;
+        }
+        this.data.data.inputs[0].peramiters.transitions.values[label].push({input: input, output: output});
+        if(input === '_else'){
+          found_else = true;
+        }
+      }
+      if(found_else === undefined){
+        this.data.data.inputs[0].peramiters.transitions.values[label].push({input: '_else', output: '_drop'});
+      }
+    }
   }
 };
 
@@ -747,6 +812,94 @@ FlowObjectMapValues.prototype.FilterOutput = function(input_payload, filter_outp
 };
 
 
+
+function FlowObjectMapLabels(paper, sidebar, shareBetweenShapes, shape, backend_data){
+  'use strict';
+  console.log("FlowObjectMapLabels(", paper, sidebar, shareBetweenShapes, shape, backend_data, ')');
+
+  FlowObject.prototype.constructor.call(this, paper, sidebar, shareBetweenShapes);
+  this.data = { object_name: 'Map labels',
+                description: 'Modify labels names.',
+                shape: {
+                  width: 75,
+                  height: 50,
+                  color: 'crimson',
+                },
+                data: {
+                  general: {
+                    instance_name: {
+                      description: 'Name',
+                      updater: 'ha-general-attribute',
+                      update_on_change: this.setInstanceName,
+                      //value: 'Object_' + shareBetweenShapes.unique_id
+                      },
+                    },
+                  inputs: {
+                    0: {
+                      description: 'Input 1',
+                      peramiters: {
+                        label_in: {
+                          description: 'Label to modify.',
+                          updater: 'ha-general-attribute',
+                          value: '' },
+                        label_out: {
+                          description: 'Desired label name.',
+                          updater: 'ha-general-attribute',
+                          value: '' }
+                      },
+                      sample_data: {}
+                      },
+                    },
+                  outputs: {
+                    0: {
+                      description: 'Default output',
+                      sample_data: {}
+                      }
+                    }}};
+  if(paper){
+    shape = shape || paper.box(0, 0, this.data.shape.width, this.data.shape.height, 1, 1, this.data.shape.color);
+    this.setShape(shape);
+    this.setup(backend_data);
+
+    if(backend_data.data !== undefined){
+      // TODO handle more than one label.
+      this.data.data.inputs[0].peramiters.else = {updater: "ha-general-attribute",
+        description: "When no matching label."};
+      var else_found;
+      for(var key in backend_data.data.inputs.default.rules){
+        var action = backend_data.data.inputs.default.rules[key].action;
+        var match = backend_data.data.inputs.default.rules[key].match;
+        var value = backend_data.data.inputs.default.rules[key].value;
+        if(match === '_else'){
+          if(action === '_string'){
+            this.data.data.inputs[0].peramiters.else.value = value
+          } else if(action === '_forward'){
+            this.data.data.inputs[0].peramiters.else.value = match;
+          } else if(action === '_drop'){
+            this.data.data.inputs[0].peramiters.else.value = '_drop';
+          }
+        } else {
+          else_found = true;
+          this.data.data.inputs[0].peramiters.label_in.value = match;
+          if(action === '_string'){
+            this.data.data.inputs[0].peramiters.label_out.value = value
+          } else if(action === '_forward'){
+            this.data.data.inputs[0].peramiters.label_out.value = match;
+          } else if(action === '_drop'){
+            this.data.data.inputs[0].peramiters.label_out.value = '_drop';
+          }
+        }
+      }
+      if(else_found === undefined){
+        this.data.data.inputs[0].peramiters.else.value = '_drop';
+      }
+    }
+  }
+};
+
+inheritsFrom(FlowObjectMapLabels, FlowObject);
+
+
 function FlowObjectTestData(paper, sidebar, shareBetweenShapes, shape, backend_data){
   'use strict';
   console.log("FlowObjectTestData");
@@ -805,15 +958,15 @@ FlowObjectTestData.prototype.displaySideBar = function(){
 
 function FlowObjectCombineData(paper, sidebar, shareBetweenShapes, shape, backend_data){
   'use strict';
-  console.log("FlowObjectCombineData");
+  console.log('FlowObjectCombineData(', paper, sidebar, shareBetweenShapes, shape, backend_data, ')');
 
   FlowObject.prototype.constructor.call(this, paper, sidebar, shareBetweenShapes);
   this.data = { object_name: 'Combine data',
-                description: 'Combine data from multiple data payloads.',
+                description: 'Combine data sharing specified label from multiple data payloads.',
                 shape: {
                   width: 150,
                   height: 50,
-                  color: 'crimson',
+                  color: 'cornflowerblue',
                 },
                 data: {
                   general: {
@@ -836,13 +989,7 @@ function FlowObjectCombineData(paper, sidebar, shareBetweenShapes, shape, backen
                         },
                       sample_data: {} 
                     },
-                  1: {
-                      description: 'Reset',
-                      peramiters:{
-                        trigger_label: INPUT_PORT,
-                        trigger_value: INPUT_PORT },
-                      sample_data: {}
-                      }
+                    // TODO add reset.
                   },
                 outputs: {
                     0: {
@@ -853,11 +1000,175 @@ function FlowObjectCombineData(paper, sidebar, shareBetweenShapes, shape, backen
               }
 	};
   if(paper){
-    shape = shape || paper.box(0, 0, this.data.shape.width, this.data.shape.height, 2, 1, this.data.shape.color);
+    shape = shape || paper.box(0, 0, this.data.shape.width, this.data.shape.height, 1, 1, this.data.shape.color);
     this.setShape(shape);
     this.setup(backend_data);
+
+    if(backend_data.data !== undefined){
+      this.data.data.inputs[0].peramiters.primary_key.value = backend_data.data.inputs.default.primary_key_label
+    }
   }
 };
 
 inheritsFrom(FlowObjectCombineData, FlowObject);
+
+
+
+function FlowObjectAddData(paper, sidebar, shareBetweenShapes, shape, backend_data){
+  'use strict';
+  console.log('FlowObjectAddData(', paper, sidebar, shareBetweenShapes, shape, backend_data, ')');
+
+  FlowObject.prototype.constructor.call(this, paper, sidebar, shareBetweenShapes);
+  this.data = { object_name: 'Add data',
+                description: 'Add data from multiple data payloads.',
+                shape: {
+                  width: 150,
+                  height: 50,
+                  color: 'cornflowerblue',
+                },
+                data: {
+                  general: {
+                    instance_name: {
+                      description: 'Name',
+                      updater: 'ha-general-attribute',
+                      update_on_change: this.setInstanceName,
+                      //value: 'Object_' + shareBetweenShapes.unique_id
+                      }
+                  },
+                  inputs: {
+                    0: {
+                      description: 'Default input',
+											peramiters: {
+                        primary_key: {
+                          description: 'Primary key.',
+                          updater: 'ha-select-label',
+                          port_out: 0,
+                          value: '' }
+                        },
+                      sample_data: {} 
+                    },
+                    // TODO add reset.
+                  },
+                outputs: {
+                    0: {
+                      description: 'Default output',
+                      sample_data: {}
+                    }
+                }
+              }
+	};
+  if(paper){
+    shape = shape || paper.box(0, 0, this.data.shape.width, this.data.shape.height, 1, 1, this.data.shape.color);
+    this.setShape(shape);
+    this.setup(backend_data);
+
+    if(backend_data.data !== undefined){
+      this.data.data.inputs[0].peramiters.primary_key.value = backend_data.data.inputs.default.primary_key_label
+    }
+  }
+};
+
+inheritsFrom(FlowObjectAddData, FlowObject);
+
+
+
+
+function FlowObjectReadFile(paper, sidebar, shareBetweenShapes, shape, backend_data){
+  'use strict';
+  console.log('FlowObjectReadFile(', paper, sidebar, shareBetweenShapes, shape, backend_data, ')');
+
+  FlowObject.prototype.constructor.call(this, paper, sidebar, shareBetweenShapes);
+  this.data = { object_name: 'Read file',
+                description: 'Read data from a file on disk.',
+                shape: {
+                  width: 150,
+                  height: 50,
+                  color: 'seagreen',
+                },
+                data: {
+                  general: {
+                    instance_name: {
+                      description: 'Name',
+                      updater: 'ha-general-attribute',
+                      update_on_change: this.setInstanceName,
+                      //value: 'Object_' + shareBetweenShapes.unique_id
+                      },
+                    filename: {
+                      description: 'Filename',
+                      updater: 'ha-general-attribute',
+                      update_on_change: true,
+                      value: ''
+                    }
+                  },
+                  inputs: {
+                    // TODO add trigger.
+                  },
+                outputs: {
+                    0: {
+                      description: 'Default output',
+                      sample_data: {}
+                    }
+                }
+              }
+	};
+  if(paper){
+    shape = shape || paper.box(0, 0, this.data.shape.width, this.data.shape.height, 0, 1, this.data.shape.color);
+    this.setShape(shape);
+    this.setup(backend_data);
+
+		if(backend_data.data !== undefined){
+      this.data.data.general.filename.value = backend_data.data.general.filename;
+		}
+  }
+};
+
+inheritsFrom(FlowObjectReadFile, FlowObject);
+
+
+
+
+function FlowObjectAddTime(paper, sidebar, shareBetweenShapes, shape, backend_data){
+  'use strict';
+  console.log('FlowObjectAddTime(', paper, sidebar, shareBetweenShapes, shape, backend_data, ')');
+
+  FlowObject.prototype.constructor.call(this, paper, sidebar, shareBetweenShapes);
+  this.data = { object_name: 'Add time',
+                description: 'Add time data to payload.',
+                shape: {
+                  width: 75,
+                  height: 50,
+                  color: 'gold',
+                },
+                data: {
+                  general: {
+                    instance_name: {
+                      description: 'Name',
+                      updater: 'ha-general-attribute',
+                      update_on_change: this.setInstanceName,
+                      //value: 'Object_' + shareBetweenShapes.unique_id
+                      }
+                  },
+                  inputs: {
+                    0: {
+                      description: 'Default input',
+                      sample_data: {} 
+                    },
+                  },
+                outputs: {
+                    0: {
+                      description: 'Default output',
+                      sample_data: {}
+                    }
+                }
+              }
+	};
+  if(paper){
+    shape = shape || paper.box(0, 0, this.data.shape.width, this.data.shape.height, 1, 1, this.data.shape.color);
+    this.setShape(shape);
+    this.setup(backend_data);
+
+  }
+};
+
+inheritsFrom(FlowObjectAddTime, FlowObject);
 

@@ -98,6 +98,8 @@ xtag.register('ha-control', {
         x -= parseFloat(event.dataTransfer.getData('offset_x')) * flow_object.shape[0].attr('width');
         y -= parseFloat(event.dataTransfer.getData('offset_y')) * flow_object.shape[0].attr('height');
         console.log('drop:', x, y);
+        x += SNAP /2 - x % SNAP;
+        y += SNAP /2 - y % SNAP;
         flow_object.setBoxPosition(x, y);
       }
     }

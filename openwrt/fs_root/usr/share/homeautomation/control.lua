@@ -47,7 +47,7 @@ function control:announce()
   log("control:announce()")
   local topic = "homeautomation/0/control/_announce"
 
-	for component_name, component in pairs(info.components) do
+	for component_unique_id, component in pairs(info.components) do
 		local payload = json.encode(component)
 	  mqtt_instance:publish(topic, payload)
 	end
@@ -113,6 +113,7 @@ function component:setup(class_name, instance_name, unique_id)
   self.unique_id = unique_id
 
   -- self._subject is the unique identifier on the web interface.
+  -- TODO check for duplicate instance_name.
   self._subject = 'control/' .. instance_name
   
   self.data = {}
@@ -120,17 +121,14 @@ function component:setup(class_name, instance_name, unique_id)
   self.data.inputs = {default = {}}
   self.data.outputs = {default = {}}
 
-  -- Add number to any duplicate names.
+  -- Add number to any duplicate unique_id.
   local count = 0
-  while info.components[instance_name] ~= nil do
+  while info.components[unique_id] ~= nil do
     count = count +1
-    instance_name = self.instance_name .. '-' .. tostring(count)
+    unique_id = self.unique_id .. '-' .. tostring(count)
   end
-  if self.instance_name ~= instance_name then
-    info.components[instance_name] = "ERROR: Duplicate instance_name."
-    return
-  end
-  info.components[instance_name] = self
+  self.unique_id = unique_id
+  info.components[unique_id] = self
 end
 
 function component:add_general(label, value)
@@ -161,7 +159,7 @@ function component:add_output(output, label)
     end
   end
   if found == nil then
-    self.data.outputs[label][#self.data.outputs[label] +1] = output.instance_name
+    self.data.outputs[label][#self.data.outputs[label] +1] = output.unique_id
   end
 end
 
@@ -194,9 +192,11 @@ function component:send_one_output(data, label)
   label = label or 'default'
 
   if self.data.outputs[label] then
-    for _, target_name in pairs(self.data.outputs[label]) do
+    for _, unique_id in pairs(self.data.outputs[label]) do
+      print(unique_id, info.components[unique_id])
+      local target_name = info.components[unique_id].instance_name
       control_instance:update_log('(' .. self.class_name .. ')' .. self.instance_name .. ' -> ' .. flatten_data(data) .. ' -> ' .. target_name .. '\n')
-      info.components[target_name]:receive_input(data, label)
+      info.components[unique_id]:receive_input(data, label)
     end
   end
 end
@@ -262,20 +262,21 @@ function component_map_values:receive_input(data, l)
 
   for _, rule in pairs(rules) do
     -- TODO: We force everything to be a string here to handle booleans... Think about the implications of this.
+    -- TODO: Handle numbers.
     if tostring(rule.match) == tostring(found_value) or rule.match == '_else' or (rule.match == '_missing' and found_label == nil) then
-      if rule.action == 'forward' then
-        log("~~~~~", rule.match, 'forward', found_label, found_value)
+      if rule.action == '_forward' then
+        log("~~~~~", rule.match, '_forward', found_label, found_value)
         log("~~~~~", flatten_data(data))
         self:send_output(data)
         break
-      elseif rule.action == 'string' or rule.action == 'boolean' then
+      elseif rule.action == '_string' or rule.action == '_boolean' then
         log("~~~~~", 'modify', found_label, found_value, rule.value)
         data[found_label] = rule.value
         log("~~~~~", flatten_data(data))
         self:send_output(data)
         break
-      elseif rule.action == 'drop' then
-        log("~~~~~", rule.match, 'drop')
+      elseif rule.action == '_drop' then
+        log("~~~~~", rule.match, '_drop')
         control_instance:update_log('(' .. self.class_name .. ')' .. self.instance_name .. ' -> ' .. flatten_data(data) .. ' -> DROP\n')
         break
       end
@@ -294,13 +295,13 @@ function component_map_labels:receive_input(data, l)
   for data_label, data_value in pairs(data) do
     for _, rule in pairs(rules) do
       if rule.match == data_label or rule.match == '_else' then
-        if rule.action == 'forward' then
+        if rule.action == '_forward' then
           forward_data[data_label] = data_value
           break
-        elseif rule.action == 'string' then
+        elseif rule.action == '_string' then
           forward_data[rule.value] = data_value
           break
-        elseif rule.action == 'drop' then
+        elseif rule.action == '_drop' then
           break
         end
       end
@@ -311,7 +312,7 @@ function component_map_labels:receive_input(data, l)
 end
 
 
-component_time_window = component:new()
+--[[component_time_window = component:new()
 
 function component_time_window:receive_input(data, l)
   -- TODO: Make 2 outputs: one for within_window and one for outside_window.
@@ -323,7 +324,7 @@ function component_time_window:receive_input(data, l)
   local forward_data = {}
 
   if in_time_window(tonumber(self.data.general.start_time), tonumber(self.data.general.end_time), tonumber(os.date('%H'))) then
-    if self.data.general.within_window.action == 'forward' then
+    if self.data.general.within_window.action == '_forward' then
       forward_data = data
     elseif self.data.general.within_window.action == 'custom' then
       local label = self.data.general.within_window.label
@@ -333,7 +334,7 @@ function component_time_window:receive_input(data, l)
       end
     end
   else
-    if self.data.general.outside_window.action == 'forward' then
+    if self.data.general.outside_window.action == '_forward' then
       forward_data = data
     elseif self.data.general.outside_window.action == 'custom' then
       local label = self.data.general.outside_window.label
@@ -366,7 +367,7 @@ function in_time_window(time_start, time_end, time_now)
 	end
 
   return false
-end
+end]]--
 
 
 component_mqtt_publish = component:new()
@@ -444,13 +445,14 @@ end
 
 component_combine = component:new()
 
-function component_combine:setup(class_name, instance_name)
-  component.setup(self, class_name, instance_name)
+function component_combine:setup(class_name, instance_name, unique_id)
+  component.setup(self, class_name, instance_name, unique_id)
   self.data.data = {}
 end
 
 function component_combine:receive_input(data, input_label)
-  local primary_key_label = self.data.general.primary_key_label
+  --local primary_key_label = self.data.general.primary_key_label
+  local primary_key_label = self.data.inputs.default.primary_key_label
 
   if data[primary_key_label] ~= nil then
     local primary_key = data[primary_key_label]
@@ -466,16 +468,17 @@ function component_combine:receive_input(data, input_label)
 end
 
 
-component_add_messages  = component:new()
+component_add_messages = component:new()
 
-function component_add_messages:setup(class_name, instance_name)
-  component.setup(self, class_name, instance_name)
+function component_add_messages:setup(class_name, instance_name, unique_id)
+  component.setup(self, class_name, instance_name, unique_id)
   self.data.data = {}
 end
 
 function component_add_messages:receive_input(data, input_label)
   log("'''''", flatten_data(data))
-  local primary_key_label = self.data.general.primary_key_label
+  --local primary_key_label = self.data.general.primary_key_label
+  local primary_key_label = self.data.inputs.default.primary_key_label
 
   if data[primary_key_label] == nil then
     return
@@ -524,20 +527,8 @@ function component_add_messages:receive_input(data, input_label)
         elseif type(combined_entry[label]) == 'boolean' then
           combined_entry[label] = combined_entry[label] or value
         end
-
---[[				if tonumber(value) ~= nil and (combined_entry[label] == nil or type(combined_entry[label]) == number) then
-					if combined_entry[label] == nil then
-						combined_entry[label] = 0
-					end
-					combined_entry[label] = combined_entry[label] + tonumber(value)
-        elseif (value == 'true' or value == 'false') and (combined_entry[label] == nil or type(combined_entry[label]) == boolean) then
-          if combined_entry[label] == nil then
-            combined_entry[label] = false
-          end
-          combined_entry[label] = combined_entry[label] or (value == 'true')
-				end]]--
-			end
-		end
+      end
+    end
 	end
 	log("'''''", flatten_data(combined_entry))
 	self:send_output(combined_entry)
@@ -573,4 +564,23 @@ function flatten_data(data_in)
   end
 end
 
+
+component_add_time = component:new()
+
+function component_add_time:receive_input(data, l)
+  log(" ^^", "component_add_time:receive_input(", flatten_data(data), l, ")")
+
+  data._time_weekday = os.date('%w')
+  data._time_hour = os.date('%H')
+  data._time_minute = os.date('%M')
+  
+  log(" ^^", "component_add_time:receive_input(", flatten_data(data), l, ")")
+	self:send_output(data)
+end
+
+
+
+
+
 return control
+
