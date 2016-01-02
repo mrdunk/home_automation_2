@@ -297,7 +297,9 @@ Raphael.el.getShapePosition = function(){
 
 Raphael.el.setBoxPosition = function(x, y){
   'use strict';
-  setBoxPosition(this.data('myset'), x, y);
+  if(x !== undefined && y !== undefined){
+    setBoxPosition(this.data('myset'), x, y);
+  }
   this.data('myset').setOutputLinks(this.data('parent').data.data.outputs);
   this.data('myset').setInputLinks(this.data('parent').data.data.inputs);
 };

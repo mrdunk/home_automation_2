@@ -202,28 +202,16 @@ xtag.register('ha-sidebar', {
         this.handle.className = "sidebar-handle sidebar-handle-left-align";
       }
     },
-		setHeader: function(name, uid, color){
-			name = name || ' ';
-			uid = uid || ' ';
-
-			var header = this.getElementsByClassName('sidebar-header')[0];
-			header.getElementsByClassName('text')[0].innerHTML = '';
-			var h1 = document.createElement('div');
-			var h2 = document.createElement('div');
-			h1.innerHTML = name;
-			h2.innerHTML = uid;
-			header.getElementsByClassName('text')[0].appendChild(h1);
-			header.getElementsByClassName('text')[0].appendChild(h2);
-
-      if(color === undefined){
-        header.getElementsByClassName('object-color')[0].style.height = '0';
-        header.getElementsByClassName('object-color')[0].style.visibility = "hidden";
-      } else {
-        header.getElementsByClassName('object-color')[0].style.height = '2em';
-        header.getElementsByClassName('object-color')[0].style.visibility = "visible";
-			  header.getElementsByClassName('object-color')[0].style.background = color;
+    setHeader: function(content){
+      if(typeof(content) === 'string'){
+        var element = document.createElement('div');
+        element.innerHTML = content;
+        content = element;
       }
-		},
+      var header = this.getElementsByClassName('sidebar-header')[0];
+      header.innerHTML = '';
+      header.appendChild(content);
+    },
     setContent: function(content){
       if(typeof(content) === 'string'){
         var element = document.createElement('div');

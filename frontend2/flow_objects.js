@@ -41,6 +41,7 @@ var FlowObject = function(paper, sidebar, shareBetweenShapes){
 };
 
 FlowObject.prototype.setShape = function(shape){
+  'use strict';
   this.shape = shape || paper.rect(0, 0, 30, 30, 5);
   this.shape.data('parent', this);
   this.shape.drag(this.onmove, this.onstart, this.onend);
@@ -49,9 +50,21 @@ FlowObject.prototype.setShape = function(shape){
   this.shape.mouseup(this.onmouseup);
 };
 
+FlowObject.prototype.delete = function(){
+  'use strict';
+  this.shape.remove();
+	this.deleteLinks();
+  var flowObjects = document.getElementsByTagName('ha-control')[0].flowObjects;
+  for(var index in flowObjects){
+    if(flowObjects[index].unique_id === this.unique_id){
+			delete document.getElementsByTagName('ha-control')[0].flowObjects[index];
+      return;
+    }
+  }
+}
+
 FlowObject.prototype.setInstanceName = function(instance_name){
   'use strict';
-
   // Remove any existing pointer to an instance with the old name.
   var old_name = this.data.data.general.instance_name.value;
   if(document.getElementsByTagName('ha-control')[0].flowObjects[old_name] !== undefined){
@@ -159,15 +172,42 @@ FlowObject.prototype.displaySideBar = function(){
   console.log('FlowObject.displaySideBar()');
 
   // Header
-  // this.sidebar.setHeader(this.data.object_name, this.data.data.general.instance_name.value, this.getColor());
-  this.sidebar.setHeader(this.unique_id, this.data.data.general.instance_name.value, this.getColor());
+  var header_content = document.createElement('div');
+  var header_text = document.createElement('span');
+  header_text.className = 'text';
+  var header_icon = document.createElement('span');
+  header_icon.className = 'object-color';
+	header_content.appendChild(header_text);
+  header_content.appendChild(header_icon);
 
-  // Content
-  var flowobject_data = document.createElement('ha-flowobject-data');
+	var h1 = document.createElement('div');
+	var h2 = document.createElement('div');
+  var h3 = document.createElement('a');
+	h1.innerHTML = this.data.data.general.instance_name.value;
+	h2.innerHTML = this.unique_id;
+  h3.innerHTML = 'delete';
+  h3.onclick=function(){console.log(this);
+                        this.delete();
+                       }.bind(this);
+	header_text.appendChild(h1);
+	header_text.appendChild(h2);
+	header_text.appendChild(h3);
+
+	if(this.getColor() === undefined){
+		header_icon.style.height = '0';
+		header_icon.style.visibility = "hidden";
+	} else {
+		header_icon.style.height = '2em';
+		header_icon.style.visibility = "visible";
+		header_icon.style.background = this.getColor();
+	}
+
+	this.sidebar.setHeader(header_content);
+
+	// Content
+	var flowobject_data = document.createElement('ha-flowobject-data');
   flowobject_data.populate(this.data.data, this);
-  var content = this.sidebar.getElementsByClassName('sidebar-content')[0];
-  content.innerHTML = "";
-  content.appendChild(flowobject_data);
+  this.sidebar.setContent(flowobject_data);
 };
 
 FlowObject.prototype.onmouseover = function(){
@@ -309,6 +349,52 @@ FlowObject.prototype.linkOutToIn = function(shape_out, shape_in){
 
   this.setAdjacentInputSamples(port_out.number, shape_in.data('parent'), port_in.number);
 };
+
+FlowObject.prototype.deleteLinks = function(){
+  console.log('FlowObject.deleteLinks');
+  for(var i in this.data.data.outputs){
+    while(this.data.data.outputs[i].links.length){
+      var link = this.data.data.outputs[i].links.pop();
+      console.log(link);
+
+      // Now make a list of the far end nodes to remove the link from...
+      var remove_links = [];
+      for(var j in link.box_object.data.data.inputs){
+        for(var k = 0; k < link.box_object.data.data.inputs[j].links.length; k++){
+          if(link.box_object.data.data.inputs[j].links[k].box_object.unique_id === this.unique_id){
+            console.log('deleting output... ', j, k);
+            remove_links.push([j, k]);
+          }
+        }
+      }
+      var link_indexes = remove_links.pop();
+      link.box_object.data.data.inputs[link_indexes[0]].links.splice([link_indexes[1]], 1);
+			// Re-draw links.
+		  link.box_object.shape[0].setBoxPosition();
+    }
+  }
+
+  for(var i in this.data.data.inputs){
+    while(this.data.data.inputs[i].links.length){
+      var link = this.data.data.inputs[i].links.pop();
+
+      // Now make a list of the far end nodes to remove the link from...
+      var remove_links = [];
+      for(var j in link.box_object.data.data.outputs){
+        for(var k = 0; k < link.box_object.data.data.outputs[j].links.length; k++){
+          if(link.box_object.data.data.outputs[j].links[k].box_object.unique_id === this.unique_id){
+            console.log('deleting output... ', j, k);
+            remove_links.push([j, k]);
+          }
+        }
+      }
+      var link_indexes = remove_links.pop();
+      link.box_object.data.data.outputs[link_indexes[0]].links.splice([link_indexes[1]], 1);
+      // Re-draw links.
+      link.box_object.shape[0].setBoxPosition();
+    }
+  }
+}
 
 FlowObject.prototype.setAdjacentInputSamples = function(port_out, flow_object_in, port_in){
   'use strict';

@@ -44,7 +44,7 @@ var dataReceived = function(topic, backend_data){
     if(flow_object_out !== undefined){
       var flow_object_in = getFlowObjectByUniqueId(missing_links[index]);
       if(flow_object_in !== undefined){
-        var port_out = {'port_number': 0};
+        var port_out = {'flow_object': flow_object_out, 'port_number': 0};
         var port_in = {'flow_object': flow_object_in, 'port_number': 0};
         flow_object_out.linkOutToIn(port_out, port_in);
         delete missing_links[index];
