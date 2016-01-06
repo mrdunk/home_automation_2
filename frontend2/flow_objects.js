@@ -9,13 +9,7 @@ var INPUT_PORT = { description: 'Trigger label', value: '_any', updater: 'ha-gen
 
 var getFlowObjectByUniqueId = function(unique_id){
   'use strict';
-  var flowObjects = document.getElementsByTagName('ha-control')[0].flowObjects;
-  for(var index in flowObjects){
-    if(flowObjects[index].unique_id === unique_id){
-      return flowObjects[index];
-    }
-  }
-  return;
+  return document.getElementsByTagName('ha-control')[0].flowObjects[unique_id];
 };
 
 var getFlowObjectByInstanceName = function(instance_name){
@@ -54,24 +48,11 @@ FlowObject.prototype.delete = function(){
   'use strict';
   this.shape.remove();
 	this.deleteLinks();
-  var flowObjects = document.getElementsByTagName('ha-control')[0].flowObjects;
-  for(var index in flowObjects){
-    if(flowObjects[index].unique_id === this.unique_id){
-			delete document.getElementsByTagName('ha-control')[0].flowObjects[index];
-      return;
-    }
-  }
+  delete document.getElementsByTagName('ha-control')[0].flowObjects[this.unique_id];
 }
 
 FlowObject.prototype.setInstanceName = function(instance_name){
   'use strict';
-  // Remove any existing pointer to an instance with the old name.
-  var old_name = this.data.data.general.instance_name.value;
-  if(document.getElementsByTagName('ha-control')[0].flowObjects[old_name] !== undefined){
-    console.log('Deleting old entry:', old_name);
-    delete document.getElementsByTagName('ha-control')[0].flowObjects[old_name];
-  }
-
   instance_name = instance_name || 'Object_' + this.shareBetweenShapes.unique_id;
   var append_to_name = 1;
   var instance_name_base = instance_name;
@@ -79,7 +60,6 @@ FlowObject.prototype.setInstanceName = function(instance_name){
   while(this.data.data.general.instance_name.value !== instance_name){
     if(getFlowObjectByInstanceName(instance_name) === undefined){
       this.data.data.general.instance_name.value = instance_name;
-      document.getElementsByTagName('ha-control')[0].flowObjects[instance_name] = this;
       break;
 		}
     append_to_name++;
@@ -92,6 +72,11 @@ FlowObject.prototype.setInstanceName = function(instance_name){
 FlowObject.prototype.setup = function(backend_data){
   'use strict';
   console.log('FlowObject.setup(', backend_data, ')');
+
+  if(backend_data.version){
+    this.version = backend_data.version;
+  }
+
   for(var port_out in this.data.data.outputs){
     this.data.data.outputs[port_out].path = {};
     this.data.data.outputs[port_out].links = [];
@@ -108,8 +93,18 @@ FlowObject.prototype.setup = function(backend_data){
     this.shareBetweenShapes.unique_id++;
     this.unique_id = this.constructor.name + '_' + this.shareBetweenShapes.unique_id + session_uid();
   }
+  document.getElementsByTagName('ha-control')[0].flowObjects[this.unique_id] = this;
 
   this.setInstanceName(backend_data.instance_name);
+
+  if(backend_data.gui){
+    this.setBoxPosition(backend_data.gui.position.x, backend_data.gui.position.y);
+  }
+
+  // Make sure object is marked selected if it has been replaced.
+  if(this.shareBetweenShapes.selected && this.shareBetweenShapes.selected.unique_id === this.unique_id){
+    this.select();
+  }
 };
 
 FlowObject.prototype.replaceShape = function(newShape){
@@ -124,8 +119,13 @@ FlowObject.prototype.replaceShape = function(newShape){
 
 FlowObject.prototype.setContents = function(contents){
   'use strict';
+  console.log(contents, this.data);
   contents = contents || this.data;
+  
+  this.version = this.version || 0;
+
   this.shape.setContents(contents);
+  //this.ExportObject();
 };
 
 FlowObject.prototype.setInputs = function(input_count){
@@ -153,6 +153,7 @@ FlowObject.prototype.setBoxPosition = function(x, y){
     x = x.x;
   }
   this.shape[0].setBoxPosition(x, y);
+  //this.ExportObject();
 };
 
 FlowObject.prototype.select = function(){
@@ -184,7 +185,7 @@ FlowObject.prototype.displaySideBar = function(){
 	var h2 = document.createElement('div');
   var h3 = document.createElement('a');
 	h1.innerHTML = this.data.data.general.instance_name.value;
-	h2.innerHTML = this.unique_id;
+	h2.innerHTML = this.unique_id + ' ' + this.version;
   h3.innerHTML = 'delete';
   h3.onclick=function(){console.log(this);
                         this.delete();
@@ -240,12 +241,20 @@ FlowObject.prototype.onmove = function(dx, dy){
   'use strict';
   //console.log('FlowObject.onmove(', dx, dy, ')');
 
-  if(this.id === this.data('myset')[0].id){
-    this.setBoxPosition(dx + this.start_move_x, dy + this.start_move_y);
-  } else if(this.data('parent').shareBetweenShapes.dragging){
-    var path = this.data('parent').shareBetweenShapes.dragging.arrow.attr('path');
-    var pos2 = {x: path[0][1] + dx, y: path[0][2] + dy};
-    this.data('parent').shareBetweenShapes.dragging.arrow.dragArrow(pos2);
+  if(!this.timer){
+    this.timer = setTimeout(do_periodically.bind(this), 50);
+  }
+
+  function do_periodically(){
+    console.log('tick');
+    if(this.id === this.data('myset')[0].id){
+      this.setBoxPosition(dx + this.start_move_x, dy + this.start_move_y);
+    } else if(this.data('parent').shareBetweenShapes.dragging){
+      var path = this.data('parent').shareBetweenShapes.dragging.arrow.attr('path');
+      var pos2 = {x: path[0][1] + dx, y: path[0][2] + dy};
+      this.data('parent').shareBetweenShapes.dragging.arrow.dragArrow(pos2);
+    }
+    this.timer = null;
   }
 };
 
@@ -290,6 +299,7 @@ FlowObject.prototype.onend = function(){
     position.x += SNAP /2 - position.x % SNAP;
     position.y += SNAP /2 - position.y % SNAP;
     this.data('parent').setBoxPosition(position);
+    this.data('parent').ExportObject();
   }
 };
 
@@ -351,7 +361,7 @@ FlowObject.prototype.linkOutToIn = function(shape_out, shape_in){
 };
 
 FlowObject.prototype.deleteLinks = function(){
-  console.log('FlowObject.deleteLinks');
+  //console.log('FlowObject.deleteLinks');
   for(var i in this.data.data.outputs){
     while(this.data.data.outputs[i].links.length){
       var link = this.data.data.outputs[i].links.pop();
@@ -362,7 +372,6 @@ FlowObject.prototype.deleteLinks = function(){
       for(var j in link.box_object.data.data.inputs){
         for(var k = 0; k < link.box_object.data.data.inputs[j].links.length; k++){
           if(link.box_object.data.data.inputs[j].links[k].box_object.unique_id === this.unique_id){
-            console.log('deleting output... ', j, k);
             remove_links.push([j, k]);
           }
         }
@@ -383,7 +392,6 @@ FlowObject.prototype.deleteLinks = function(){
       for(var j in link.box_object.data.data.outputs){
         for(var k = 0; k < link.box_object.data.data.outputs[j].links.length; k++){
           if(link.box_object.data.data.outputs[j].links[k].box_object.unique_id === this.unique_id){
-            console.log('deleting output... ', j, k);
             remove_links.push([j, k]);
           }
         }
@@ -487,6 +495,57 @@ FlowObject.prototype.FilterInputToOutput = function(){
   'use strict';
 };
 
+FlowObject.prototype.ExportObject = function(send_object){
+  'use strict';
+  this.version += 1;
+
+  send_object = send_object || {data: {inputs: {}, outputs: {}, general: {}}};
+  send_object.unique_id = this.unique_id;
+  send_object.instance_name = this.data.data.general.instance_name.value;
+  send_object.version = this.version;
+  send_object.gui = {position: this.shape.getShapePosition()};
+
+  for(var class_name in flow_objects){
+    if(flow_objects[class_name].name === this.constructor.name){
+      send_object.class_name = class_name;
+    }
+  }
+
+  for(var input in this.data.data.inputs){
+    for(var i = 0; i < this.data.data.inputs[input].links.length; i++){
+      var link_to_unique_id = this.data.data.inputs[input].links[i].box_object.unique_id;
+      var link_to_port = this.data.data.inputs[input].links[i].port_name || 'default';
+      if(send_object.data.inputs[link_to_port] === undefined){
+        send_object.data.inputs[link_to_port] = [];
+      }
+      send_object.data.inputs[link_to_port].push(link_to_unique_id);
+    }
+  }
+
+  for(var output in this.data.data.outputs){
+    for(var i = 0; i < this.data.data.outputs[output].links.length; i++){
+      var link_to_unique_id = this.data.data.outputs[output].links[i].box_object.unique_id;
+      var link_to_port = this.data.data.outputs[output].links[i].port_name || 'default';
+      if(send_object.data.outputs[link_to_port] === undefined){
+        send_object.data.outputs[link_to_port] = [];
+      }
+      send_object.data.outputs[link_to_port].push(link_to_unique_id);
+    }
+  }
+
+  for(var general_name in this.data.data.general){
+    if(general_name !== 'instance_name'){
+      // TODO Move instance_name out of data.data.general ?
+		  send_object.data.general[general_name] = this.data.data.general[general_name].value;
+    }
+	}
+
+  console.log('**', JSON.stringify(send_object));
+  Mqtt.send('homeautomation/0/control/_announce', JSON.stringify(send_object));
+
+  return send_object;
+};
+
 
 
 // Must be used *before* re-defining any class methods.
@@ -564,6 +623,15 @@ FlowObjectMqttSubscribe.prototype.setContents = function(contents){
 
   this.$super.setContents.call(this, contents);
 };
+
+FlowObjectMqttSubscribe.prototype.ExportObject = function(){
+  'use strict';
+  // TODO need to modify subscribed_topic before we call this.$super.ExportObject()
+  var send_object = this.$super.ExportObject.call(this, send_object);
+
+  send_object.data.general.subscribed_topic = this.data.data.general.subscribed_topic.value;
+  send_object.data.general.subscribed_topic.replace('homeautomation/+/', '');
+}
 
 
 

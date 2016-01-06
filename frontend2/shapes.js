@@ -304,3 +304,12 @@ Raphael.el.setBoxPosition = function(x, y){
   this.data('myset').setInputLinks(this.data('parent').data.data.inputs);
 };
 
+Raphael.st.getShapePosition = function(){
+  'use strict';
+  for(var i = 0; i < this.items.length; i++){
+    if(this.items[i].getBoxPosition){
+      return this.items[i].getBoxPosition();
+    }
+  }
+};
+

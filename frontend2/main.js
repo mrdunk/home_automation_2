@@ -178,7 +178,7 @@ Mqtt.onMessageArrived = function(message) {
     }
   }
 
-  console.log(topic + ' = ', data_object);
+  //console.log(topic + ' = ', data_object);
   Data.storeIncomingMqtt(topic, data_object);
 };
 

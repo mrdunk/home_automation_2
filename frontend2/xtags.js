@@ -34,14 +34,12 @@ xtag.register('ha-control', {
       this.header.setParent(this);
       this.menu = document.getElementsByTagName('ha-sidebar')[0];
       this.sidebar = document.getElementsByTagName('ha-sidebar')[1];
-      this.flowObjects = [];
+      this.flowObjects = {};
       this.shareBetweenShapes = {unique_id: 0};
       this.menu.setAlign('left');
       //this.sidebar.setAlign('left');
 
       this.populateMenu();
-
-      //this.setAttribute('draggable', true);
     }
   },
   methods: {
@@ -51,7 +49,7 @@ xtag.register('ha-control', {
       var container = document.createElement('div');
       for(var i = 0; i < flow_object_classes.length; i++){
         var flow_object = new flow_object_classes[i]();
-        var button = document.createElement('dragable-button');
+        var button = document.createElement('draggable-button');
         button.setContent(flow_object.data.object_name);
         button.setColor(flow_object.data.shape.color);
         button.setData({flow_object_id: i});
@@ -89,8 +87,9 @@ xtag.register('ha-control', {
       event.preventDefault();
     },
 		drop: function(event){
-      var x = event.x - document.getElementById('ha-control-paper').getBoundingClientRect().left;
-      var y = event.y - document.getElementById('ha-control-paper').getBoundingClientRect().top;
+      console.log('drop', event.clientX, event.dataTransfer.getData('client_x'));
+      var x = event.clientX - document.getElementById('ha-control-paper').getBoundingClientRect().left;
+      var y = event.clientY - document.getElementById('ha-control-paper').getBoundingClientRect().top;
       if(x > 0 && y > 0 && event.dataTransfer.getData('flow_object_id') !== ""){
         //var flow_object = this.addFlowObject(buttonTypes['trending-flat']);
         var constructor = flow_object_classes[event.dataTransfer.getData('flow_object_id')];
@@ -101,6 +100,9 @@ xtag.register('ha-control', {
         x += SNAP /2 - x % SNAP;
         y += SNAP /2 - y % SNAP;
         flow_object.setBoxPosition(x, y);
+
+        flow_object.select();
+        flow_object.ExportObject();
       }
     }
   }
@@ -143,40 +145,95 @@ xtag.register('ha-sidebar', {
       var template = document.getElementById('ha-sidebar').innerHTML;
       xtag.innerHTML(this, template);
       this.handle = this.getElementsByClassName('sidebar-handle')[0];
-      this.handle.draggable = true;
       this.setAlign('right');
     }
   },
   events: {
-    'dragstart:delegate(div.sidebar-handle)': function(drag_event){
-      var crt = this.cloneNode(true);
-      crt.style.backgroundColor = "blue";
-      document.body.appendChild(crt);
-      drag_event.dataTransfer.setDragImage(crt, 0, 0);
-    },
-    'drag:delegate(div.sidebar-handle)': function(drag_event){
-      var sidebar;
-      for(var i = 0; i < drag_event.path.length; i++){
-        if(drag_event.path[i].tagName.toLowerCase() === 'ha-sidebar'){
-          sidebar = drag_event.path[i];
-          break;
-        }
+    'mousedown:delegate(div.sidebar-handle)': function(mouse_event){
+			console.log('mousedown:delegate(div.sidebar-handle)');
+      var sidebar = mouse_event.target;
+      var counter = 0;
+      while(counter < 10 && sidebar.tagName.toLowerCase() !== 'ha-sidebar'){
+        counter++;
+        sidebar = sidebar.parentElement;
       }
       if(sidebar === undefined){
         return;
       }
 
-      if(drag_event.clientX && drag_event.clientY && drag_event.clientX > this.getBoundingClientRect().width + 2){
-        if(sidebar.align === 'right'){
-          this.style.right = (sidebar.getBoundingClientRect().right - drag_event.clientX) + 'px';
-        } else {
-          this.style.left = drag_event.clientX - sidebar.getBoundingClientRect().left + 'px';
-        }
+      if(mouse_event.target.setCapture){
+        // Firefox has this nice .setCapture() that delegates all mouse events to this element.
+			  mouse_event.target.setCapture();
+      } else {
+        // In Chrome we mus use the document element.
+        document.handleEvent = function(document_event) {
+          switch(document_event.type) {
+            case 'mousemove':
+              if(this.pos_x !== document_event.clientX){
+                this.pos_x = document_event.clientX;
+                var delegated_event = new MouseEvent( 'mousemove', {bubbles: true, clientX: document_event.clientX, });
+                mouse_event.target.dispatchEvent(delegated_event);
+              }
+              break;
+            case 'mouseup':
+              console.log('document.handleEvent mouseup');
+              document.removeEventListener('mousemove', document, true);
+              document.removeEventListener('mouseup', document, true);
+              sidebar.mousedown = false;
+              break;
+          }
+        };
+        document.addEventListener('mousemove', document, true);
+        document.addEventListener('mouseup', document, true);
+      }
+
+      sidebar.mousedown = true;
+			sidebar.start_x = mouse_event.clientX;
+    },
+    'mouseup:delegate(div.sidebar-handle)': function(mouse_event){
+			console.log('mouseup:delegate(div.sidebar-handle)');
+      var sidebar = mouse_event.target;
+      var counter = 0;
+      while(counter < 10 && sidebar.tagName.toLowerCase() !== 'ha-sidebar'){
+        counter++;
+        sidebar = sidebar.parentElement;
+      }
+      if(sidebar === undefined){
+        return;
+      }
+
+      sidebar.mousedown = false;
+    },
+    'mousemove:delegate(div.sidebar-handle)': function(mouse_event){
+      //console.log('mousemove:delegate(div.sidebar-handle)');
+      mouse_event.stopPropagation();
+      var sidebar = mouse_event.target;
+      var counter = 0;
+      while(counter < 10 && sidebar.tagName.toLowerCase() !== 'ha-sidebar'){
+        counter++;
+        sidebar = sidebar.parentElement;
+      }
+      if(sidebar === undefined){
+        return;
+      }
+
+      if(sidebar.mousedown){
+	      var sidebar = mouse_event.target;
+  	    var counter = 0; 
+    	  while(counter < 10 && sidebar.tagName.toLowerCase() !== 'ha-sidebar'){
+      	  counter++;
+        	sidebar = sidebar.parentElement;
+	      }
+  	    if(sidebar === undefined){
+    	    return;
+      	}
 
         if(sidebar.align === 'right'){
-          sidebar.style.width = (sidebar.getBoundingClientRect().right - this.getBoundingClientRect().right + this.getBoundingClientRect().width -2) + 'px';
+          this.style.right = (sidebar.getBoundingClientRect().right - mouse_event.clientX - (this.getBoundingClientRect().width /2)) + 'px';
+          sidebar.style.width = (sidebar.getBoundingClientRect().right - this.getBoundingClientRect().left -1) + 'px';
         } else {
-          sidebar.style.width = (this.getBoundingClientRect().left + this.getBoundingClientRect().width -2 - sidebar.getBoundingClientRect().left) + 'px';
+          this.style.left = (-sidebar.getBoundingClientRect().left + mouse_event.clientX - (this.getBoundingClientRect().width /2) -2) + 'px';
+          sidebar.style.width = (-sidebar.getBoundingClientRect().left + this.getBoundingClientRect().right -1) + 'px';
         }
       }
     }
@@ -186,7 +243,7 @@ xtag.register('ha-sidebar', {
       console.log(width);
       if(this.align === 'right'){
         this.style.width = width + 'px';
-        this.handle.style.right = width + 'px';
+        this.handle.style.right = (width - this.handle.getBoundingClientRect().width) + 'px';
       } else {
         this.style.width = width + 'px';
         this.handle.style.left = (width - this.handle.getBoundingClientRect().width) + 'px';
@@ -384,6 +441,9 @@ xtag.register('ha-general-attribute', {
         // No special activity requested when this field changes. Just save the data.
         this.data.value = this.element.value;
       }
+
+      // Now export a copy on Mqtt.
+      this.flow_object.ExportObject();
     }
   }
 });
@@ -811,7 +871,7 @@ xtag.register('ha-topic-chooser', {
   }
 });
 
-xtag.register('dragable-button', {
+xtag.register('draggable-button', {
   lifecycle:{
     created: function(){
       xtag.innerHTML(this, '<div>db</div>');

@@ -25,7 +25,12 @@ var dataReceived = function(topic, backend_data){
   for(index in flow_objects){
     if(index === backend_data.class_name){
       var flow_object = getFlowObjectByUniqueId(backend_data.unique_id);
-      if(flow_object === undefined){
+      console.log(backend_data.unique_id, backend_data.version);
+      if(flow_object && flow_object.version < backend_data.version){
+        flow_object.delete();
+        console.log(flow_object, flow_object.version, backend_data.version);
+      }
+      if(flow_object === undefined || flow_object.version < backend_data.version){
         flow_object = new flow_objects[index](ha_control.paper, ha_control.sidebar, ha_control.shareBetweenShapes, undefined, backend_data);
       }
 
@@ -51,6 +56,6 @@ var dataReceived = function(topic, backend_data){
       }
     }
   }
-  console.log('missing_links:', missing_links);
+  //console.log('missing_links:', missing_links);
 };
 

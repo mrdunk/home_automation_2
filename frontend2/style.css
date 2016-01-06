@@ -33,6 +33,7 @@ ha-sidebar {
 ha-sidebar div.container {
   padding-left: 8px;
   padding-right: 8px;
+  z-index: 99;
 }
 
 [draggable] {
@@ -171,7 +172,7 @@ ha-input-attributes div.form ha-sample-data div.form-sample-data, ha-output-attr
 	color: dimgrey;
 }
 
-dragable-button {
+draggable-button {
   cursor: move;
   display: block;
   background: lightgrey;
