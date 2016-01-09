@@ -282,13 +282,13 @@ function initilize()
     --local c1 = component:new()
     --c1:setup('c1')
     
-    --local c2 = component_mqtt_subscribe:new()
+    --local c2 = FlowObjectMqttSubscribe:new()
     --c2:setup('c2')
 
     --local c3 = component_cache:new()
     --c3:setup('c3')
 
-    --c2:add_output(c3)
+    --c2:add_link(c3)
     --c2:add_input('dhcp/_all')
 
     --c1:display()
@@ -299,41 +299,41 @@ function initilize()
     --c1:send_output()
     log('----------')
 
-    local dhcp_watcher = component_mqtt_subscribe:new()
-    dhcp_watcher:setup('component_mqtt_subscribe', 'dhcp_watcher', '_uid_1')
+    local dhcp_watcher = FlowObjectMqttSubscribe:new()
+    dhcp_watcher:setup('FlowObjectMqttSubscribe', 'dhcp_watcher', '_uid_1')
     dhcp_watcher:add_general('subscribed_topic', 'dhcp/_announce')
 
-    local registered_users = component_read_file:new()
-    registered_users:setup('component_read_file', 'registered_users', '_uid_2')
+    local registered_users = FlowObjectReadFile:new()
+    registered_users:setup('FlowObjectReadFile', 'registered_users', '_uid_2')
     registered_users:add_general('filename', '/etc/homeautomation/registered_users.conf')
 
-    local consolidate = component_combine:new()
-    consolidate:setup('component_combine', 'consolidate', '_uid_3')
-    consolidate:add_input('default', {primary_key_label = '_subject'})
+    local consolidate = FlowObjectCombineData:new()
+    consolidate:setup('FlowObjectCombineData', 'consolidate', '_uid_3')
+    consolidate:add_input('default_in', {primary_key_label = '_subject'})
 
-    local someone_home = component_map_values:new()
-    someone_home:setup('component_map_values', 'someone_home', '_uid_4')
-    someone_home:add_input('default', {label = '_user_name',
+    local someone_home = FlowObjectMapValues:new()
+    someone_home:setup('FlowObjectMapValues', 'someone_home', '_uid_4')
+    someone_home:add_input('default_in', {label = '_user_name',
                                          rules = { _a = {match = '_missing',
                                                          action = '_drop'},
                                                    _b = {match = '_else',
                                                          action = '_forward'} } })
 
-    local combine_users = component_add_messages:new()
-    combine_users:setup('component_add_messages', 'combine_users', '_uid_5')
-    combine_users:add_input('default', {primary_key_label = '_subject'})
+    local combine_users = FlowObjectAddData:new()
+    combine_users:setup('FlowObjectAddData', 'combine_users', '_uid_5')
+    combine_users:add_input('default_in', {primary_key_label = '_subject'})
 
-    local modify_label = component_map_labels:new()
-    modify_label:setup('component_map_labels', 'modify_label', '_uid_6')
-    modify_label:add_input('default', {rules = { _a = {match = '_reachable',
+    local modify_label = FlowObjectMapLabels:new()
+    modify_label:setup('FlowObjectMapLabels', 'modify_label', '_uid_6')
+    modify_label:add_input('default_in', {rules = { _a = {match = '_reachable',
                                                        action = '_string',
                                                        value = '_command'},
                                                  _b = {match = '_else',
                                                        action = '_drop'} } } )
 
-    local modify_value = component_map_values:new()
-    modify_value:setup('component_map_values', 'modify_value', '_uid_7')
-    modify_value:add_input('default', {label = '_command',
+    local modify_value = FlowObjectMapValues:new()
+    modify_value:setup('FlowObjectMapValues', 'modify_value', '_uid_7')
+    modify_value:add_input('default_in', {label = '_command',
                                        rules = { _a = {match = 'true',
                                                        action = '_string',
                                                        value = 'on'},
@@ -341,22 +341,22 @@ function initilize()
                                                        action = '_string',
                                                        value = 'off'} } })
 
-    local tag_time = component_add_time:new()
-    tag_time:setup('component_add_time', 'tag_time', '_uid_10')
+    local tag_time = FlowObjectAddTime:new()
+    tag_time:setup('FlowObjectAddTime', 'tag_time', '_uid_10')
  
-    local set_jess_warning_lamp = component_mqtt_publish:new()
-    set_jess_warning_lamp:setup('component_mqtt_publish', 'set_jess_warning_lamp', '_uid_9')
+    local set_jess_warning_lamp = FlowObjectMqttPublish:new()
+    set_jess_warning_lamp:setup('FlowObjectMqttPublish', 'set_jess_warning_lamp', '_uid_9')
     set_jess_warning_lamp:add_general('publish_topic', 'lighting/extension/jess_warning_lamp')
 
-    registered_users:add_output(consolidate, 'default_out')
-    dhcp_watcher:add_output(tag_time, 'default_out')
-    tag_time:add_output(consolidate, 'default_out')
-    consolidate:add_output(someone_home, 'default_out')
-    someone_home:add_output(combine_users, 'default_out')
-    combine_users:add_output(modify_label, 'default_out')
+    registered_users:add_link(consolidate, 'default_in', 'default_out')
+    dhcp_watcher:add_link(tag_time, 'default_in', 'default_out')
+    tag_time:add_link(consolidate, 'default_in', 'default_out')
+    consolidate:add_link(someone_home, 'default_in', 'default_out')
+    someone_home:add_link(combine_users, 'default_in', 'default_out')
+    combine_users:add_link(modify_label, 'default_in', 'default_out')
 
-    modify_label:add_output(modify_value, 'default_out')
-    modify_value:add_output(set_jess_warning_lamp, 'default_out')
+    modify_label:add_link(modify_value, 'default_in', 'default_out')
+    modify_value:add_link(set_jess_warning_lamp, 'default_in', 'default_out')
 
   end
 	end

@@ -4,6 +4,20 @@ var PORT_HEIGHT = 15;
 var PORT_WIDTH = 15;
 var MIN_ARROW_LEN = 10;
 
+var getPortShape = function(object_id, port_label){
+  var object = getFlowObjectByUniqueId(object_id);
+  if(object === undefined){ return; }
+
+  for(var i = 0; i < object.shape.length; i++){
+    if(object.shape[i].label === 'outputs' || object.shape[i].label === 'inputs'){
+      for(var j = 0; j < object.shape[i].length; j++){
+        if(object.shape[i][j].label === port_label){
+          return object.shape[i][j];
+        }
+      }
+    }
+  }
+}
 
 var setBoxPosition = function(component, x, y){
   'use strict';
@@ -50,11 +64,13 @@ Raphael.el.dragArrow = function(pos2) {
 }
 
 
-Raphael.fn.box = function(x, y, width, height, input_count, output_count, color){
+Raphael.fn.box = function(x, y, width, height, color){
   'use strict';
   var set_main = this.set();
   var shape = this.rect(x, y, width, height, 5);
-  shape.label = 'container';
+  shape.label = 'container';  // TODO replace labels with .data()
+  shape.data('type', 'body');
+//	shape.data('object_id', this.data('object_id'));
   shape.x_offset = 0;
   shape.y_offset = 0;
   set_main.push(shape);
@@ -69,23 +85,10 @@ Raphael.fn.box = function(x, y, width, height, input_count, output_count, color)
   set_main.push(set_content);
 
   var set_inputs = this.set();
-  var i;
-  for(i = 0; i < input_count; i++){
-    shape = this.rect(x - PORT_WIDTH, y + PORT_HEIGHT + (i * PORT_HEIGHT), PORT_WIDTH, PORT_HEIGHT, 2);
-    shape.x_offset = -PORT_WIDTH;
-    shape.y_offset = PORT_HEIGHT + (i * PORT_HEIGHT);
-    set_inputs.push(shape);
-  }
   set_inputs.label = 'inputs';
   set_main.push(set_inputs);
 
   var set_outputs = this.set();
-  for(i = 0; i < output_count; i++){
-    shape = this.rect(x + width, y + PORT_HEIGHT + (i * PORT_HEIGHT), PORT_WIDTH, PORT_HEIGHT, 2);
-    shape.x_offset = width;
-    shape.y_offset = PORT_HEIGHT + (i * PORT_HEIGHT);
-    set_outputs.push(shape);
-  }
   set_outputs.label = 'outputs';
   set_main.push(set_outputs);
 
@@ -93,7 +96,7 @@ Raphael.fn.box = function(x, y, width, height, input_count, output_count, color)
   set_links.label = 'links';
   set_main.push(set_links);
 
-  set_main.data('myset', set_main);
+  set_main.data('whole_shape', set_main);
 
   set_main.attr({"fill": color, "stroke": "#000"});
   return set_main;
@@ -129,7 +132,7 @@ Raphael.st.setContents = function(content){
   }
 };
 
-Raphael.st.setInputs = function(input_count){
+Raphael.st.setInputs = function(parent_context){
   'use strict';
   if(this.type === "set"){
     var pos = this.items[0].getBoxPosition();  // item 0 is the parent shape.
@@ -138,17 +141,29 @@ Raphael.st.setInputs = function(input_count){
     var color = this.items[0].attr('fill');
     for(var i = 0; i < this.items.length; i++){
       if(this.items[i].label === 'inputs'){
-        var node = this.items[i].pop();
-        while(node){
-          node.remove();
+        while(this.items[i].items.length){
           node = this.items[i].pop();
+          node.remove();
         }
-        for(var j = 0; j < input_count; j++){
+        var height_offset = 0;
+        for(var data_key in parent_context.data.data.inputs){
+          var port_label = parent_context.data.data.inputs[data_key].port_label;
+          var object_id = parent_context.data.unique_id;
           var shape = this.paper.rect(x - PORT_WIDTH, y + PORT_HEIGHT + (i * PORT_HEIGHT), PORT_WIDTH, PORT_HEIGHT, 2);
+          shape.data('port_label', port_label);
+					shape.data('port_type', 'input');
+          shape.data('object_id', object_id);
           shape.x_offset = -PORT_WIDTH;
-          shape.y_offset = PORT_HEIGHT + (j * PORT_HEIGHT);
+          shape.y_offset = PORT_HEIGHT + (height_offset * PORT_HEIGHT);
           shape.attr({"fill": color, "stroke": "#000"});
+          shape.label = port_label;
+          
+				  shape.mouseover(parent_context.onmouseover);
+          shape.mouseout(parent_context.onmouseout);
+          shape.mouseup(parent_context.onmouseup);
+
           this.items[i].push(shape);
+          height_offset++;
         }
         // For some reason new shapes added to a set do not appear until they are moved.
         setBoxPosition(this.items[i], x, y);
@@ -157,7 +172,7 @@ Raphael.st.setInputs = function(input_count){
   }
 };
 
-Raphael.st.setOutputs = function(output_count){
+Raphael.st.setOutputs = function(parent_context){
   'use strict';
   if(this.type === "set"){
     var pos = this.items[0].getBoxPosition();  // item 0 is the parent shape.
@@ -167,17 +182,31 @@ Raphael.st.setOutputs = function(output_count){
     var color = this.items[0].attr('fill');
     for(var i = 0; i < this.items.length; i++){
       if(this.items[i].label === 'outputs'){
-        var node = this.items[i].pop();
-        while(node){
-          node.remove();
+        while(this.items[i].items.length){
           node = this.items[i].pop();
+          node.remove();
         }
-        for(var j = 0; j < output_count; j++){
-          var shape = this.paper.rect(x + width, y + PORT_HEIGHT + (i * PORT_HEIGHT), PORT_WIDTH, PORT_HEIGHT, 2);
+
+        var height_offset = 0;
+				for(var data_key in parent_context.data.data.outputs){
+          var port_label = parent_context.data.data.outputs[data_key].port_label;
+          var object_id = parent_context.data.unique_id;
+          var shape = this.paper.rect(x - PORT_WIDTH, y + PORT_HEIGHT + (i * PORT_HEIGHT), PORT_WIDTH, PORT_HEIGHT, 2);
+          shape.data('port_label', port_label);
+          shape.data('port_type', 'output');
+          shape.data('object_id', object_id);
           shape.x_offset = width;
-          shape.y_offset = PORT_HEIGHT + (j * PORT_HEIGHT);
+          shape.y_offset = PORT_HEIGHT + (height_offset * PORT_HEIGHT);
           shape.attr({"fill": color, "stroke": "#000"});
+          shape.label = port_label;
+          
+          shape.drag(parent_context.onmove, parent_context.onstart, parent_context.onend);
+          shape.mouseover(parent_context.onmouseover);
+          shape.mouseout(parent_context.onmouseout);
+          shape.mouseup(parent_context.onmouseup);
+
           this.items[i].push(shape);
+          height_offset++;
         }
         // For some reason new shapes added to a set do not appear until they are moved.
         setBoxPosition(this.items[i], x, y);
@@ -190,6 +219,10 @@ Raphael.st.setOutputs = function(output_count){
 Raphael.st.setOutputLinks = function(outputs){
   'use strict';
   var links, key_types;
+
+  var this_identity = this.getIdentity();
+  console.log(this_identity);
+
   for(key_types in this.items){
     if(this.items[key_types].label === 'links'){
       links = this.items[key_types];
@@ -201,49 +234,13 @@ Raphael.st.setOutputLinks = function(outputs){
     }
   }
 
-  for(key_types in this.items){
-    if(this.items[key_types].label === 'outputs'){
-      for(var key_shape_output in this.items[key_types].items){
-        for(var key_data_output in outputs){
-          if(key_shape_output === key_data_output){
-            var outgoing_port_shape = this.items[key_types][key_shape_output];
-            for(var key_link in outputs[key_data_output].links){
-              var incoming_port_index = outputs[key_data_output].links[key_link].input_port;
-              var incoming_port_shape = outputs[key_data_output].links[key_link].box_object.shape.getPort('inputs', incoming_port_index);
-
-              var pos1 = outgoing_port_shape.getShapePosition();
-              var pos2 = incoming_port_shape.getShapePosition();
-              pos1 = {x: pos1.x + PORT_WIDTH, y: pos1.y + PORT_HEIGHT /2};
-              pos2 = {x: pos2.x, y: pos2.y + PORT_HEIGHT /2};
-              if(Math.abs(pos1.x - pos2.x) + Math.abs(pos1.y - pos2.y) < MIN_ARROW_LEN){
-                pos2.x = pos1.x + MIN_ARROW_LEN;
-              }
-              var shape = this.paper.arrow(pos1, pos2, 'teal');
-              links.push(shape);
-            }
-          }
-        }
-      }
+  for(var key_data_output in outputs){
+    for(var key_link in outputs[key_data_output].links){
+			var link_data = outputs[key_data_output].links[key_link];
+      console.log(link_data);
+			setLink({source_object: this_identity.object_id, source_port: link_data.source_port,
+               destination_object: link_data.destination_object, destination_port: link_data.destination_port});
     }
-  }
-};
-
-/* Update link when the Input end is moved. */
-Raphael.st.setInputLinks = function(inputs){
-  'use strict';
-  var move_list = {};
-  var key;
-  for(key in inputs){
-    if(inputs[key].links){
-      for(var i = 0; i < inputs[key].links.length; i++){
-        var output_object = inputs[key].links[i].box_object;
-        move_list[output_object.unique_id] = output_object;
-      }
-    }
-  }
-
-  for(key in move_list){
-    move_list[key].shape.setOutputLinks(move_list[key].data.data.outputs);
   }
 };
 
@@ -262,9 +259,14 @@ Raphael.st.getPort = function(type, index){
 
 Raphael.st.setHighlight = function(color, thickness){
   'use strict';
-  for(var key_types in this.data('myset').items){
-    if(this.data('myset').items[key_types].label === 'container'){
-      this.data('myset').items[key_types].setHighlight(color, thickness);
+  for(var key_types in this.data('whole_shape').items){
+    if(this.data('whole_shape').items[key_types].label === 'container'){
+      this.data('whole_shape').items[key_types].setHighlight(color, thickness);
+    }
+  }
+  for(var key_types in this.items){
+    if(this.items[key_types].label === 'container'){
+      this.items[key_types].setHighlight(color, thickness);
     }
   }
 };
@@ -278,16 +280,19 @@ Raphael.el.setHighlight = function(color, thickness){
   }
   thickness = thickness || 1;
 
-  for(var key_types in this.data('myset').items){
-    if(this.data('myset').items[key_types].label === 'container'){
-      this.data('myset').items[key_types].attr({stroke: color, 'stroke-width': thickness});
+  for(var key_types in this.data('whole_shape').items){
+    if(this.data('whole_shape').items[key_types].label === 'container'){
+      this.data('whole_shape').items[key_types].attr({stroke: color, 'stroke-width': thickness});
     }
   }
 };
 
 Raphael.el.getBoxPosition = function(){
   'use strict';
-  return {x: this.data('myset')[0].attr("x"), y: this.data('myset')[0].attr("y")};
+  if(this.data('whole_shape') === undefined){
+    return {x: 0, y: 0};
+  }
+  return {x: this.data('whole_shape')[0].attr("x"), y: this.data('whole_shape')[0].attr("y")};
 };
 
 Raphael.el.getShapePosition = function(){
@@ -298,10 +303,12 @@ Raphael.el.getShapePosition = function(){
 Raphael.el.setBoxPosition = function(x, y){
   'use strict';
   if(x !== undefined && y !== undefined){
-    setBoxPosition(this.data('myset'), x, y);
+    setBoxPosition(this.data('whole_shape'), x, y);
+    setBoxPosition(this, x, y);
   }
-  this.data('myset').setOutputLinks(this.data('parent').data.data.outputs);
-  this.data('myset').setInputLinks(this.data('parent').data.data.inputs);
+
+  var object = getFlowObjectByUniqueId(this.getIdentity().object_id);
+  object.updateLinks();
 };
 
 Raphael.st.getShapePosition = function(){
@@ -311,5 +318,17 @@ Raphael.st.getShapePosition = function(){
       return this.items[i].getBoxPosition();
     }
   }
+};
+
+Raphael.el.getIdentity = function(){
+  'use strict';
+  return {type:       (this.data('type') || this.data('port_type')),
+          object_id:  this.data('object_id'),
+          port_label: this.data('port_label')};
+};
+
+Raphael.st.getIdentity = function(){
+  'use strict';
+  return this[0].getIdentity();
 };
 

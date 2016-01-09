@@ -7,6 +7,38 @@ var SNAP = 20;
 
 var INPUT_PORT = { description: 'Trigger label', value: '_any', updater: 'ha-general-attribute' };
 
+var shareBetweenShapes = {unique_id: 0};
+
+
+/* Descend into object, returning child if it exists. */
+var getPath = function(object, path) {
+  'use strict';
+  var parts = path.split('.');
+  for(var i = 0; i < parts.length; i++) {
+    var p = parts[i];
+    if(object[p] === undefined) {
+      return;
+    }
+    object = object[p];
+  }
+  return object;
+}
+
+/* Descend into object, returning child if it exists and creating it if not */
+var addPath = function(object, path) { 
+  'use strict';
+  var parts = path.split('.');
+  for(var i = 0; i < parts.length; i++) {
+    var p = parts[i];
+    if(object[p] === undefined) {
+      object[p] = {};
+    }
+    object = object[p];
+  }
+  return object;
+}
+
+
 var getFlowObjectByUniqueId = function(unique_id){
   'use strict';
   return document.getElementsByTagName('ha-control')[0].flowObjects[unique_id];
@@ -23,7 +55,42 @@ var getFlowObjectByInstanceName = function(instance_name){
   return;
 };
 
-var FlowObject = function(paper, sidebar, shareBetweenShapes){
+var setLink = function(link_data){
+  console.log(link_data);
+  var link;
+  var paper = document.getElementsByTagName('ha-control')[0].paper;
+  var links = document.getElementsByTagName('ha-control')[0].links;
+  for(var i = 0; i < links.length; i++){
+    if(links[i].data.source_object === link_data.source_object &&
+        links[i].data.source_port === link_data.source_port &&
+        links[i].data.destination_object === link_data.destination_object &&
+        links[i].data.destination_port === link_data.destination_port){
+      link = links[i];
+      break;
+    }
+  }
+  var source_object = getFlowObjectByUniqueId(link_data.source_object);
+  var destination_object = getFlowObjectByUniqueId(link_data.destination_object);
+  if(destination_object === undefined){
+    return;
+  }
+  var source_port_shape = getPortShape(link_data.source_object, link_data.source_port);
+  var destination_port_shape = getPortShape(link_data.destination_object, link_data.destination_port);
+
+  var pos1 = {x: source_port_shape.getShapePosition().x, y: source_port_shape.getShapePosition().y};
+  var pos2 = {x: destination_port_shape.getShapePosition().x, y: destination_port_shape.getShapePosition().y};
+
+  if(link === undefined){
+    var shape = paper.arrow(pos1, pos2, 'red');
+    link = {data: link_data, shape: shape};
+    document.getElementsByTagName('ha-control')[0].links.push(link);
+  } else {
+    link.shape.remove();
+    link.shape = paper.arrow(pos1, pos2, 'teal');
+  }
+}
+
+var FlowObject = function(paper, sidebar){
   'use strict';
   //console.log('FlowObject', this);
 
@@ -31,29 +98,39 @@ var FlowObject = function(paper, sidebar, shareBetweenShapes){
                data: {outputs: {}, inputs: {}}};
   this.paper = paper;
   this.sidebar = sidebar;
-  this.shareBetweenShapes = shareBetweenShapes;
 };
+
+FlowObject.prototype.updateLinks = function(){
+  var links = document.getElementsByTagName('ha-control')[0].links;
+  for(var i = 0; i < links.length; i++){
+    if(links[i].data.source_object === this.data.unique_id || links[i].data.destination_object === this.data.unique_id){
+      setLink(links[i].data);
+    }
+  }
+}
 
 FlowObject.prototype.setShape = function(shape){
   'use strict';
   this.shape = shape || paper.rect(0, 0, 30, 30, 5);
-  this.shape.data('parent', this);
+  this.shape.data('object_id', this.data.unique_id);
   this.shape.drag(this.onmove, this.onstart, this.onend);
   this.shape.mouseover(this.onmouseover);
   this.shape.mouseout(this.onmouseout);
   this.shape.mouseup(this.onmouseup);
+  this.shape.setInputs(this);
+  this.shape.setOutputs(this);
 };
 
 FlowObject.prototype.delete = function(){
   'use strict';
   this.shape.remove();
 	this.deleteLinks();
-  delete document.getElementsByTagName('ha-control')[0].flowObjects[this.unique_id];
+  delete document.getElementsByTagName('ha-control')[0].flowObjects[this.data.unique_id];
 }
 
 FlowObject.prototype.setInstanceName = function(instance_name){
   'use strict';
-  instance_name = instance_name || 'Object_' + this.shareBetweenShapes.unique_id;
+  instance_name = instance_name || 'Object_' + shareBetweenShapes.unique_id;
   var append_to_name = 1;
   var instance_name_base = instance_name;
 
@@ -73,9 +150,22 @@ FlowObject.prototype.setup = function(backend_data){
   'use strict';
   console.log('FlowObject.setup(', backend_data, ')');
 
-  if(backend_data.version){
-    this.version = backend_data.version;
+  if(backend_data.version === undefined){
+    backend_data.version = 0;
   }
+  if(backend_data.version){
+    this.data.version = backend_data.version;
+  }
+
+  if(backend_data.unique_id){
+    this.data.unique_id = backend_data.unique_id;
+  } else {
+    shareBetweenShapes.unique_id++;
+    this.data.unique_id = this.constructor.name + '_' + shareBetweenShapes.unique_id + session_uid();
+  }
+  document.getElementsByTagName('ha-control')[0].flowObjects[this.data.unique_id] = this;
+
+	this.setShape(this.shape);
 
   for(var port_out in this.data.data.outputs){
     this.data.data.outputs[port_out].path = {};
@@ -83,26 +173,17 @@ FlowObject.prototype.setup = function(backend_data){
   }
   for(var port_in in this.data.data.inputs){
     this.data.data.inputs[port_in].path = {};
-    this.data.data.inputs[port_in].links = [];
     this.FilterInputToOutput(port_in);
   }
 
-  if(backend_data.unique_id){
-    this.unique_id = backend_data.unique_id;
-  } else {
-    this.shareBetweenShapes.unique_id++;
-    this.unique_id = this.constructor.name + '_' + this.shareBetweenShapes.unique_id + session_uid();
-  }
-  document.getElementsByTagName('ha-control')[0].flowObjects[this.unique_id] = this;
-
   this.setInstanceName(backend_data.instance_name);
 
-  if(backend_data.gui){
-    this.setBoxPosition(backend_data.gui.position.x, backend_data.gui.position.y);
+  if(getPath(backend_data, 'shape.position') !== undefined){
+    this.setBoxPosition(backend_data.shape.position.x, backend_data.shape.position.y);
   }
 
   // Make sure object is marked selected if it has been replaced.
-  if(this.shareBetweenShapes.selected && this.shareBetweenShapes.selected.unique_id === this.unique_id){
+  if(shareBetweenShapes.selected === this.data.unique_id){
     this.select();
   }
 };
@@ -119,24 +200,22 @@ FlowObject.prototype.replaceShape = function(newShape){
 
 FlowObject.prototype.setContents = function(contents){
   'use strict';
-  console.log(contents, this.data);
   contents = contents || this.data;
   
-  this.version = this.version || 0;
+  this.data.version = this.data.version || 0;
 
   this.shape.setContents(contents);
-  //this.ExportObject();
 };
 
-FlowObject.prototype.setInputs = function(input_count){
+FlowObject.prototype.setInputs = function(){
   'use strict';
-  this.shape.setInputs(input_count);
+  this.shape.setInputs();
   this.shape.drag(this.onmove, this.onstart, this.onend);
 };
 
-FlowObject.prototype.setOutputs = function(output_count){
+FlowObject.prototype.setOutputs = function(){
   'use strict';
-  this.shape.setOutputs(output_count);
+  this.shape.setOutputs();
   this.shape.drag(this.onmove, this.onstart, this.onend);
 };
 
@@ -159,11 +238,11 @@ FlowObject.prototype.setBoxPosition = function(x, y){
 FlowObject.prototype.select = function(){
   'use strict';
   console.log('FlowObject.select:', this);
-  if(this.shareBetweenShapes.selected){
-    this.shareBetweenShapes.selected.shape.setHighlight(false);
+  if(shareBetweenShapes.selected !== undefined){
+    getFlowObjectByUniqueId(shareBetweenShapes.selected).shape.setHighlight(false);
   }
   this.shape.setHighlight(true);
-  this.shareBetweenShapes.selected = this;
+  shareBetweenShapes.selected = this.data.unique_id;
 
   this.displaySideBar();
 };
@@ -185,7 +264,7 @@ FlowObject.prototype.displaySideBar = function(){
 	var h2 = document.createElement('div');
   var h3 = document.createElement('a');
 	h1.innerHTML = this.data.data.general.instance_name.value;
-	h2.innerHTML = this.unique_id + ' ' + this.version;
+	h2.innerHTML = this.data.unique_id + ' ' + this.data.version;
   h3.innerHTML = 'delete';
   h3.onclick=function(){console.log(this);
                         this.delete();
@@ -213,11 +292,12 @@ FlowObject.prototype.displaySideBar = function(){
 
 FlowObject.prototype.onmouseover = function(){
   'use strict';
-  if(this.data('parent').shareBetweenShapes.dragging){
-    var clicked_shape = this.data('parent').mapShapeToPort(this);
-    if(clicked_shape.type === 'inputs'){
-      console.log('FlowObject.onmouseover', this, this.data('parent').shareBetweenShapes.dragging);
-      this.data('parent').shareBetweenShapes.linked = {origin: this.data('parent').shareBetweenShapes.dragging.origin, desination: this};
+  //console.log(this.getIdentity());
+  if(shareBetweenShapes.dragging){
+    var clicked_shape = this.getIdentity();
+    if(clicked_shape.type === 'input'){
+      shareBetweenShapes.linked = {source_object: shareBetweenShapes.dragging.source_object, source_port: shareBetweenShapes.dragging.source_port,
+                                   destination_object: clicked_shape.object_id, destination_port: clicked_shape.port_label};
       this.animate({"fill-opacity": 0.2}, 500);
     }
   }
@@ -225,10 +305,11 @@ FlowObject.prototype.onmouseover = function(){
 
 FlowObject.prototype.onmouseout = function(){
   'use strict';
-  if(this.data('parent').shareBetweenShapes.dragging && this.id !== this.data('parent').shareBetweenShapes.dragging.origin.id){
-    console.log('FlowObject.onmouseout', this, this.data('myset'));
+  var clicked_shape = this.getIdentity();
+  if(shareBetweenShapes.dragging && clicked_shape.object_id !== shareBetweenShapes.dragging.source_object){
     this.animate({"fill-opacity": 1}, 500);
-    delete this.data('parent').shareBetweenShapes.linked;
+
+    delete shareBetweenShapes.linked;
   }
 };
 
@@ -242,77 +323,110 @@ FlowObject.prototype.onmove = function(dx, dy){
   //console.log('FlowObject.onmove(', dx, dy, ')');
 
   if(!this.timer){
-    this.timer = setTimeout(do_periodically.bind(this), 50);
+    this.timer = setTimeout(do_periodically.bind(this), 20);
   }
 
   function do_periodically(){
-    console.log('tick');
-    if(this.id === this.data('myset')[0].id){
+    if(this.data('type') === 'parent' || this.data('type') === 'body'){
       this.setBoxPosition(dx + this.start_move_x, dy + this.start_move_y);
-    } else if(this.data('parent').shareBetweenShapes.dragging){
-      var path = this.data('parent').shareBetweenShapes.dragging.arrow.attr('path');
+    } else if(shareBetweenShapes.dragging){
+      var path = shareBetweenShapes.dragging.arrow.attr('path');
       var pos2 = {x: path[0][1] + dx, y: path[0][2] + dy};
-      this.data('parent').shareBetweenShapes.dragging.arrow.dragArrow(pos2);
+      shareBetweenShapes.dragging.arrow.dragArrow(pos2);
     }
     this.timer = null;
   }
 };
 
+// TODO: move out of FlowObject name-space.
 FlowObject.prototype.onstart = function(){
   'use strict';
-  //console.log('FlowObject.onstart()', this, this.data('parent'));
+  //console.log('FlowObject.onstart()', this);
   
-  this.data('parent').select();
+  var clicked_shape = this.getIdentity();
+  var object = getFlowObjectByUniqueId(clicked_shape.object_id);
+
+  object.select();
   this.animate({"fill-opacity": 0.2}, 500);
 
-  var clicked_shape = this.data('parent').mapShapeToPort(this);
-  if(clicked_shape.type === 'parent'){
+  if(clicked_shape.type === 'parent' || clicked_shape.type === 'body'){
     this.start_move_x = this.attr("x");
     this.start_move_y = this.attr("y");
-  } else if(clicked_shape.type === 'inputs'){
-  } else if(clicked_shape.type === 'outputs'){
+  } else if(clicked_shape.type === 'input'){
+  } else if(clicked_shape.type === 'output'){
     var pos1 = this.getShapePosition();
     pos1.x = pos1.x + PORT_WIDTH;
     pos1.y = pos1.y + PORT_HEIGHT /2;
     var pos2 = {x: pos1.x + 5, y: pos1.y};
-    this.data('parent').shareBetweenShapes.dragging = {arrow: this.paper.arrow(pos1, pos2, 'red'), origin: this};
-    this.data('parent').shareBetweenShapes.dragging.arrow.node.setAttribute("pointer-events", "none");
+    shareBetweenShapes.dragging = {arrow: this.paper.arrow(pos1, pos2, 'red'), source_object: clicked_shape.object_id, source_port: clicked_shape.port_label};
+    shareBetweenShapes.dragging.arrow.node.setAttribute("pointer-events", "none");
   }
 };
 
 FlowObject.prototype.onend = function(){
   'use strict';
   //console.log('FlowObject.onend()');
-  this.data('myset').animate({"fill-opacity": 1}, 500);
+  this.animate({"fill-opacity": 1}, 500);
   
-  if(this.data('parent').shareBetweenShapes.dragging && this.data('parent').shareBetweenShapes.dragging.arrow){
-    this.data('parent').shareBetweenShapes.dragging.arrow.remove();  
-    delete this.data('parent').shareBetweenShapes.dragging;
+  var clicked_shape = this.getIdentity();
+  var object = getFlowObjectByUniqueId(clicked_shape.object_id);
 
-    if(this.data('parent').shareBetweenShapes.linked){
-      this.data('parent').linkOutToIn(this.data('parent').shareBetweenShapes.linked.origin, this.data('parent').shareBetweenShapes.linked.desination);
-      delete this.data('parent').shareBetweenShapes.linked;
+  if(shareBetweenShapes.dragging && shareBetweenShapes.dragging.arrow){
+    shareBetweenShapes.dragging.arrow.remove();  
+    delete shareBetweenShapes.dragging;
+
+    if(shareBetweenShapes.linked){
+      //console.log(shareBetweenShapes.linked);
+      object.linkOutToIn(shareBetweenShapes.linked);
+      delete shareBetweenShapes.linked;
     }
   } else {
     // Finished dragging FlowObject.
-    var position = this.data('parent').getBoxPosition();
+    var position = object.getBoxPosition();
     position.x += SNAP /2 - position.x % SNAP;
     position.y += SNAP /2 - position.y % SNAP;
-    this.data('parent').setBoxPosition(position);
-    this.data('parent').ExportObject();
+    object.setBoxPosition(position);
+    object.ExportObject();
   }
 };
 
-/* Arguments:
- *   Can take either the rectangle object provided by an event or an object containing
-  *  enough information to find the port.
- *   eg: { unique_id: 'instance_id_1', port_number: 0}
-         { flow_object: (object), port_number: 0}
- */
-FlowObject.prototype.linkOutToIn = function(shape_out, shape_in){
+FlowObject.prototype.linkOutToIn = function(link_data){
   'use strict';
-	console.log('FlowObject.linkOutToIn(', shape_out, shape_in, ')');
-  if(shape_out.type !== 'rect'){
+  console.log('FlowObject.linkOutToIn(', link_data, ')');
+
+  var source_port = link_data.source_port;
+  var destination_object = link_data.destination_object;
+  var destination_port = link_data.destination_port;
+
+  if(!source_port || !destination_object || !destination_port){
+    return;
+  }
+
+  for(var port_index in this.data.data.outputs){
+    if(this.data.data.outputs[port_index].port_label === source_port){
+      var source_port_data = this.data.data.outputs[port_index];
+      var found = false;
+      for(var i = 0; i < source_port_data.links.length; i++){
+        if(source_port_data.links[i].source_port === source_port &&
+           source_port_data.links[i].destination_object === destination_object &&
+           source_port_data.links[i].destination_port === destination_port){
+          // Already has this link.
+          found = true;
+          break;
+        }
+      }
+      if(!found){
+        console.log('LINK!');
+        source_port_data.links.push({source_port: source_port, destination_object: destination_object, destination_port: destination_port});
+      }
+      break;
+    }
+  }
+
+  this.shape.setOutputLinks(this.data.data.outputs);
+
+
+  /*if(shape_out.type !== 'rect'){
     if(shape_out.flow_object){
       shape_out = shape_out.flow_object.shape.getPort('outputs', shape_out.port_number);
     } else if(shape_out.unique_id){
@@ -357,7 +471,7 @@ FlowObject.prototype.linkOutToIn = function(shape_out, shape_in){
 
   this.shape.setOutputLinks(this.data.data.outputs);
 
-  this.setAdjacentInputSamples(port_out.number, shape_in.data('parent'), port_in.number);
+  this.setAdjacentInputSamples(port_out.number, shape_in.data('parent'), port_in.number);*/
 };
 
 FlowObject.prototype.deleteLinks = function(){
@@ -371,7 +485,7 @@ FlowObject.prototype.deleteLinks = function(){
       var remove_links = [];
       for(var j in link.box_object.data.data.inputs){
         for(var k = 0; k < link.box_object.data.data.inputs[j].links.length; k++){
-          if(link.box_object.data.data.inputs[j].links[k].box_object.unique_id === this.unique_id){
+          if(link.box_object.data.data.inputs[j].links[k].box_object.data.unique_id === this.data.unique_id){
             remove_links.push([j, k]);
           }
         }
@@ -391,7 +505,7 @@ FlowObject.prototype.deleteLinks = function(){
       var remove_links = [];
       for(var j in link.box_object.data.data.outputs){
         for(var k = 0; k < link.box_object.data.data.outputs[j].links.length; k++){
-          if(link.box_object.data.data.outputs[j].links[k].box_object.unique_id === this.unique_id){
+          if(link.box_object.data.data.outputs[j].links[k].box_object.data.unique_id === this.data.unique_id){
             remove_links.push([j, k]);
           }
         }
@@ -435,7 +549,7 @@ FlowObject.prototype.setAdjacentInputSamples = function(port_out, flow_object_in
 
 FlowObject.prototype._setAdjacentInputSamples = function(port_out, flow_object_in, port_in){
   'use strict';
-  // Record the path data has been through on the connected object.
+  // Record the path data has been through on the connected object for loop detection.
   for(var port_id in this.data.data.outputs[port_out].path){
     flow_object_in.data.data.inputs[port_in].path[port_id] = true;
   }
@@ -450,29 +564,6 @@ FlowObject.prototype._setAdjacentInputSamples = function(port_out, flow_object_i
 
   // Update any objects connected to the target too.
   flow_object_in.FilterInputToOutput(port_in);
-};
-
-FlowObject.prototype.mapShapeToPort = function(shape){
-  'use strict';
-  var type, number, value;
-  if(shape.id === shape.data('myset')[0].id){
-    type = 'parent';
-  } else {
-    for(var i = 0; i < shape.data('myset').items.length; i++){
-      for(var j = 0; j < shape.data('myset').items[i].length; j++){
-        if(shape.id === shape.data('myset').items[i][j].id){
-          // "shape" is this one.
-          type = shape.data('myset').items[i].label;
-          number = j;
-          if(this.data.data && this.data.data[type] && this.data.data[type][number]){
-            value = this.data.data[type][number].value;
-          }
-        }
-      }
-    }
-  }
-  //console.log('FlowObject.mapShapeToPort', type, number, value);
-  return {type: type, number: number, value: value};
 };
 
 FlowObject.prototype.setRadius = function(radius){
@@ -497,34 +588,37 @@ FlowObject.prototype.FilterInputToOutput = function(){
 
 FlowObject.prototype.ExportObject = function(send_object){
   'use strict';
-  this.version += 1;
+  this.data.version += 1;
 
   send_object = send_object || {data: {inputs: {}, outputs: {}, general: {}}};
-  send_object.unique_id = this.unique_id;
+  send_object.unique_id = this.data.unique_id;
   send_object.instance_name = this.data.data.general.instance_name.value;
-  send_object.version = this.version;
-  send_object.gui = {position: this.shape.getShapePosition()};
+  send_object.version = this.data.version;
+  send_object.shape = this.data.shape;
+  send_object.shape.position = this.shape.getShapePosition();
 
-  for(var class_name in flow_objects){
-    if(flow_objects[class_name].name === this.constructor.name){
-      send_object.class_name = class_name;
+  for(var object_name in flow_objects){
+    if(flow_objects[object_name].name === this.constructor.name){
+      send_object.object_name = object_name;
     }
   }
 
-  for(var input in this.data.data.inputs){
+  /*for(var input in this.data.data.inputs){
     for(var i = 0; i < this.data.data.inputs[input].links.length; i++){
-      var link_to_unique_id = this.data.data.inputs[input].links[i].box_object.unique_id;
+      //var link_to_unique_id = this.data.data.inputs[input].links[i].box_object.data.unique_id;
+      var link_to_unique_id = this.data.data.inputs[input].links[i];
       var link_to_port = this.data.data.inputs[input].links[i].port_name || 'default';
       if(send_object.data.inputs[link_to_port] === undefined){
         send_object.data.inputs[link_to_port] = [];
       }
       send_object.data.inputs[link_to_port].push(link_to_unique_id);
     }
-  }
+  }*/
 
   for(var output in this.data.data.outputs){
     for(var i = 0; i < this.data.data.outputs[output].links.length; i++){
-      var link_to_unique_id = this.data.data.outputs[output].links[i].box_object.unique_id;
+      //var link_to_unique_id = this.data.data.outputs[output].links[i].box_object.data.unique_id;
+      var link_to_unique_id = this.data.data.outputs[output].links[i];
       var link_to_port = this.data.data.outputs[output].links[i].port_name || 'default';
       if(send_object.data.outputs[link_to_port] === undefined){
         send_object.data.outputs[link_to_port] = [];
@@ -535,12 +629,12 @@ FlowObject.prototype.ExportObject = function(send_object){
 
   for(var general_name in this.data.data.general){
     if(general_name !== 'instance_name'){
-      // TODO Move instance_name out of data.data.general ?
 		  send_object.data.general[general_name] = this.data.data.general[general_name].value;
     }
 	}
 
-  console.log('**', JSON.stringify(send_object));
+  //console.log('**', JSON.stringify(send_object));
+  //console.log('**', JSON.stringify(this.data));
   Mqtt.send('homeautomation/0/control/_announce', JSON.stringify(send_object));
 
   return send_object;
@@ -560,11 +654,11 @@ var inheritsFrom = function (child, parent) {
 flow_object_classes = [FlowObjectMqttSubscribe, FlowObjectMqttPublish, FlowObjectReadFile, FlowObjectMapValues, FlowObjectMapLabels, FlowObjectTimer, FlowObjectCombineData, FlowObjectAddData];
 
 
-function FlowObjectMqttSubscribe(paper, sidebar, shareBetweenShapes, shape, backend_data){
+function FlowObjectMqttSubscribe(paper, sidebar, shape, backend_data){
   'use strict';
   console.log("FlowObjectMqttSubscribe");
 
-  FlowObject.prototype.constructor.call(this, paper, sidebar, shareBetweenShapes);
+  FlowObject.prototype.constructor.call(this, paper, sidebar);
 
   this.data = { object_name: 'MQTT Subscription',
                 description: 'Monitor MQTT for a specific topic.',
@@ -590,15 +684,17 @@ function FlowObjectMqttSubscribe(paper, sidebar, shareBetweenShapes, shape, back
                   outputs: {
                     0: {
                       description: 'Default output',
+                      port_label: 'default_out',
                       sample_data: {}
                       } } }
               };
 
   if(paper){
-    shape = shape || paper.box(0, 0, this.data.shape.width, this.data.shape.height, 0, 1, this.data.shape.color);
-		this.setShape(shape);
+    this.shape = shape || paper.box(0, 0, this.data.shape.width, this.data.shape.height, this.data.shape.color);
     this.setup(backend_data);
-    if(backend_data.data !== undefined){
+
+    if(getPath(backend_data, 'data.general.subscribed_topic') !== undefined){
+    //if(backend_data.data.general !== undefined && backend_data.data.general.subscribed_topic !== undefined){
       this.data.data.general.subscribed_topic.value = 'homeautomation/+/' + backend_data.data.general.subscribed_topic;
       this.setContents();
     }
@@ -635,11 +731,11 @@ FlowObjectMqttSubscribe.prototype.ExportObject = function(){
 
 
 
-function FlowObjectMqttPublish(paper, sidebar, shareBetweenShapes, shape, backend_data){
+function FlowObjectMqttPublish(paper, sidebar, shape, backend_data){
   'use strict';
   console.log("FlowObjectMqttPublish");
 
-  FlowObject.prototype.constructor.call(this, paper, sidebar, shareBetweenShapes);
+  FlowObject.prototype.constructor.call(this, paper, sidebar);
   this.data = { object_name: 'MQTT Publish',
                 description: 'Publish MQTT a message for a specific topic.',
                 shape: {
@@ -671,14 +767,14 @@ function FlowObjectMqttPublish(paper, sidebar, shareBetweenShapes, shape, backen
                   inputs: {
                     0: {
                       description: 'Publish',
+                      port_label: 'default_in',
                       tag: 'publish',
                       sample_data: {},
                       trigger_success: [] }},
                   outputs: {}}
               };
   if(paper){
-    shape = shape || paper.box(0, 0, this.data.shape.width, this.data.shape.height, 1, 0, this.data.shape.color);
-    this.setShape(shape);
+    this.shape = shape || paper.box(0, 0, this.data.shape.width, this.data.shape.height, this.data.shape.color);
     this.setup(backend_data);
   }
 };
@@ -687,11 +783,11 @@ inheritsFrom(FlowObjectMqttPublish, FlowObject);
 
 
 
-function FlowObjectTimer(paper, sidebar, shareBetweenShapes, shape, backend_data){
+function FlowObjectTimer(paper, sidebar, shape, backend_data){
   'use strict';
   console.log("FlowObjectTimer");
 
-  FlowObject.prototype.constructor.call(this, paper, sidebar, shareBetweenShapes);
+  FlowObject.prototype.constructor.call(this, paper, sidebar);
   this.data = { object_name: 'Timer',
                 description: 'Trigger output after a set delay.',
                 shape: {
@@ -725,6 +821,7 @@ function FlowObjectTimer(paper, sidebar, shareBetweenShapes, shape, backend_data
                   inputs: {
                     0: {
                       description: 'Start',
+                      port_label: 'start_in',
                       peramiters:{
                         trigger_label: INPUT_PORT,
                         trigger_value: INPUT_PORT,
@@ -733,6 +830,7 @@ function FlowObjectTimer(paper, sidebar, shareBetweenShapes, shape, backend_data
                       },
                     1: {
                       description: 'Stop',
+                      port_label: 'stop_in',
                       peramiters:{
                         trigger_label: INPUT_PORT,
                         trigger_value: INPUT_PORT
@@ -741,6 +839,7 @@ function FlowObjectTimer(paper, sidebar, shareBetweenShapes, shape, backend_data
                       },
                     2: {
                       description: 'Reset',
+                      port_label: 'reset_in',
                       peramiters:{
                         trigger_label: INPUT_PORT,
                         trigger_value: INPUT_PORT
@@ -754,18 +853,19 @@ function FlowObjectTimer(paper, sidebar, shareBetweenShapes, shape, backend_data
                         output_label: {
                           description: 'Ouput label',
                           updater: 'ha-general-attribute',
+                          label: 'ouput_label',
                           value: '_default' },
                         output_data: {
                           description: 'Ouput data',
                           updater: 'ha-general-attribute',
+                          label: 'ouput_data',
                           value: true },
                         },
                       sample_data: {},
                       } } }
               };
   if(paper){
-    shape = shape || paper.box(0, 0, this.data.shape.width, this.data.shape.height, 3, 1, this.data.shape.color);
-    this.setShape(shape);
+    this.shape = shape || paper.box(0, 0, this.data.shape.width, this.data.shape.height, this.data.shape.color);
     this.setup(backend_data);
   }
 };
@@ -773,11 +873,11 @@ function FlowObjectTimer(paper, sidebar, shareBetweenShapes, shape, backend_data
 inheritsFrom(FlowObjectTimer, FlowObject);
 
 
-function FlowObjectMapValues(paper, sidebar, shareBetweenShapes, shape, backend_data){
+function FlowObjectMapValues(paper, sidebar, shape, backend_data){
   'use strict';
-  console.log("FlowObjectMapValues(", paper, sidebar, shareBetweenShapes, shape, backend_data, ')');
+  console.log("FlowObjectMapValues(", backend_data, ')');
 
-  FlowObject.prototype.constructor.call(this, paper, sidebar, shareBetweenShapes);
+  FlowObject.prototype.constructor.call(this, paper, sidebar);
   this.data = { object_name: 'Map values',
                 description: 'Filter or modify input variables to different output.',
                 shape: {
@@ -797,6 +897,7 @@ function FlowObjectMapValues(paper, sidebar, shareBetweenShapes, shape, backend_
                   inputs: {
                     0: {
                       description: 'Input 1',
+                      port_label: 'default_in',
                       peramiters: {
                         transitions: {
                           description: 'Map Input ranges to desired Output.',
@@ -810,29 +911,29 @@ function FlowObjectMapValues(paper, sidebar, shareBetweenShapes, shape, backend_
                   outputs: {
                     0: {
                       description: 'Default output',
+                      port_label: 'default_out',
                       sample_data: {}
                       }
                     }}};
   if(paper){
-    shape = shape || paper.box(0, 0, this.data.shape.width, this.data.shape.height, 1, 1, this.data.shape.color);
-    this.setShape(shape);
+    this.shape = shape || paper.box(0, 0, this.data.shape.width, this.data.shape.height, this.data.shape.color);
     this.setup(backend_data);
 
-    if(backend_data.data !== undefined){
-      var label = backend_data.data.inputs.default.label;
+    if(getPath(backend_data, 'data.inputs.default_in.label') !== undefined){
+      var label = backend_data.data.inputs.default_in.label;
       this.data.data.inputs[0].peramiters.transitions.values[label] = [];
       var found_else;
-      for(var key in backend_data.data.inputs.default.rules){
-        var input = backend_data.data.inputs.default.rules[key].match;
+      for(var key in backend_data.data.inputs.default_in.rules){
+        var input = backend_data.data.inputs.default_in.rules[key].match;
         if(typeof(input) === 'string' && input.toLowerCase().trim() === 'true'){
           input = true;
         }
         if(typeof(input) === 'string' && input.toLowerCase().trim() === 'false'){
           input = false;
         }
-        var output = backend_data.data.inputs.default.rules[key].action;
+        var output = backend_data.data.inputs.default_in.rules[key].action;
         if(output === '_string'){
-          output = backend_data.data.inputs.default.rules[key].value;
+          output = backend_data.data.inputs.default_in.rules[key].value;
         }
         this.data.data.inputs[0].peramiters.transitions.values[label].push({input: input, output: output});
         if(input === '_else'){
@@ -967,11 +1068,11 @@ FlowObjectMapValues.prototype.FilterOutput = function(input_payload, filter_outp
 
 
 
-function FlowObjectMapLabels(paper, sidebar, shareBetweenShapes, shape, backend_data){
+function FlowObjectMapLabels(paper, sidebar, shape, backend_data){
   'use strict';
-  console.log("FlowObjectMapLabels(", paper, sidebar, shareBetweenShapes, shape, backend_data, ')');
+  console.log("FlowObjectMapLabels(", backend_data, ')');
 
-  FlowObject.prototype.constructor.call(this, paper, sidebar, shareBetweenShapes);
+  FlowObject.prototype.constructor.call(this, paper, sidebar);
   this.data = { object_name: 'Map labels',
                 description: 'Modify labels names.',
                 shape: {
@@ -991,6 +1092,7 @@ function FlowObjectMapLabels(paper, sidebar, shareBetweenShapes, shape, backend_
                   inputs: {
                     0: {
                       description: 'Input 1',
+                      port_label: 'default_in',
                       peramiters: {
                         label_in: {
                           description: 'Label to modify.',
@@ -1007,23 +1109,22 @@ function FlowObjectMapLabels(paper, sidebar, shareBetweenShapes, shape, backend_
                   outputs: {
                     0: {
                       description: 'Default output',
+                      port_label: 'default_out',
                       sample_data: {}
                       }
                     }}};
   if(paper){
-    shape = shape || paper.box(0, 0, this.data.shape.width, this.data.shape.height, 1, 1, this.data.shape.color);
-    this.setShape(shape);
+    this.shape = shape || paper.box(0, 0, this.data.shape.width, this.data.shape.height, this.data.shape.color);
     this.setup(backend_data);
-
-    if(backend_data.data !== undefined){
+    if(getPath(backend_data, 'data.inputs') !== undefined){
       // TODO handle more than one label.
       this.data.data.inputs[0].peramiters.else = {updater: "ha-general-attribute",
         description: "When no matching label."};
       var else_found;
-      for(var key in backend_data.data.inputs.default.rules){
-        var action = backend_data.data.inputs.default.rules[key].action;
-        var match = backend_data.data.inputs.default.rules[key].match;
-        var value = backend_data.data.inputs.default.rules[key].value;
+      for(var key in backend_data.data.inputs.default_in.rules){
+        var action = backend_data.data.inputs.default_in.rules[key].action;
+        var match = backend_data.data.inputs.default_in.rules[key].match;
+        var value = backend_data.data.inputs.default_in.rules[key].value;
         if(match === '_else'){
           if(action === '_string'){
             this.data.data.inputs[0].peramiters.else.value = value
@@ -1048,17 +1149,17 @@ function FlowObjectMapLabels(paper, sidebar, shareBetweenShapes, shape, backend_
         this.data.data.inputs[0].peramiters.else.value = '_drop';
       }
     }
-  }
+  }  
 };
 
 inheritsFrom(FlowObjectMapLabels, FlowObject);
 
 
-function FlowObjectTestData(paper, sidebar, shareBetweenShapes, shape, backend_data){
+function FlowObjectTestData(paper, sidebar, shape, backend_data){
   'use strict';
   console.log("FlowObjectTestData");
 
-  FlowObject.prototype.constructor.call(this, paper, sidebar, shareBetweenShapes);
+  FlowObject.prototype.constructor.call(this, paper, sidebar);
   this.data = { object_name: 'Test data',
                 description: 'Generate some fake data for testing this UI.',
                 shape: {
@@ -1086,6 +1187,7 @@ function FlowObjectTestData(paper, sidebar, shareBetweenShapes, shape, backend_d
                   outputs: {
                     0: {
                       description: 'Default output',
+                      port_label: 'default_out',
                       sample_data: {
                         'test/path/1': { '_subject': 'test/path/1', '_label1': 'string 1', '_label2': 'true', 'label3': 44},
                         'test/path/2': { '_subject': 'test/path/2', '_label1': 'String 2', '_label2': 'false', 'label3': 0},
@@ -1094,8 +1196,7 @@ function FlowObjectTestData(paper, sidebar, shareBetweenShapes, shape, backend_d
                       } } }
               };
   if(paper){
-    shape = shape || paper.box(0, 0, this.data.shape.width, this.data.shape.height, 0, 1, this.data.shape.color);
-    this.setShape(shape);
+    this.shape = shape || paper.box(0, 0, this.data.shape.width, this.data.shape.height, this.data.shape.color);
     this.setup(backend_data);
   }
 };
@@ -1110,11 +1211,11 @@ FlowObjectTestData.prototype.displaySideBar = function(){
 };
 
 
-function FlowObjectCombineData(paper, sidebar, shareBetweenShapes, shape, backend_data){
+function FlowObjectCombineData(paper, sidebar, shape, backend_data){
   'use strict';
-  console.log('FlowObjectCombineData(', paper, sidebar, shareBetweenShapes, shape, backend_data, ')');
+  console.log('FlowObjectCombineData(', paper, sidebar, shape, backend_data, ')');
 
-  FlowObject.prototype.constructor.call(this, paper, sidebar, shareBetweenShapes);
+  FlowObject.prototype.constructor.call(this, paper, sidebar);
   this.data = { object_name: 'Combine data',
                 description: 'Combine data sharing specified label from multiple data payloads.',
                 shape: {
@@ -1134,6 +1235,7 @@ function FlowObjectCombineData(paper, sidebar, shareBetweenShapes, shape, backen
                   inputs: {
                     0: {
                       description: 'Default input',
+                      port_label: 'default_in',
 											peramiters: {
                         primary_key: {
                           description: 'Primary key.',
@@ -1148,18 +1250,19 @@ function FlowObjectCombineData(paper, sidebar, shareBetweenShapes, shape, backen
                 outputs: {
                     0: {
                       description: 'Default output',
+                      port_label: 'default_out',
                       sample_data: {}
                     }
                 }
               }
 	};
   if(paper){
-    shape = shape || paper.box(0, 0, this.data.shape.width, this.data.shape.height, 1, 1, this.data.shape.color);
-    this.setShape(shape);
+    this.shape = shape || paper.box(0, 0, this.data.shape.width, this.data.shape.height, this.data.shape.color);
     this.setup(backend_data);
 
-    if(backend_data.data !== undefined){
-      this.data.data.inputs[0].peramiters.primary_key.value = backend_data.data.inputs.default.primary_key_label
+    if(getPath(backend_data, 'data.inputs') !== undefined){
+    //if(backend_data.data !== undefined){
+      this.data.data.inputs[0].peramiters.primary_key.value = backend_data.data.inputs.default_in.primary_key_label
     }
   }
 };
@@ -1168,11 +1271,11 @@ inheritsFrom(FlowObjectCombineData, FlowObject);
 
 
 
-function FlowObjectAddData(paper, sidebar, shareBetweenShapes, shape, backend_data){
+function FlowObjectAddData(paper, sidebar, shape, backend_data){
   'use strict';
-  console.log('FlowObjectAddData(', paper, sidebar, shareBetweenShapes, shape, backend_data, ')');
+  console.log('FlowObjectAddData(', paper, sidebar, shape, backend_data, ')');
 
-  FlowObject.prototype.constructor.call(this, paper, sidebar, shareBetweenShapes);
+  FlowObject.prototype.constructor.call(this, paper, sidebar);
   this.data = { object_name: 'Add data',
                 description: 'Add data from multiple data payloads.',
                 shape: {
@@ -1192,6 +1295,7 @@ function FlowObjectAddData(paper, sidebar, shareBetweenShapes, shape, backend_da
                   inputs: {
                     0: {
                       description: 'Default input',
+                      port_label: 'default_in',
 											peramiters: {
                         primary_key: {
                           description: 'Primary key.',
@@ -1206,18 +1310,18 @@ function FlowObjectAddData(paper, sidebar, shareBetweenShapes, shape, backend_da
                 outputs: {
                     0: {
                       description: 'Default output',
+                      port_label: 'default_out',
                       sample_data: {}
                     }
                 }
               }
 	};
   if(paper){
-    shape = shape || paper.box(0, 0, this.data.shape.width, this.data.shape.height, 1, 1, this.data.shape.color);
-    this.setShape(shape);
+    this.shape = shape || paper.box(0, 0, this.data.shape.width, this.data.shape.height, this.data.shape.color);
     this.setup(backend_data);
 
-    if(backend_data.data !== undefined){
-      this.data.data.inputs[0].peramiters.primary_key.value = backend_data.data.inputs.default.primary_key_label
+    if(getPath(backend_data, 'data.inputs') !== undefined){
+      this.data.data.inputs[0].peramiters.primary_key.value = backend_data.data.inputs.default_in.primary_key_label
     }
   }
 };
@@ -1227,11 +1331,11 @@ inheritsFrom(FlowObjectAddData, FlowObject);
 
 
 
-function FlowObjectReadFile(paper, sidebar, shareBetweenShapes, shape, backend_data){
+function FlowObjectReadFile(paper, sidebar, shape, backend_data){
   'use strict';
-  console.log('FlowObjectReadFile(', paper, sidebar, shareBetweenShapes, shape, backend_data, ')');
+  console.log('FlowObjectReadFile(', paper, sidebar, shape, backend_data, ')');
 
-  FlowObject.prototype.constructor.call(this, paper, sidebar, shareBetweenShapes);
+  FlowObject.prototype.constructor.call(this, paper, sidebar);
   this.data = { object_name: 'Read file',
                 description: 'Read data from a file on disk.',
                 shape: {
@@ -1260,17 +1364,18 @@ function FlowObjectReadFile(paper, sidebar, shareBetweenShapes, shape, backend_d
                 outputs: {
                     0: {
                       description: 'Default output',
+                      port_label: 'default_out',
                       sample_data: {}
                     }
                 }
               }
 	};
   if(paper){
-    shape = shape || paper.box(0, 0, this.data.shape.width, this.data.shape.height, 0, 1, this.data.shape.color);
-    this.setShape(shape);
+    this.shape = shape || paper.box(0, 0, this.data.shape.width, this.data.shape.height, this.data.shape.color);
     this.setup(backend_data);
 
-		if(backend_data.data !== undefined){
+    if(getPath(backend_data, 'data.general.filename') !== undefined){
+		//if(backend_data.data.general !== undefined && backend_data.data.general.filename !== undefined){
       this.data.data.general.filename.value = backend_data.data.general.filename;
 		}
   }
@@ -1281,11 +1386,11 @@ inheritsFrom(FlowObjectReadFile, FlowObject);
 
 
 
-function FlowObjectAddTime(paper, sidebar, shareBetweenShapes, shape, backend_data){
+function FlowObjectAddTime(paper, sidebar, shape, backend_data){
   'use strict';
-  console.log('FlowObjectAddTime(', paper, sidebar, shareBetweenShapes, shape, backend_data, ')');
+  console.log('FlowObjectAddTime(', paper, sidebar, shape, backend_data, ')');
 
-  FlowObject.prototype.constructor.call(this, paper, sidebar, shareBetweenShapes);
+  FlowObject.prototype.constructor.call(this, paper, sidebar);
   this.data = { object_name: 'Add time',
                 description: 'Add time data to payload.',
                 shape: {
@@ -1305,22 +1410,22 @@ function FlowObjectAddTime(paper, sidebar, shareBetweenShapes, shape, backend_da
                   inputs: {
                     0: {
                       description: 'Default input',
+                      port_label: 'default_in',
                       sample_data: {} 
                     },
                   },
                 outputs: {
                     0: {
                       description: 'Default output',
+                      port_label: 'default_out',
                       sample_data: {}
                     }
                 }
               }
 	};
   if(paper){
-    shape = shape || paper.box(0, 0, this.data.shape.width, this.data.shape.height, 1, 1, this.data.shape.color);
-    this.setShape(shape);
+    this.shape = shape || paper.box(0, 0, this.data.shape.width, this.data.shape.height, this.data.shape.color);
     this.setup(backend_data);
-
   }
 };
 

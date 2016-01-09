@@ -107,8 +107,8 @@ function component:new(o)
   return o
 end
 
-function component:setup(class_name, instance_name, unique_id)
-  self.class_name = class_name
+function component:setup(object_name, instance_name, unique_id)
+  self.object_name = object_name
   self.instance_name = instance_name
   self.unique_id = unique_id
 
@@ -118,8 +118,8 @@ function component:setup(class_name, instance_name, unique_id)
   
   self.data = {}
   self.data.general = {}
-  self.data.inputs = {default = {}}
-  self.data.outputs = {default = {}}
+  self.data.inputs = {}
+  self.data.outputs = {}
 
   -- Add number to any duplicate unique_id.
   local count = 0
@@ -139,27 +139,32 @@ end
 
 function component:add_input(label, value)
   log("component:add_input(", label, ")")
-  label = label or 'default'
+  label = label or 'default_in'
   label = path_to_var(label)
   
   self.data.inputs[label] = value
 end
 
-function component:add_output(output, label)
-  label = label or 'default'
+function component:add_link(destination_component, destination_port_label, source_port_label)
+  source_port_label = source_port_label or 'default_out'
+  destination_port_label = destination_port_label or 'default_in'
 
-  if self.data.outputs[label] == nil then
-    self.data.outputs[label] = {}
+  if self.data.outputs[source_port_label] == nil then
+    self.data.outputs[source_port_label] = {}
   end
 
   local found
-  for index, existing_output in pairs(self.data.outputs[label]) do
-    if existing_output == output.instance_name then
+  for index, existing_output in pairs(self.data.outputs[source_port_label]) do
+    if existing_output.destination_object == destination_component.unique_id and
+        existing_output.destination_port == destination_port_label and
+        existing_output.source_port == source_port_label then
       found = true
     end
   end
   if found == nil then
-    self.data.outputs[label][#self.data.outputs[label] +1] = output.unique_id
+    self.data.outputs[source_port_label][#self.data.outputs[source_port_label] +1] = {destination_object = destination_component.unique_id,
+                                                                                      destination_port = destination_port_label,
+                                                                                      source_port = source_port_label}
   end
 end
 
@@ -189,22 +194,22 @@ end
 -- Send data to only one of the targets.
 function component:send_one_output(data, label)
   --log("component:send_output(", data, label, ")")
-  label = label or 'default'
+  label = label or 'default_out'
 
   if self.data.outputs[label] then
-    for _, unique_id in pairs(self.data.outputs[label]) do
-      print(unique_id, info.components[unique_id])
-      local target_name = info.components[unique_id].instance_name
-      control_instance:update_log('(' .. self.class_name .. ')' .. self.instance_name .. ' -> ' .. flatten_data(data) .. ' -> ' .. target_name .. '\n')
-      info.components[unique_id]:receive_input(data, label)
+    for _, link_data in pairs(self.data.outputs[label]) do
+      print(flatten_data(link_data), info.components[link_data.destination_object])
+      local target_name = info.components[link_data.destination_object].instance_name
+      control_instance:update_log('(' .. self.object_name .. ')' .. self.instance_name .. ' -> ' .. flatten_data(data) .. ' -> ' .. target_name .. '\n')
+      info.components[link_data.destination_object]:receive_input(data, link_data.destination_port)
     end
   end
 end
 
 function component:receive_input(data, label)
-  label = label or 'default'
+  label = label or 'default_in'
 
-  if label == 'default' then
+  if label == 'default_in' then
     -- Pasthrough this component and trigger the default output.
     self:send_output(data)
   end
@@ -212,26 +217,26 @@ end
 
 
 
-component_mqtt_subscribe = component:new()
+FlowObjectMqttSubscribe = component:new()
 
-function component_mqtt_subscribe:setup(class_name, instance_name, unique_id)
-  component.setup(self, class_name, instance_name, unique_id)
+function FlowObjectMqttSubscribe:setup(object_name, instance_name, unique_id)
+  component.setup(self, object_name, instance_name, unique_id)
   info.mqtt.callbacks[instance_name] = self
 end
 
-function component_mqtt_subscribe:receive_mqtt(data, label)
-  log(" ", "component_mqtt_subscribe:receive_input() triggered", label)
+function FlowObjectMqttSubscribe:receive_mqtt(data, label)
+  log(" ", "FlowObjectMqttSubscribe:receive_input() triggered", label)
   self:send_output(data)
 end
 
-function component_mqtt_subscribe:callback(path, data)
-  --log(" ", "component_mqtt_subscribe:callback(" .. tostring(path) .. ", " .. flatten_data(data) .. ")")
+function FlowObjectMqttSubscribe:callback(path, data)
+  --log(" ", "FlowObjectMqttSubscribe:callback(" .. tostring(path) .. ", " .. flatten_data(data) .. ")")
 
   path = var_to_path(path)
   self:receive_mqtt(data, path_to_var(path))
 end
 
-function component_mqtt_subscribe:subscribe()
+function FlowObjectMqttSubscribe:subscribe()
   local subscritions = {}
   local path = path_to_var(self.data.general.subscribed_topic)
   local role, address = path:match('(.-)__(.+)')
@@ -243,12 +248,12 @@ function component_mqtt_subscribe:subscribe()
 end
 
 
-component_map_values = component:new()
+FlowObjectMapValues = component:new()
 
-function component_map_values:receive_input(data, l)
-  log(" ~~", "component_map_values:receive_input(", flatten_data(data), l, ")")
-  local label = self.data.inputs.default.label
-  local rules = self.data.inputs.default.rules
+function FlowObjectMapValues:receive_input(data, l)
+  log(" ~~", "FlowObjectMapValues:receive_input(", flatten_data(data), l, ")")
+  local label = self.data.inputs.default_in.label
+  local rules = self.data.inputs.default_in.rules
 
   local found_label, found_value
 
@@ -277,7 +282,7 @@ function component_map_values:receive_input(data, l)
         break
       elseif rule.action == '_drop' then
         log("~~~~~", rule.match, '_drop')
-        control_instance:update_log('(' .. self.class_name .. ')' .. self.instance_name .. ' -> ' .. flatten_data(data) .. ' -> DROP\n')
+        control_instance:update_log('(' .. self.object_name .. ')' .. self.instance_name .. ' -> ' .. flatten_data(data) .. ' -> DROP\n')
         break
       end
     end
@@ -285,12 +290,12 @@ function component_map_values:receive_input(data, l)
 end
 
 
-component_map_labels = component:new()
+FlowObjectMapLabels = component:new()
 
-function component_map_labels:receive_input(data, l)
-  log(" ==", "component_map_labels:receive_input(", data, l, ")")
+function FlowObjectMapLabels:receive_input(data, l)
+  log(" ==", "FlowObjectMapLabels:receive_input(", data, l, ")")
   local forward_data = {}
-  local rules = self.data.inputs.default.rules
+  local rules = self.data.inputs.default_in.rules
 
   for data_label, data_value in pairs(data) do
     for _, rule in pairs(rules) do
@@ -370,20 +375,20 @@ function in_time_window(time_start, time_end, time_now)
 end]]--
 
 
-component_mqtt_publish = component:new()
+FlowObjectMqttPublish = component:new()
 
-function component_mqtt_publish:receive_input(data, l)
+function FlowObjectMqttPublish:receive_input(data, l)
 	local topic = 'homeautomation/0/' .. self.data.general.publish_topic
 	local payload = flatten_data(data)
-	log("&&&&& component_mqtt_publish:receive_input:", topic, payload)
+	log("&&&&& FlowObjectMqttPublish:receive_input:", topic, payload)
 	mqtt_instance:publish(topic, payload)
 end
 
 
-component_read_file = component:new()
+FlowObjectReadFile = component:new()
 
-function component_read_file:add_output(output, label)
-  component.add_output(self, output, label)
+function FlowObjectReadFile:add_link(destination_component, destination_port_label, source_port_label)
+  component.add_link(self, destination_component, destination_port_label, source_port_label)
 
   -- First check file and read if new data:
   self:parse_data_from_file()
@@ -392,7 +397,7 @@ function component_read_file:add_output(output, label)
   self:send_output()
 end
 
-function component_read_file:parse_data_from_file()
+function FlowObjectReadFile:parse_data_from_file()
 	local filename = self.data.general.filename
 
   if is_file_or_dir(filename) then
@@ -409,7 +414,7 @@ function component_read_file:parse_data_from_file()
   end
 end
 
-function component_read_file:receive_input(data, input_label)
+function FlowObjectReadFile:receive_input(data, input_label)
 	-- If data is sent to this Component, make it send data.
 
   local match_data_label = self.data.general.match_data_label
@@ -430,7 +435,7 @@ function component_read_file:receive_input(data, input_label)
   self:send_output(match_data_label, match_data_value)
 end
 
-function component_read_file:send_output(match_data_label, match_data_value)
+function FlowObjectReadFile:send_output(match_data_label, match_data_value)
   for _, file_data in pairs(self.data_entries) do
     local parsed_file_data = parse_payload(file_data)
     if parsed_file_data then
@@ -443,16 +448,16 @@ function component_read_file:send_output(match_data_label, match_data_value)
 end
 
 
-component_combine = component:new()
+FlowObjectCombineData = component:new()
 
-function component_combine:setup(class_name, instance_name, unique_id)
-  component.setup(self, class_name, instance_name, unique_id)
+function FlowObjectCombineData:setup(object_name, instance_name, unique_id)
+  component.setup(self, object_name, instance_name, unique_id)
   self.data.data = {}
 end
 
-function component_combine:receive_input(data, input_label)
+function FlowObjectCombineData:receive_input(data, input_label)
   --local primary_key_label = self.data.general.primary_key_label
-  local primary_key_label = self.data.inputs.default.primary_key_label
+  local primary_key_label = self.data.inputs.default_in.primary_key_label
 
   if data[primary_key_label] ~= nil then
     local primary_key = data[primary_key_label]
@@ -468,17 +473,17 @@ function component_combine:receive_input(data, input_label)
 end
 
 
-component_add_messages = component:new()
+FlowObjectAddData = component:new()
 
-function component_add_messages:setup(class_name, instance_name, unique_id)
-  component.setup(self, class_name, instance_name, unique_id)
+function FlowObjectAddData:setup(object_name, instance_name, unique_id)
+  component.setup(self, object_name, instance_name, unique_id)
   self.data.data = {}
 end
 
-function component_add_messages:receive_input(data, input_label)
+function FlowObjectAddData:receive_input(data, input_label)
   log("'''''", flatten_data(data))
   --local primary_key_label = self.data.general.primary_key_label
-  local primary_key_label = self.data.inputs.default.primary_key_label
+  local primary_key_label = self.data.inputs.default_in.primary_key_label
 
   if data[primary_key_label] == nil then
     return
@@ -565,16 +570,16 @@ function flatten_data(data_in)
 end
 
 
-component_add_time = component:new()
+FlowObjectAddTime = component:new()
 
-function component_add_time:receive_input(data, l)
-  log(" ^^", "component_add_time:receive_input(", flatten_data(data), l, ")")
+function FlowObjectAddTime:receive_input(data, l)
+  log(" ^^", "FlowObjectAddTime:receive_input(", flatten_data(data), l, ")")
 
   data._time_weekday = os.date('%w')
   data._time_hour = os.date('%H')
   data._time_minute = os.date('%M')
   
-  log(" ^^", "component_add_time:receive_input(", flatten_data(data), l, ")")
+  log(" ^^", "FlowObjectAddTime:receive_input(", flatten_data(data), l, ")")
 	self:send_output(data)
 end
 

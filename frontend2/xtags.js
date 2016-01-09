@@ -35,7 +35,7 @@ xtag.register('ha-control', {
       this.menu = document.getElementsByTagName('ha-sidebar')[0];
       this.sidebar = document.getElementsByTagName('ha-sidebar')[1];
       this.flowObjects = {};
-      this.shareBetweenShapes = {unique_id: 0};
+      this.links = [];
       this.menu.setAlign('left');
       //this.sidebar.setAlign('left');
 
@@ -66,7 +66,7 @@ xtag.register('ha-control', {
       // TODO remove this method?
       var flowObject;
       if(object_type.callback){
-        flowObject = new object_type.callback(this.paper, this.sidebar, this.shareBetweenShapes, undefined, {});
+        flowObject = new object_type.callback(this.paper, this.sidebar,undefined, {});
       } else {
         return;
       }
@@ -87,16 +87,15 @@ xtag.register('ha-control', {
       event.preventDefault();
     },
 		drop: function(event){
-      console.log('drop', event.clientX, event.dataTransfer.getData('client_x'));
+      //console.log('drop', event.clientX, event.dataTransfer.getData('client_x'));
       var x = event.clientX - document.getElementById('ha-control-paper').getBoundingClientRect().left;
       var y = event.clientY - document.getElementById('ha-control-paper').getBoundingClientRect().top;
       if(x > 0 && y > 0 && event.dataTransfer.getData('flow_object_id') !== ""){
         //var flow_object = this.addFlowObject(buttonTypes['trending-flat']);
         var constructor = flow_object_classes[event.dataTransfer.getData('flow_object_id')];
-        var flow_object = new constructor(this.paper, this.sidebar, this.shareBetweenShapes, undefined, {});
+        var flow_object = new constructor(this.paper, this.sidebar, undefined, {});
         x -= parseFloat(event.dataTransfer.getData('offset_x')) * flow_object.shape[0].attr('width');
         y -= parseFloat(event.dataTransfer.getData('offset_y')) * flow_object.shape[0].attr('height');
-        console.log('drop:', x, y);
         x += SNAP /2 - x % SNAP;
         y += SNAP /2 - y % SNAP;
         flow_object.setBoxPosition(x, y);
