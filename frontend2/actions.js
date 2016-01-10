@@ -34,11 +34,12 @@ var dataReceived = function(topic, backend_data){
         
       if(flow_object && flow_object.data.version < backend_data.version){
         console.log('Removing:', flow_object.data.unique_id, flow_object.data.version, backend_data.version);
-        flow_object.delete();
+        flow_object.delete(false);
       }
       if(flow_object === undefined || flow_object.data.version < backend_data.version){
+        console.log('Adding...', backend_data);
         flow_object = new flow_objects[index](ha_control.paper, ha_control.sidebar, undefined, backend_data);
-        console.log('Added:', flow_object.data.unique_id, flow_object.data.version, backend_data.version, flow_object);
+        console.log('Added');
       }
 
       for(var port_label in backend_data.data.outputs){
@@ -50,6 +51,7 @@ var dataReceived = function(topic, backend_data){
         }
       }
       flow_object.shape.setOutputLinks(flow_object.data.data.outputs);
+      //flow_object.updateLinks();
     }
   }
   

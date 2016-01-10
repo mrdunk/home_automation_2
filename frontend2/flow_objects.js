@@ -56,8 +56,8 @@ var getFlowObjectByInstanceName = function(instance_name){
 };
 
 var setLink = function(link_data){
-  console.log(link_data);
-  var link;
+  //console.log('setLink(', link_data, ')');
+  var link, shape;
   var paper = document.getElementsByTagName('ha-control')[0].paper;
   var links = document.getElementsByTagName('ha-control')[0].links;
   for(var i = 0; i < links.length; i++){
@@ -70,23 +70,25 @@ var setLink = function(link_data){
     }
   }
   var source_object = getFlowObjectByUniqueId(link_data.source_object);
-  var destination_object = getFlowObjectByUniqueId(link_data.destination_object);
-  if(destination_object === undefined){
-    return;
-  }
   var source_port_shape = getPortShape(link_data.source_object, link_data.source_port);
   var destination_port_shape = getPortShape(link_data.destination_object, link_data.destination_port);
-
-  var pos1 = {x: source_port_shape.getShapePosition().x, y: source_port_shape.getShapePosition().y};
-  var pos2 = {x: destination_port_shape.getShapePosition().x, y: destination_port_shape.getShapePosition().y};
-
+  if(source_port_shape && destination_port_shape){
+    var source_port_position = source_port_shape.getShapePosition();
+    var destination_port_position = destination_port_shape.getShapePosition();
+    source_port_position.x += source_port_shape.getBBox().width;
+    source_port_position.y += source_port_shape.getBBox().height / 2;
+    //destination_port_position.x -= destination_port_shape.getBBox().width;
+    destination_port_position.y += destination_port_shape.getBBox().height / 2;
+    shape = paper.arrow(source_port_position, destination_port_position, 'teal');
+  }
   if(link === undefined){
-    var shape = paper.arrow(pos1, pos2, 'red');
     link = {data: link_data, shape: shape};
     document.getElementsByTagName('ha-control')[0].links.push(link);
   } else {
-    link.shape.remove();
-    link.shape = paper.arrow(pos1, pos2, 'teal');
+    if(link.shape){
+      link.shape.remove();
+    }
+    link.shape = shape;
   }
 }
 
@@ -101,6 +103,7 @@ var FlowObject = function(paper, sidebar){
 };
 
 FlowObject.prototype.updateLinks = function(){
+  //console.log('FlowObject.prototype.updateLinks');
   var links = document.getElementsByTagName('ha-control')[0].links;
   for(var i = 0; i < links.length; i++){
     if(links[i].data.source_object === this.data.unique_id || links[i].data.destination_object === this.data.unique_id){
@@ -121,10 +124,54 @@ FlowObject.prototype.setShape = function(shape){
   this.shape.setOutputs(this);
 };
 
-FlowObject.prototype.delete = function(){
+FlowObject.prototype.delete = function(removeLinks){
   'use strict';
+  console.log('FlowObject.prototype.delete');
+
+  if(shareBetweenShapes.selected === this.data.unique_id){
+    shareBetweenShapes.selected = undefined;
+  }
   this.shape.remove();
-	this.deleteLinks();
+  
+  if(removeLinks === undefined || removeLinks === true){
+    var links_to_remove = [];
+    var links = document.getElementsByTagName('ha-control')[0].links;
+    for(var i = 0; i < links.length; i++){
+      if(links[i].data.source_object === this.data.unique_id){
+        links_to_remove.push(i);
+        if(links[i].shape){
+          links[i].shape.remove();
+        }
+      }
+      if(links[i].data.destination_object === this.data.unique_id){
+        links_to_remove.push(i);
+        if(links[i].shape){
+          links[i].shape.remove();
+        }
+        // Also need to remove from other end of link.
+        var source_object = getFlowObjectByUniqueId(links[i].data.source_object);
+        for(var j in source_object.data.data.outputs){
+          if(source_object.data.data.outputs[j].port_label === links[i].data.source_port){
+            var outputs_to_remove = [];
+            for(var k = 0; k < source_object.data.data.outputs[j].links.length; k++){
+              if(source_object.data.data.outputs[j].links[k].source_port === links[i].data.source_port &&
+                  source_object.data.data.outputs[j].links[k].destination_port === links[i].data.destination_port){
+                console.log(i, j, k, links[i].data);
+                outputs_to_remove.push(k);
+              }
+            }
+            while(outputs_to_remove.length){
+              source_object.data.data.outputs[j].links.splice(outputs_to_remove.pop(), 1);
+            }
+          }
+        }
+      }
+    }
+    while(links_to_remove.length){
+      document.getElementsByTagName('ha-control')[0].links.splice(links_to_remove.pop(), 1);
+    }
+  }
+
   delete document.getElementsByTagName('ha-control')[0].flowObjects[this.data.unique_id];
 }
 
@@ -188,16 +235,6 @@ FlowObject.prototype.setup = function(backend_data){
   }
 };
 
-FlowObject.prototype.replaceShape = function(newShape){
-  'use strict';
-  var pos = this.getBoxPosition();
-  this.shape.remove();
-  this.shape = newShape;
-
-  this.shape.drag(this.onmove, this.onstart, this.onend);
-  this.setBoxPosition(pos.x, pos.y);
-};
-
 FlowObject.prototype.setContents = function(contents){
   'use strict';
   contents = contents || this.data;
@@ -226,13 +263,13 @@ FlowObject.prototype.getBoxPosition = function(){
 
 FlowObject.prototype.setBoxPosition = function(x, y){
   'use strict';
+  console.log('FlowObject.setBoxPosition(', x, y, ')');
   if(isNaN(parseFloat(x)) && y === undefined){
     // Has been passed a position object: {x: X_coord, y: Y_coord}.
     y = x.y;
     x = x.x;
   }
   this.shape[0].setBoxPosition(x, y);
-  //this.ExportObject();
 };
 
 FlowObject.prototype.select = function(){
@@ -323,11 +360,12 @@ FlowObject.prototype.onmove = function(dx, dy){
   //console.log('FlowObject.onmove(', dx, dy, ')');
 
   if(!this.timer){
-    this.timer = setTimeout(do_periodically.bind(this), 20);
+    this.timer = setTimeout(do_periodically.bind(this), 40);
   }
 
   function do_periodically(){
     if(this.data('type') === 'parent' || this.data('type') === 'body'){
+      //console.log('do_periodically');
       this.setBoxPosition(dx + this.start_move_x, dy + this.start_move_y);
     } else if(shareBetweenShapes.dragging){
       var path = shareBetweenShapes.dragging.arrow.attr('path');
@@ -382,6 +420,10 @@ FlowObject.prototype.onend = function(){
     }
   } else {
     // Finished dragging FlowObject.
+    if(this.timer){
+      window.clearTimeout(this.timer);
+      this.timer = undefined;
+    }
     var position = object.getBoxPosition();
     position.x += SNAP /2 - position.x % SNAP;
     position.y += SNAP /2 - position.y % SNAP;
@@ -424,99 +466,8 @@ FlowObject.prototype.linkOutToIn = function(link_data){
   }
 
   this.shape.setOutputLinks(this.data.data.outputs);
-
-
-  /*if(shape_out.type !== 'rect'){
-    if(shape_out.flow_object){
-      shape_out = shape_out.flow_object.shape.getPort('outputs', shape_out.port_number);
-    } else if(shape_out.unique_id){
-      shape_out = getFlowObjectByUniqueId(shape_out.unique_id).shape.getPort('outputs', shape_out.port_number);
-    } else {
-      shape_out = this.shape.getPort('outputs', shape_out.port_number);
-    }
-  }
-  if(shape_in.type !== 'rect'){
-    if(shape_in.flow_object){
-      shape_in = shape_in.flow_object.shape.getPort('inputs', shape_in.port_number);
-    } else if(shape_in.unique_id){
-      shape_in = getFlowObjectByUniqueId(shape_in.unique_id).shape.getPort('inputs', shape_in.port_number);
-    } else {
-      shape_in = this.shape.getPort('inputs', shape_in.port_number);
-    }
-  }
-  console.log('FlowObject.linkOutToIn(', shape_out, shape_in, ')');
-
-  var port_out = this.mapShapeToPort(shape_out);
-  var port_in = shape_in.data('parent').mapShapeToPort(shape_in);
-
-  // Check for the same link already existing.
-  for(var i = 0; i < this.data.data.outputs[port_out.number].links.length; i++){
-    if(this.data.data.outputs[port_out.number].links[i].box_object === shape_in.data('parent') && 
-        this.data.data.outputs[port_out.number].links[i].input_port === port_in.number){
-      console.log('DUPLICATE LINK');
-      return;
-    }
-  }
-
-  // Check for routing loops.
-  var input_port_id = shape_in.data('parent').data.data.general.instance_name.value + '_in' + port_in.number;
-  if(this.data.data.outputs[port_out.number].path[input_port_id] !== undefined){
-    console.log('LOOP DETECTED!', input_port_id);
-    return;
-  }
-
-
-  this.data.data.outputs[port_out.number].links.push({box_object: shape_in.data('parent'), input_port: port_in.number});
-  shape_in.data('parent').data.data.inputs[port_in.number].links.push({box_object: this, output_port: port_out.number});
-
-  this.shape.setOutputLinks(this.data.data.outputs);
-
-  this.setAdjacentInputSamples(port_out.number, shape_in.data('parent'), port_in.number);*/
 };
 
-FlowObject.prototype.deleteLinks = function(){
-  //console.log('FlowObject.deleteLinks');
-  for(var i in this.data.data.outputs){
-    while(this.data.data.outputs[i].links.length){
-      var link = this.data.data.outputs[i].links.pop();
-      console.log(link);
-
-      // Now make a list of the far end nodes to remove the link from...
-      var remove_links = [];
-      for(var j in link.box_object.data.data.inputs){
-        for(var k = 0; k < link.box_object.data.data.inputs[j].links.length; k++){
-          if(link.box_object.data.data.inputs[j].links[k].box_object.data.unique_id === this.data.unique_id){
-            remove_links.push([j, k]);
-          }
-        }
-      }
-      var link_indexes = remove_links.pop();
-      link.box_object.data.data.inputs[link_indexes[0]].links.splice([link_indexes[1]], 1);
-			// Re-draw links.
-		  link.box_object.shape[0].setBoxPosition();
-    }
-  }
-
-  for(var i in this.data.data.inputs){
-    while(this.data.data.inputs[i].links.length){
-      var link = this.data.data.inputs[i].links.pop();
-
-      // Now make a list of the far end nodes to remove the link from...
-      var remove_links = [];
-      for(var j in link.box_object.data.data.outputs){
-        for(var k = 0; k < link.box_object.data.data.outputs[j].links.length; k++){
-          if(link.box_object.data.data.outputs[j].links[k].box_object.data.unique_id === this.data.unique_id){
-            remove_links.push([j, k]);
-          }
-        }
-      }
-      var link_indexes = remove_links.pop();
-      link.box_object.data.data.outputs[link_indexes[0]].links.splice([link_indexes[1]], 1);
-      // Re-draw links.
-      link.box_object.shape[0].setBoxPosition();
-    }
-  }
-}
 
 FlowObject.prototype.setAdjacentInputSamples = function(port_out, flow_object_in, port_in){
   'use strict';
@@ -603,23 +554,10 @@ FlowObject.prototype.ExportObject = function(send_object){
     }
   }
 
-  /*for(var input in this.data.data.inputs){
-    for(var i = 0; i < this.data.data.inputs[input].links.length; i++){
-      //var link_to_unique_id = this.data.data.inputs[input].links[i].box_object.data.unique_id;
-      var link_to_unique_id = this.data.data.inputs[input].links[i];
-      var link_to_port = this.data.data.inputs[input].links[i].port_name || 'default';
-      if(send_object.data.inputs[link_to_port] === undefined){
-        send_object.data.inputs[link_to_port] = [];
-      }
-      send_object.data.inputs[link_to_port].push(link_to_unique_id);
-    }
-  }*/
-
   for(var output in this.data.data.outputs){
     for(var i = 0; i < this.data.data.outputs[output].links.length; i++){
-      //var link_to_unique_id = this.data.data.outputs[output].links[i].box_object.data.unique_id;
       var link_to_unique_id = this.data.data.outputs[output].links[i];
-      var link_to_port = this.data.data.outputs[output].links[i].port_name || 'default';
+      var link_to_port = this.data.data.outputs[output].links[i].source_port || 'default';
       if(send_object.data.outputs[link_to_port] === undefined){
         send_object.data.outputs[link_to_port] = [];
       }
@@ -663,7 +601,7 @@ function FlowObjectMqttSubscribe(paper, sidebar, shape, backend_data){
   this.data = { object_name: 'MQTT Subscription',
                 description: 'Monitor MQTT for a specific topic.',
                 shape: {
-                  width: 150,
+                  width: 100,
                   height: 50,
                   color: 'seagreen',
                 },
@@ -739,7 +677,7 @@ function FlowObjectMqttPublish(paper, sidebar, shape, backend_data){
   this.data = { object_name: 'MQTT Publish',
                 description: 'Publish MQTT a message for a specific topic.',
                 shape: {
-                  width: 150,
+                  width: 100,
                   height: 50,
                   color: 'seagreen',
                 },
@@ -1116,7 +1054,7 @@ function FlowObjectMapLabels(paper, sidebar, shape, backend_data){
   if(paper){
     this.shape = shape || paper.box(0, 0, this.data.shape.width, this.data.shape.height, this.data.shape.color);
     this.setup(backend_data);
-    if(getPath(backend_data, 'data.inputs') !== undefined){
+    if(getPath(backend_data, 'data.inputs.default_in.rules') !== undefined){
       // TODO handle more than one label.
       this.data.data.inputs[0].peramiters.else = {updater: "ha-general-attribute",
         description: "When no matching label."};
@@ -1163,7 +1101,7 @@ function FlowObjectTestData(paper, sidebar, shape, backend_data){
   this.data = { object_name: 'Test data',
                 description: 'Generate some fake data for testing this UI.',
                 shape: {
-                  width: 150,
+                  width: 100,
                   height: 50,
                   color: 'gold',
                 },
@@ -1219,7 +1157,7 @@ function FlowObjectCombineData(paper, sidebar, shape, backend_data){
   this.data = { object_name: 'Combine data',
                 description: 'Combine data sharing specified label from multiple data payloads.',
                 shape: {
-                  width: 150,
+                  width: 100,
                   height: 50,
                   color: 'cornflowerblue',
                 },
@@ -1260,7 +1198,7 @@ function FlowObjectCombineData(paper, sidebar, shape, backend_data){
     this.shape = shape || paper.box(0, 0, this.data.shape.width, this.data.shape.height, this.data.shape.color);
     this.setup(backend_data);
 
-    if(getPath(backend_data, 'data.inputs') !== undefined){
+    if(getPath(backend_data, 'data.inputs.default_in.primary_key_label') !== undefined){
     //if(backend_data.data !== undefined){
       this.data.data.inputs[0].peramiters.primary_key.value = backend_data.data.inputs.default_in.primary_key_label
     }
@@ -1279,7 +1217,7 @@ function FlowObjectAddData(paper, sidebar, shape, backend_data){
   this.data = { object_name: 'Add data',
                 description: 'Add data from multiple data payloads.',
                 shape: {
-                  width: 150,
+                  width: 100,
                   height: 50,
                   color: 'cornflowerblue',
                 },
@@ -1320,7 +1258,7 @@ function FlowObjectAddData(paper, sidebar, shape, backend_data){
     this.shape = shape || paper.box(0, 0, this.data.shape.width, this.data.shape.height, this.data.shape.color);
     this.setup(backend_data);
 
-    if(getPath(backend_data, 'data.inputs') !== undefined){
+    if(getPath(backend_data, 'data.inputs.default_in.primary_key_label') !== undefined){
       this.data.data.inputs[0].peramiters.primary_key.value = backend_data.data.inputs.default_in.primary_key_label
     }
   }
@@ -1339,7 +1277,7 @@ function FlowObjectReadFile(paper, sidebar, shape, backend_data){
   this.data = { object_name: 'Read file',
                 description: 'Read data from a file on disk.',
                 shape: {
-                  width: 150,
+                  width: 100,
                   height: 50,
                   color: 'seagreen',
                 },

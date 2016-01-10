@@ -70,7 +70,6 @@ Raphael.fn.box = function(x, y, width, height, color){
   var shape = this.rect(x, y, width, height, 5);
   shape.label = 'container';  // TODO replace labels with .data()
   shape.data('type', 'body');
-//	shape.data('object_id', this.data('object_id'));
   shape.x_offset = 0;
   shape.y_offset = 0;
   set_main.push(shape);
@@ -218,26 +217,12 @@ Raphael.st.setOutputs = function(parent_context){
 /* Update link when the Output end is moved. */
 Raphael.st.setOutputLinks = function(outputs){
   'use strict';
-  var links, key_types;
-
   var this_identity = this.getIdentity();
-  console.log(this_identity);
-
-  for(key_types in this.items){
-    if(this.items[key_types].label === 'links'){
-      links = this.items[key_types];
-      var node = links.pop();
-      while(node){
-        node.remove();
-        node = links.pop();
-      }
-    }
-  }
+  console.log('Raphael.st.setOutputLinks', this, this_identity);
 
   for(var key_data_output in outputs){
-    for(var key_link in outputs[key_data_output].links){
+    for(var key_link = 0; key_link < outputs[key_data_output].links.length; key_link++){
 			var link_data = outputs[key_data_output].links[key_link];
-      console.log(link_data);
 			setLink({source_object: this_identity.object_id, source_port: link_data.source_port,
                destination_object: link_data.destination_object, destination_port: link_data.destination_port});
     }
@@ -304,7 +289,7 @@ Raphael.el.setBoxPosition = function(x, y){
   'use strict';
   if(x !== undefined && y !== undefined){
     setBoxPosition(this.data('whole_shape'), x, y);
-    setBoxPosition(this, x, y);
+    //setBoxPosition(this, x, y);
   }
 
   var object = getFlowObjectByUniqueId(this.getIdentity().object_id);
