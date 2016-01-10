@@ -13,16 +13,6 @@
 (function() {
 'use strict';
 
-var buttonTypes = {'alarm':              {'action':'new_object', callback: FlowObjectTimer},
-									 'assignment-returned':{'action':'new_object', callback: FlowObjectTestData},
-                   'cloud-download':     {'action':'new_object', callback: FlowObjectMqttSubscribe},
-                   'cloud-upload':       {'action':'new_object', callback: FlowObjectMqttPublish},
-                   'trending-flat':      {'action':'new_object', callback: FlowObjectMapValues},
-									 'unfold-less':        {'action':'new_object', callback: FlowObjectCombineData},
-                   'content-copy':       {'action':'new_object'},
-                   'redo':               {'action':'join'},
-                   'settings':           {'action':'edit'}
-                  };
 
 xtag.register('ha-control', {
   lifecycle:{
@@ -50,30 +40,12 @@ xtag.register('ha-control', {
       for(var i = 0; i < flow_object_classes.length; i++){
         var flow_object = new flow_object_classes[i]();
         var button = document.createElement('draggable-button');
-        button.setContent(flow_object.data.object_name);
+        button.setContent(flow_object.data.label);
         button.setColor(flow_object.data.shape.color);
         button.setData({flow_object_id: i});
         container.appendChild(button);
       }
       this.menu.setContent(container);
-    },
-    buttonClicked: function(button_settings){
-      if(button_settings.action === 'new_object'){
-        this.addFlowObject(button_settings);
-      }
-    },
-    addFlowObject: function(object_type){
-      // TODO remove this method?
-      var flowObject;
-      if(object_type.callback){
-        flowObject = new object_type.callback(this.paper, this.sidebar,undefined, {});
-      } else {
-        return;
-      }
-      flowObject.setBoxPosition(100,100);
-
-      flowObject.select();
-      return flowObject;
     },
   },
   events: {
@@ -91,7 +63,6 @@ xtag.register('ha-control', {
       var x = event.clientX - document.getElementById('ha-control-paper').getBoundingClientRect().left;
       var y = event.clientY - document.getElementById('ha-control-paper').getBoundingClientRect().top;
       if(x > 0 && y > 0 && event.dataTransfer.getData('flow_object_id') !== ""){
-        //var flow_object = this.addFlowObject(buttonTypes['trending-flat']);
         var constructor = flow_object_classes[event.dataTransfer.getData('flow_object_id')];
         var flow_object = new constructor(this.paper, this.sidebar, undefined, {});
         x -= parseFloat(event.dataTransfer.getData('offset_x')) * flow_object.shape[0].attr('width');
@@ -117,16 +88,6 @@ xtag.register('ha-control-heading', {
   events: {
     'click:delegate(paper-icon-button)': function(mouseEvent){
       console.log(mouseEvent, this);
-      var ha_control_heading;
-      for (var i = 0; i < mouseEvent.path.length; i++){
-        if(xtag.matchSelector(mouseEvent.path[i], 'ha-control-heading')){
-          ha_control_heading = mouseEvent.path[i];
-          break;
-        }
-      }
-      if(ha_control_heading === 'undefined'){ return; }
-
-      ha_control_heading.parent.buttonClicked(buttonTypes[this.icon]);
     }
   },
   methods: {
@@ -164,7 +125,7 @@ xtag.register('ha-sidebar', {
         // Firefox has this nice .setCapture() that delegates all mouse events to this element.
 			  mouse_event.target.setCapture();
       } else {
-        // In Chrome we mus use the document element.
+        // In Chrome we must use the document element.
         document.handleEvent = function(document_event) {
           switch(document_event.type) {
             case 'mousemove':
@@ -311,7 +272,6 @@ xtag.register('ha-flowobject-data', {
 				output_attributes.populate(data.outputs[output_id], flow_object);
 				list_content.appendChild(output_attributes);
       }
-
     }
   },
 });
@@ -335,17 +295,6 @@ xtag.register('ha-input-attributes', {
         general_attributes.populate(data.peramiters[label], flow_object);
         form.appendChild(general_attributes);        
       }
-
-      // Sample data
-      var sample_data = document.createElement('ha-sample-data');
-			var unwrapped_data = {};
-			for(var key in data.sample_data){
-				for(var key2 in data.sample_data[key]){
-          unwrapped_data[key2] = data.sample_data[key][key2];
-        }
-			}
-      sample_data.populate(unwrapped_data);
-      form.appendChild(sample_data);
     }
   }
 });
@@ -369,34 +318,10 @@ xtag.register('ha-output-attributes', {
         general_attributes.populate(data.peramiters[label], flow_object);
         form.appendChild(general_attributes);                
       }
-
-      // Sample data
-      var sample_data = document.createElement('ha-sample-data');
-      sample_data.populate(data.sample_data);
-      form.appendChild(sample_data);
     }
   }
 });
 
-xtag.register('ha-sample-data', {
-	lifecycle:{
-    created: function(){
-      var template = document.getElementById('ha-sample-data').innerHTML;
-      xtag.innerHTML(this, template);
-		}
-	},
-	methods: {
-    populate: function(data){
-      var form = this.getElementsByClassName('form-sample-data')[0];
-      for(var key in data){
-        var sample = data[key];
-        var line = document.createElement('div');
-        form.appendChild(line);
-        line.innerHTML = JSON.stringify(sample);
-      }
-    }
-  }
-});
 
 xtag.register('ha-general-attribute', {
   lifecycle:{
@@ -525,7 +450,7 @@ xtag.register('ha-transitions', {
 
       var form = this.getElementsByClassName('transition-form')[0];
       while(form.firstChild){
-            form.removeChild(form.firstChild);
+        form.removeChild(form.firstChild);
       }
 
       for(var label in this.data.values){
@@ -586,13 +511,6 @@ xtag.register('ha-transitions', {
 				left.appendChild(this.chooser(this.data.values[label][i], 'input'));
 				right.appendChild(this.chooser(this.data.values[label][i], 'output'));
       }
-/*      if(this.flow_object.data.data.general.block_labels.callbacks === undefined){
-        this.flow_object.data.data.general.block_labels.callbacks = {};
-      }
-      if(this.flow_object.data.data.general.block_labels.callbacks.input === undefined){
-        this.flow_object.data.data.general.block_labels.callbacks.input = {};
-      }
-      this.flow_object.data.data.general.block_labels.callbacks.input.transitions = function(){this.update_sidebar();}.bind(this);*/
     },
     changeLabel: function(from, to){
       console.log('changeLabel(', from, to, ')');
@@ -752,7 +670,7 @@ xtag.register('ha-transitions', {
       return container;
     },
     update_sidebar: function(){
-      this.flow_object.FilterInputToOutput(0);
+      //this.flow_object.FilterInputToOutput(0);
       this.flow_object.displaySideBar();
     },
     chooser_change: function(){
@@ -833,7 +751,7 @@ xtag.register('ha-topic-chooser', {
       
       this.flow_object.setContents();
       this.flow_object.displaySideBar();
-      this.flow_object.setAdjacentInputSamples();
+      //this.flow_object.setAdjacentInputSamples();
       console.log(this.flow_object.data.data.outputs[0]);
     }
   },

@@ -96,7 +96,7 @@ var FlowObject = function(paper, sidebar){
   'use strict';
   //console.log('FlowObject', this);
 
-  this.data = {object_name: 'FlowObject',
+  this.data = {label: 'FlowObject',
                data: {outputs: {}, inputs: {}}};
   this.paper = paper;
   this.sidebar = sidebar;
@@ -215,12 +215,7 @@ FlowObject.prototype.setup = function(backend_data){
 	this.setShape(this.shape);
 
   for(var port_out in this.data.data.outputs){
-    this.data.data.outputs[port_out].path = {};
     this.data.data.outputs[port_out].links = [];
-  }
-  for(var port_in in this.data.data.inputs){
-    this.data.data.inputs[port_in].path = {};
-    this.FilterInputToOutput(port_in);
   }
 
   this.setInstanceName(backend_data.instance_name);
@@ -306,23 +301,23 @@ FlowObject.prototype.displaySideBar = function(){
   h3.onclick=function(){console.log(this);
                         this.delete();
                        }.bind(this);
-	header_text.appendChild(h1);
-	header_text.appendChild(h2);
-	header_text.appendChild(h3);
+  header_text.appendChild(h1);
+  header_text.appendChild(h2);
+  header_text.appendChild(h3);
 
-	if(this.getColor() === undefined){
-		header_icon.style.height = '0';
-		header_icon.style.visibility = "hidden";
-	} else {
-		header_icon.style.height = '2em';
-		header_icon.style.visibility = "visible";
-		header_icon.style.background = this.getColor();
-	}
+  if(this.getColor() === undefined){
+    header_icon.style.height = '0';
+    header_icon.style.visibility = "hidden";
+  } else {
+    header_icon.style.height = '2em';
+    header_icon.style.visibility = "visible";
+    header_icon.style.background = this.getColor();
+  }
 
-	this.sidebar.setHeader(header_content);
+  this.sidebar.setHeader(header_content);
 
-	// Content
-	var flowobject_data = document.createElement('ha-flowobject-data');
+  // Content
+  var flowobject_data = document.createElement('ha-flowobject-data');
   flowobject_data.populate(this.data.data, this);
   this.sidebar.setContent(flowobject_data);
 };
@@ -460,6 +455,7 @@ FlowObject.prototype.linkOutToIn = function(link_data){
       if(!found){
         console.log('LINK!');
         source_port_data.links.push({source_port: source_port, destination_object: destination_object, destination_port: destination_port});
+        this.ExportObject();
       }
       break;
     }
@@ -468,54 +464,6 @@ FlowObject.prototype.linkOutToIn = function(link_data){
   this.shape.setOutputLinks(this.data.data.outputs);
 };
 
-
-FlowObject.prototype.setAdjacentInputSamples = function(port_out, flow_object_in, port_in){
-  'use strict';
-  var port_out_list = [];
-  if(port_out === undefined){
-    for(port_out in this.data.data.outputs){
-      port_out_list.push(port_out);
-    }
-  } else {
-    port_out_list.push(port_out);
-  }
-
-  for(var index = 0; index < port_out_list.length; index++){
-    port_out = port_out_list[index];
-
-    if(flow_object_in !== undefined && port_in !== undefined ){
-      this._setAdjacentInputSamples(port_out, flow_object_in, port_in);
-    } else {
-      if(this.data.data.outputs[port_out].links){
-        for(var i = 0; i < this.data.data.outputs[port_out].links.length; i++){
-          flow_object_in = this.data.data.outputs[port_out].links[i].box_object;
-          port_in = this.data.data.outputs[port_out].links[i].input_port;
-
-          this._setAdjacentInputSamples(port_out, flow_object_in, port_in);
-        }
-      }
-    }
-  }
-};
-
-FlowObject.prototype._setAdjacentInputSamples = function(port_out, flow_object_in, port_in){
-  'use strict';
-  // Record the path data has been through on the connected object for loop detection.
-  for(var port_id in this.data.data.outputs[port_out].path){
-    flow_object_in.data.data.inputs[port_in].path[port_id] = true;
-  }
-  var this_port_id = this.data.data.outputs[port_out].path_source;
-  if(this_port_id !== undefined){
-    flow_object_in.data.data.inputs[port_in].path[this_port_id] = true;
-  }
-
-  // Copy the output data to the input of the connected object.
-  var shape_out_name = this.data.data.general.instance_name.value;
-  flow_object_in.data.data.inputs[port_in].sample_data[shape_out_name] = this.data.data.outputs[port_out].sample_data;
-
-  // Update any objects connected to the target too.
-  flow_object_in.FilterInputToOutput(port_in);
-};
 
 FlowObject.prototype.setRadius = function(radius){
   'use strict';
@@ -531,10 +479,6 @@ FlowObject.prototype.setColor = function(color){
 FlowObject.prototype.getColor = function(){
   'use strict';
   return this.shape[0].attr("fill");
-};
-
-FlowObject.prototype.FilterInputToOutput = function(){
-  'use strict';
 };
 
 FlowObject.prototype.ExportObject = function(send_object){
@@ -598,7 +542,7 @@ function FlowObjectMqttSubscribe(paper, sidebar, shape, backend_data){
 
   FlowObject.prototype.constructor.call(this, paper, sidebar);
 
-  this.data = { object_name: 'MQTT Subscription',
+  this.data = { label: 'MQTT Subscription',
                 description: 'Monitor MQTT for a specific topic.',
                 shape: {
                   width: 100,
@@ -632,7 +576,6 @@ function FlowObjectMqttSubscribe(paper, sidebar, shape, backend_data){
     this.setup(backend_data);
 
     if(getPath(backend_data, 'data.general.subscribed_topic') !== undefined){
-    //if(backend_data.data.general !== undefined && backend_data.data.general.subscribed_topic !== undefined){
       this.data.data.general.subscribed_topic.value = 'homeautomation/+/' + backend_data.data.general.subscribed_topic;
       this.setContents();
     }
@@ -674,7 +617,7 @@ function FlowObjectMqttPublish(paper, sidebar, shape, backend_data){
   console.log("FlowObjectMqttPublish");
 
   FlowObject.prototype.constructor.call(this, paper, sidebar);
-  this.data = { object_name: 'MQTT Publish',
+  this.data = { label: 'MQTT Publish',
                 description: 'Publish MQTT a message for a specific topic.',
                 shape: {
                   width: 100,
@@ -726,7 +669,7 @@ function FlowObjectTimer(paper, sidebar, shape, backend_data){
   console.log("FlowObjectTimer");
 
   FlowObject.prototype.constructor.call(this, paper, sidebar);
-  this.data = { object_name: 'Timer',
+  this.data = { label: 'Timer',
                 description: 'Trigger output after a set delay.',
                 shape: {
                   width: 100,
@@ -816,7 +759,7 @@ function FlowObjectMapValues(paper, sidebar, shape, backend_data){
   console.log("FlowObjectMapValues(", backend_data, ')');
 
   FlowObject.prototype.constructor.call(this, paper, sidebar);
-  this.data = { object_name: 'Map values',
+  this.data = { label: 'Map values',
                 description: 'Filter or modify input variables to different output.',
                 shape: {
                   width: 75,
@@ -898,120 +841,13 @@ var stringToBoolean = function(string){
   }
 };
 
-FlowObjectMapValues.prototype.FilterInputToOutput = function(port_in){
-  'use strict';
-  //console.log('FlowObjectMapValues.FilterInputToOutput(', port_in, ')', this.data.data);
-  
-  var port_out = this.data.data.inputs[port_in].peramiters.transitions.port_out;
-
-  // Set the output port as having sourced data from the input.
-  var this_port_id = this.data.data.general.instance_name.value + '_in' + port_in;
-  this.data.data.outputs[port_out].path_source = this_port_id;
-
-  // Copy the Input path to the Output.
-  for(var input_port_id in this.data.data.inputs[port_out].path){
-    this.data.data.outputs[port_out].path[input_port_id] = true;
-  }
-  this.data.data.outputs[port_out].path[this_port_id] = true;
-
-  // Copy sample data from Input to Output, applying filters.
-  //var filters = this.data.data.general.transitions.values;
-  var filters = this.data.data.inputs[port_in].peramiters.transitions.values;
-
-  var samples = {};
-  var label;
-  for(var sender in this.data.data.inputs[port_in].sample_data){
-    for(var subject in this.data.data.inputs[port_in].sample_data[sender]){
-      var payload = this.data.data.inputs[port_in].sample_data[sender][subject];
-      var modified_payload = {};
-      
-      // Iterate through filters. There can be one for each label.
-      // TODO: Allow configuration of more than one label.
-      for(label in filters){
-        var value = payload[label];
-        var _value;
-        // Now cycle through the filters for this label.
-        for(var i = 0; i < filters[label].length; i++){
-          var filter = filters[label][i];
-          if(value !== undefined && typeof(filter.input) === 'boolean'){
-            _value = stringToBoolean(value);
-            if(_value === filter.input){
-              modified_payload[label] = this.FilterOutput(_value, filter.output);
-              break;
-            }
-          } else if(value !== undefined && filter.input === '_else'){
-            // This filter is the default when no other filter matches.
-            modified_payload[label] = this.FilterOutput(value, filter.output);
-            break;
-          } else if(value !== undefined && typeof(filter.input) === 'string'){
-            _value = String(value);
-            if(_value.trim() === filter.input.trim()){
-              modified_payload[label] = this.FilterOutput(_value, filter.output);
-              break;
-            }
-          } else if(value !== undefined && typeof(filter.input) === 'object'){
-            _value = parseInt(value);
-            console.log(value, _value, filter.input.low, filter.input.high);
-            if(!isNaN(_value) && _value >= filter.input.low && _value <= filter.input.high){
-              modified_payload[label] = this.FilterOutput(_value, filter.output);
-              break;
-            }
-          } else if(value ===undefined && filter.input === '_missing'){
-            // This filter is applied when the label we are filtering on does not appear in the payload data.
-            modified_payload[label] = this.FilterOutput(value, filter.output);
-            break;
-          }
-        }
-        if(modified_payload[label] === undefined){
-          delete modified_payload[label];
-        }
-      }
-
-      // Check none of the values are the result of a _drop request.
-      var drop = false;
-      for(label in modified_payload){
-        if(modified_payload[label] === '_drop'){
-          drop = true;
-        }
-      }
-      
-      // We have a partial payload with modified fields.
-      // Now we must copy in all the labels that were not modified.
-      if(!drop){
-        for(label in payload){
-          if(modified_payload[label] === undefined) {
-            modified_payload[label] = payload[label];
-          }
-        }
-        samples[subject] = modified_payload;
-      }
-    }
-  }
-  this.data.data.outputs[port_out].sample_data = samples;
-  this.setAdjacentInputSamples();
-};
-
-FlowObjectMapValues.prototype.FilterOutput = function(input_payload, filter_output){
-  'use strict';
-  if(filter_output === '_drop'){
-    return '_drop';  // We filter for this later and remove the entry if found.
-  } else if(filter_output === '_forward') {
-    return input_payload;
-  } else if(typeof(filter_output) === 'object'){
-    return 'TODO';
-  } else {
-    return filter_output;
-  }
-};
-
-
 
 function FlowObjectMapLabels(paper, sidebar, shape, backend_data){
   'use strict';
   console.log("FlowObjectMapLabels(", backend_data, ')');
 
   FlowObject.prototype.constructor.call(this, paper, sidebar);
-  this.data = { object_name: 'Map labels',
+  this.data = { label: 'Map labels',
                 description: 'Modify labels names.',
                 shape: {
                   width: 75,
@@ -1098,7 +934,7 @@ function FlowObjectTestData(paper, sidebar, shape, backend_data){
   console.log("FlowObjectTestData");
 
   FlowObject.prototype.constructor.call(this, paper, sidebar);
-  this.data = { object_name: 'Test data',
+  this.data = { label: 'Test data',
                 description: 'Generate some fake data for testing this UI.',
                 shape: {
                   width: 100,
@@ -1149,12 +985,13 @@ FlowObjectTestData.prototype.displaySideBar = function(){
 };
 
 
+
 function FlowObjectCombineData(paper, sidebar, shape, backend_data){
   'use strict';
   console.log('FlowObjectCombineData(', paper, sidebar, shape, backend_data, ')');
 
   FlowObject.prototype.constructor.call(this, paper, sidebar);
-  this.data = { object_name: 'Combine data',
+  this.data = { label: 'Combine data',
                 description: 'Combine data sharing specified label from multiple data payloads.',
                 shape: {
                   width: 100,
@@ -1199,7 +1036,6 @@ function FlowObjectCombineData(paper, sidebar, shape, backend_data){
     this.setup(backend_data);
 
     if(getPath(backend_data, 'data.inputs.default_in.primary_key_label') !== undefined){
-    //if(backend_data.data !== undefined){
       this.data.data.inputs[0].peramiters.primary_key.value = backend_data.data.inputs.default_in.primary_key_label
     }
   }
@@ -1214,7 +1050,7 @@ function FlowObjectAddData(paper, sidebar, shape, backend_data){
   console.log('FlowObjectAddData(', paper, sidebar, shape, backend_data, ')');
 
   FlowObject.prototype.constructor.call(this, paper, sidebar);
-  this.data = { object_name: 'Add data',
+  this.data = { label: 'Add data',
                 description: 'Add data from multiple data payloads.',
                 shape: {
                   width: 100,
@@ -1274,7 +1110,7 @@ function FlowObjectReadFile(paper, sidebar, shape, backend_data){
   console.log('FlowObjectReadFile(', paper, sidebar, shape, backend_data, ')');
 
   FlowObject.prototype.constructor.call(this, paper, sidebar);
-  this.data = { object_name: 'Read file',
+  this.data = { label: 'Read file',
                 description: 'Read data from a file on disk.',
                 shape: {
                   width: 100,
@@ -1313,7 +1149,6 @@ function FlowObjectReadFile(paper, sidebar, shape, backend_data){
     this.setup(backend_data);
 
     if(getPath(backend_data, 'data.general.filename') !== undefined){
-		//if(backend_data.data.general !== undefined && backend_data.data.general.filename !== undefined){
       this.data.data.general.filename.value = backend_data.data.general.filename;
 		}
   }
@@ -1323,13 +1158,12 @@ inheritsFrom(FlowObjectReadFile, FlowObject);
 
 
 
-
 function FlowObjectAddTime(paper, sidebar, shape, backend_data){
   'use strict';
   console.log('FlowObjectAddTime(', paper, sidebar, shape, backend_data, ')');
 
   FlowObject.prototype.constructor.call(this, paper, sidebar);
-  this.data = { object_name: 'Add time',
+  this.data = { label: 'Add time',
                 description: 'Add time data to payload.',
                 shape: {
                   width: 75,

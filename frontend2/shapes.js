@@ -114,7 +114,7 @@ Raphael.st.setContents = function(content){
           node.remove();
           node = this.items[i].pop();
         }
-        var shape = this.paper.text(x + 5, y, content.object_name).attr({font: "12px Fontin-Sans, Arial", fill: "black", "text-anchor": "start"});
+        var shape = this.paper.text(x + 5, y, content.label).attr({font: "12px Fontin-Sans, Arial", fill: "black", "text-anchor": "start"});
         shape.x_offset = 5;
         shape.y_offset = 8;
         shape.node.setAttribute("pointer-events", "none");

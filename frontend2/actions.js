@@ -13,7 +13,6 @@ var flow_objects = {FlowObjectMqttSubscribe: FlowObjectMqttSubscribe,
                     FlowObjectAddData: FlowObjectAddData,
                     };
 
-//var missing_links = {};
 
 var dataReceived = function(topic, backend_data){
   'use strict';
@@ -51,7 +50,9 @@ var dataReceived = function(topic, backend_data){
         }
       }
       flow_object.shape.setOutputLinks(flow_object.data.data.outputs);
-      //flow_object.updateLinks();
+
+      console.log(backend_data);
+      console.log(flow_object.data);
     }
   }
   
