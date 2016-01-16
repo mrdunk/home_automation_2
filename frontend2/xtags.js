@@ -40,7 +40,7 @@ xtag.register('ha-control', {
       for(var i = 0; i < flow_object_classes.length; i++){
         var flow_object = new flow_object_classes[i]();
         var button = document.createElement('draggable-button');
-        button.setContent(flow_object.data.label);
+        button.setContent(flow_object.data.class_label);
         button.setColor(flow_object.data.shape.color);
         button.setData({flow_object_id: i});
         container.appendChild(button);
@@ -92,7 +92,6 @@ xtag.register('ha-control-heading', {
   },
   methods: {
     setParent: function(parent){
-      console.log(parent);
       this.parent = parent;
     }
   },
@@ -200,7 +199,6 @@ xtag.register('ha-sidebar', {
   },
   methods: {
     resize: function(width){
-      console.log(width);
       if(this.align === 'right'){
         this.style.width = width + 'px';
         this.handle.style.right = (width - this.handle.getBoundingClientRect().width) + 'px';
@@ -254,9 +252,11 @@ xtag.register('ha-flowobject-data', {
 
       var list_content = this.getElementsByClassName('general')[0];
 			for(var general_id in data.general){
-        var general_attributes = document.createElement(data.general[general_id].updater);
-        general_attributes.populate(data.general[general_id], flow_object);
-      	list_content.appendChild(general_attributes);
+        if(data.general[general_id].updater){
+          var general_attributes = document.createElement(data.general[general_id].updater);
+          general_attributes.populate(data.general[general_id], flow_object);
+      	  list_content.appendChild(general_attributes);
+        }
 			}
 
       list_content = this.getElementsByClassName('input')[0];

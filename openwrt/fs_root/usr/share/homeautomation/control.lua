@@ -107,9 +107,8 @@ function component:new(o)
   return o
 end
 
-function component:setup(object_name, instance_name, unique_id)
-  self.object_name = object_name
-  self.instance_name = instance_name
+function component:setup(object_type, instance_name, unique_id)
+  self.object_type = object_type
   self.unique_id = unique_id
 
   -- self._subject is the unique identifier on the web interface.
@@ -120,6 +119,8 @@ function component:setup(object_name, instance_name, unique_id)
   self.data.general = {}
   self.data.inputs = {}
   self.data.outputs = {}
+
+  self:add_general('instance_name', instance_name)
 
   -- Add number to any duplicate unique_id.
   local count = 0
@@ -134,7 +135,13 @@ end
 function component:add_general(label, value)
   label = path_to_var(label)
 
-  self.data.general[label] = value
+  self.data.general[label] = {}
+  self.data.general[label].value = value
+end
+
+function component:get_general(label)
+  label = path_to_var(label)
+  return self.data.general[label].value
 end
 
 function component:add_input(label, value)
@@ -142,7 +149,8 @@ function component:add_input(label, value)
   label = label or 'default_in'
   label = path_to_var(label)
   
-  self.data.inputs[label] = value
+  self.data.inputs[label] = {}
+  self.data.inputs[label].value = value
 end
 
 function component:add_link(destination_component, destination_port_label, source_port_label)
@@ -173,10 +181,10 @@ function component:serialise()
 end
 
 function component:display()
-  log('Name: ' .. self.instance_name)
+  log('Name: ' .. self:get_general('instance_name'))
   for label, targets in pairs(self.data.outputs) do
     for _, target in pairs(targets) do
-      log('  Output ' .. label .. ': ' .. target.instance_name)
+      log('  Output ' .. label .. ': ' .. target:get_general('instance_name'))
     end
   end
 end
@@ -199,8 +207,8 @@ function component:send_one_output(data, label)
   if self.data.outputs[label] then
     for _, link_data in pairs(self.data.outputs[label]) do
       print(flatten_data(link_data), info.components[link_data.destination_object])
-      local target_name = info.components[link_data.destination_object].instance_name
-      control_instance:update_log('(' .. self.object_name .. ')' .. self.instance_name .. ' -> ' .. flatten_data(data) .. ' -> ' .. target_name .. '\n')
+      local target_name = info.components[link_data.destination_object]:get_general('instance_name')
+      control_instance:update_log('(' .. self.object_type .. ')' .. self:get_general('instance_name') .. ' -> ' .. flatten_data(data) .. ' -> ' .. target_name .. '\n')
       info.components[link_data.destination_object]:receive_input(data, link_data.destination_port)
     end
   end
@@ -219,8 +227,8 @@ end
 
 FlowObjectMqttSubscribe = component:new()
 
-function FlowObjectMqttSubscribe:setup(object_name, instance_name, unique_id)
-  component.setup(self, object_name, instance_name, unique_id)
+function FlowObjectMqttSubscribe:setup(object_type, instance_name, unique_id)
+  component.setup(self, object_type, instance_name, unique_id)
   info.mqtt.callbacks[instance_name] = self
 end
 
@@ -238,7 +246,7 @@ end
 
 function FlowObjectMqttSubscribe:subscribe()
   local subscritions = {}
-  local path = path_to_var(self.data.general.subscribed_topic)
+  local path = path_to_var(self.data.general.subscribed_topic.value)
   local role, address = path:match('(.-)__(.+)')
   if role and address then
     subscritions[#subscritions +1] = {role = role, address = address}
@@ -252,8 +260,8 @@ FlowObjectMapValues = component:new()
 
 function FlowObjectMapValues:receive_input(data, l)
   log(" ~~", "FlowObjectMapValues:receive_input(", flatten_data(data), l, ")")
-  local label = self.data.inputs.default_in.label
-  local rules = self.data.inputs.default_in.rules
+  local label = self.data.inputs.default_in.value.label
+  local rules = self.data.inputs.default_in.value.rules
 
   local found_label, found_value
 
@@ -282,7 +290,7 @@ function FlowObjectMapValues:receive_input(data, l)
         break
       elseif rule.action == '_drop' then
         log("~~~~~", rule.match, '_drop')
-        control_instance:update_log('(' .. self.object_name .. ')' .. self.instance_name .. ' -> ' .. flatten_data(data) .. ' -> DROP\n')
+        control_instance:update_log('(' .. self.object_type .. ')' .. self:get_general('instance_name') .. ' -> ' .. flatten_data(data) .. ' -> DROP\n')
         break
       end
     end
@@ -295,7 +303,7 @@ FlowObjectMapLabels = component:new()
 function FlowObjectMapLabels:receive_input(data, l)
   log(" ==", "FlowObjectMapLabels:receive_input(", data, l, ")")
   local forward_data = {}
-  local rules = self.data.inputs.default_in.rules
+  local rules = self.data.inputs.default_in.value.rules
 
   for data_label, data_value in pairs(data) do
     for _, rule in pairs(rules) do
@@ -378,7 +386,7 @@ end]]--
 FlowObjectMqttPublish = component:new()
 
 function FlowObjectMqttPublish:receive_input(data, l)
-	local topic = 'homeautomation/0/' .. self.data.general.publish_topic
+	local topic = 'homeautomation/0/' .. self.data.general.publish_topic.value
 	local payload = flatten_data(data)
 	log("&&&&& FlowObjectMqttPublish:receive_input:", topic, payload)
 	mqtt_instance:publish(topic, payload)
@@ -398,7 +406,7 @@ function FlowObjectReadFile:add_link(destination_component, destination_port_lab
 end
 
 function FlowObjectReadFile:parse_data_from_file()
-	local filename = self.data.general.filename
+	local filename = self.data.general.filename.value
 
   if is_file_or_dir(filename) then
     local file_last_read_at = file_mod_time(filename)
@@ -417,8 +425,8 @@ end
 function FlowObjectReadFile:receive_input(data, input_label)
 	-- If data is sent to this Component, make it send data.
 
-  local match_data_label = self.data.general.match_data_label
-  local match_data_value = self.data.general.match_data_value
+  local match_data_label = self.data.general.match_data_label.value
+  local match_data_value = self.data.general.match_data_value.value
 
   if match_data_label ~= nil and data[match_data_label] == nil then
 		-- Requested label not in incoming data.
@@ -450,14 +458,13 @@ end
 
 FlowObjectCombineData = component:new()
 
-function FlowObjectCombineData:setup(object_name, instance_name, unique_id)
-  component.setup(self, object_name, instance_name, unique_id)
+function FlowObjectCombineData:setup(object_type, instance_name, unique_id)
+  component.setup(self, object_type, instance_name, unique_id)
   self.data.data = {}
 end
 
 function FlowObjectCombineData:receive_input(data, input_label)
-  --local primary_key_label = self.data.general.primary_key_label
-  local primary_key_label = self.data.inputs.default_in.primary_key_label
+  local primary_key_label = self.data.inputs.default_in.value.primary_key_label
 
   if data[primary_key_label] ~= nil then
     local primary_key = data[primary_key_label]
@@ -475,15 +482,14 @@ end
 
 FlowObjectAddData = component:new()
 
-function FlowObjectAddData:setup(object_name, instance_name, unique_id)
-  component.setup(self, object_name, instance_name, unique_id)
+function FlowObjectAddData:setup(object_type, instance_name, unique_id)
+  component.setup(self, object_type, instance_name, unique_id)
   self.data.data = {}
 end
 
 function FlowObjectAddData:receive_input(data, input_label)
   log("'''''", flatten_data(data))
-  --local primary_key_label = self.data.general.primary_key_label
-  local primary_key_label = self.data.inputs.default_in.primary_key_label
+  local primary_key_label = self.data.inputs.default_in.value.primary_key_label
 
   if data[primary_key_label] == nil then
     return

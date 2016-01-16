@@ -114,7 +114,7 @@ Raphael.st.setContents = function(content){
           node.remove();
           node = this.items[i].pop();
         }
-        var shape = this.paper.text(x + 5, y, content.label).attr({font: "12px Fontin-Sans, Arial", fill: "black", "text-anchor": "start"});
+        var shape = this.paper.text(x + 5, y, content.class_label).attr({font: "12px Fontin-Sans, Arial", fill: "black", "text-anchor": "start"});
         shape.x_offset = 5;
         shape.y_offset = 8;
         shape.node.setAttribute("pointer-events", "none");
@@ -187,8 +187,7 @@ Raphael.st.setOutputs = function(parent_context){
         }
 
         var height_offset = 0;
-				for(var data_key in parent_context.data.data.outputs){
-          var port_label = parent_context.data.data.outputs[data_key].port_label;
+        for(var port_label in parent_context.data.data.outputs){
           var object_id = parent_context.data.unique_id;
           var shape = this.paper.rect(x - PORT_WIDTH, y + PORT_HEIGHT + (i * PORT_HEIGHT), PORT_WIDTH, PORT_HEIGHT, 2);
           shape.data('port_label', port_label);
@@ -218,12 +217,12 @@ Raphael.st.setOutputs = function(parent_context){
 Raphael.st.setOutputLinks = function(outputs){
   'use strict';
   var this_identity = this.getIdentity();
-  console.log('Raphael.st.setOutputLinks', this, this_identity);
+  //console.log('Raphael.st.setOutputLinks', this, this_identity, outputs);
 
-  for(var key_data_output in outputs){
-    for(var key_link = 0; key_link < outputs[key_data_output].links.length; key_link++){
-			var link_data = outputs[key_data_output].links[key_link];
-			setLink({source_object: this_identity.object_id, source_port: link_data.source_port,
+  for(var output_id in outputs){
+    for(var key_link = 0; key_link < outputs[output_id].length; key_link++){
+      var link_data = outputs[output_id][key_link];
+      setLink({source_object: this_identity.object_id, source_port: link_data.source_port,
                destination_object: link_data.destination_object, destination_port: link_data.destination_port});
     }
   }

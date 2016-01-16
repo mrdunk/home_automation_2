@@ -5,8 +5,6 @@
 
 var SNAP = 20;
 
-var INPUT_PORT = { description: 'Trigger label', value: '_any', updater: 'ha-general-attribute' };
-
 var shareBetweenShapes = {unique_id: 0};
 
 
@@ -96,8 +94,7 @@ var FlowObject = function(paper, sidebar){
   'use strict';
   //console.log('FlowObject', this);
 
-  this.data = {label: 'FlowObject',
-               data: {outputs: {}, inputs: {}}};
+  this.data = {data: {general: {object_type: { description: 'Object type', value: 'FlowObject' }}, outputs: {}, inputs: {}}};
   this.paper = paper;
   this.sidebar = sidebar;
 };
@@ -195,7 +192,7 @@ FlowObject.prototype.setInstanceName = function(instance_name){
 
 FlowObject.prototype.setup = function(backend_data){
   'use strict';
-  console.log('FlowObject.setup(', backend_data, ')');
+  //console.log('FlowObject.setup(', backend_data, ')');
 
   if(backend_data.version === undefined){
     backend_data.version = 0;
@@ -212,17 +209,18 @@ FlowObject.prototype.setup = function(backend_data){
   }
   document.getElementsByTagName('ha-control')[0].flowObjects[this.data.unique_id] = this;
 
-	this.setShape(this.shape);
-
-  for(var port_out in this.data.data.outputs){
-    this.data.data.outputs[port_out].links = [];
+  if(getPath(backend_data, 'data.outputs') !== undefined){
+    this.data.data.outputs = backend_data.data.outputs;
   }
 
-  this.setInstanceName(backend_data.instance_name);
+  this.setInstanceName(getPath(backend_data, 'data.general.instance_name.value'));
 
+  this.setShape(this.shape);
   if(getPath(backend_data, 'shape.position') !== undefined){
     this.setBoxPosition(backend_data.shape.position.x, backend_data.shape.position.y);
   }
+
+  this.data.object_type = backend_data.object_type || this.constructor.name;
 
   // Make sure object is marked selected if it has been replaced.
   if(shareBetweenShapes.selected === this.data.unique_id){
@@ -258,7 +256,7 @@ FlowObject.prototype.getBoxPosition = function(){
 
 FlowObject.prototype.setBoxPosition = function(x, y){
   'use strict';
-  console.log('FlowObject.setBoxPosition(', x, y, ')');
+  //console.log('FlowObject.setBoxPosition(', x, y, ')');
   if(isNaN(parseFloat(x)) && y === undefined){
     // Has been passed a position object: {x: X_coord, y: Y_coord}.
     y = x.y;
@@ -269,7 +267,7 @@ FlowObject.prototype.setBoxPosition = function(x, y){
 
 FlowObject.prototype.select = function(){
   'use strict';
-  console.log('FlowObject.select:', this);
+  //console.log('FlowObject.select:', this);
   if(shareBetweenShapes.selected !== undefined){
     getFlowObjectByUniqueId(shareBetweenShapes.selected).shape.setHighlight(false);
   }
@@ -281,7 +279,7 @@ FlowObject.prototype.select = function(){
 
 FlowObject.prototype.displaySideBar = function(){
   'use strict';
-  console.log('FlowObject.displaySideBar()');
+  //console.log('FlowObject.displaySideBar()');
 
   // Header
   var header_content = document.createElement('div');
@@ -374,7 +372,7 @@ FlowObject.prototype.onmove = function(dx, dy){
 // TODO: move out of FlowObject name-space.
 FlowObject.prototype.onstart = function(){
   'use strict';
-  //console.log('FlowObject.onstart()', this);
+  console.log('FlowObject.onstart()', this);
   
   var clicked_shape = this.getIdentity();
   var object = getFlowObjectByUniqueId(clicked_shape.object_id);
@@ -409,7 +407,7 @@ FlowObject.prototype.onend = function(){
     delete shareBetweenShapes.dragging;
 
     if(shareBetweenShapes.linked){
-      //console.log(shareBetweenShapes.linked);
+      console.log(shareBetweenShapes.linked);
       object.linkOutToIn(shareBetweenShapes.linked);
       delete shareBetweenShapes.linked;
     }
@@ -439,14 +437,16 @@ FlowObject.prototype.linkOutToIn = function(link_data){
     return;
   }
 
-  for(var port_index in this.data.data.outputs){
-    if(this.data.data.outputs[port_index].port_label === source_port){
-      var source_port_data = this.data.data.outputs[port_index];
+  console.log(this.data.data.outputs);
+  for(var port_id in this.data.data.outputs){
+    console.log(port_id);
+    if(port_id === source_port){
+      var source_port_data = this.data.data.outputs[port_id];
       var found = false;
-      for(var i = 0; i < source_port_data.links.length; i++){
-        if(source_port_data.links[i].source_port === source_port &&
-           source_port_data.links[i].destination_object === destination_object &&
-           source_port_data.links[i].destination_port === destination_port){
+      for(var i = 0; i < source_port_data.length; i++){
+        if(source_port_data[i].source_port === source_port &&
+            source_port_data[i].destination_object === destination_object &&
+            source_port_data[i].destination_port === destination_port){
           // Already has this link.
           found = true;
           break;
@@ -454,7 +454,7 @@ FlowObject.prototype.linkOutToIn = function(link_data){
       }
       if(!found){
         console.log('LINK!');
-        source_port_data.links.push({source_port: source_port, destination_object: destination_object, destination_port: destination_port});
+        source_port_data.push({source_port: source_port, destination_object: destination_object, destination_port: destination_port});
         this.ExportObject();
       }
       break;
@@ -485,29 +485,21 @@ FlowObject.prototype.ExportObject = function(send_object){
   'use strict';
   this.data.version += 1;
 
-  send_object = send_object || {data: {inputs: {}, outputs: {}, general: {}}};
+/*  send_object = send_object || {data: {inputs: {}, outputs: {}, general: {}}};
   send_object.unique_id = this.data.unique_id;
-  send_object.instance_name = this.data.data.general.instance_name.value;
+  send_object.data.general.instance_name = {};
+  send_object.data.general.instance_name.value = this.data.data.general.instance_name.value;
   send_object.version = this.data.version;
   send_object.shape = this.data.shape;
   send_object.shape.position = this.shape.getShapePosition();
 
-  for(var object_name in flow_objects){
-    if(flow_objects[object_name].name === this.constructor.name){
-      send_object.object_name = object_name;
+  for(var object_type in flow_objects){
+    if(flow_objects[object_type].name === this.constructor.name){
+      send_object.object_type = object_type;
     }
   }
 
-  for(var output in this.data.data.outputs){
-    for(var i = 0; i < this.data.data.outputs[output].links.length; i++){
-      var link_to_unique_id = this.data.data.outputs[output].links[i];
-      var link_to_port = this.data.data.outputs[output].links[i].source_port || 'default';
-      if(send_object.data.outputs[link_to_port] === undefined){
-        send_object.data.outputs[link_to_port] = [];
-      }
-      send_object.data.outputs[link_to_port].push(link_to_unique_id);
-    }
-  }
+  send_object.data.outputs = this.data.data.outputs;
 
   for(var general_name in this.data.data.general){
     if(general_name !== 'instance_name'){
@@ -515,11 +507,36 @@ FlowObject.prototype.ExportObject = function(send_object){
     }
 	}
 
-  //console.log('**', JSON.stringify(send_object));
-  //console.log('**', JSON.stringify(this.data));
+  console.log('**', JSON.stringify(send_object));
+  console.log('**', JSON.stringify(this.data));
   Mqtt.send('homeautomation/0/control/_announce', JSON.stringify(send_object));
+*/
 
-  return send_object;
+  var stripedVersion = function(obj){
+    if (obj === null || typeof obj !== 'object') {
+      return;
+    }
+    var temp = {};
+    for (var attr in obj) {
+      if(attr === 'value' || attr === 'values' || attr === 'shape' || attr === 'unique_id' || attr === 'version' ||
+          attr === 'links' || attr === 'object_type' || attr === 'outputs'){
+        temp[attr] = obj[attr];
+      } else {
+        var temp2 = stripedVersion(obj[attr]);
+        if(temp2 !== undefined){
+          temp[attr] = stripedVersion(obj[attr]);
+        }
+      }
+    }
+    return temp;
+  }
+
+  var stripped_object = stripedVersion(this.data);
+  stripped_object.shape.position = this.shape.getShapePosition();
+  console.log('**', stripped_object);
+  Mqtt.send('homeautomation/0/control/_announce', JSON.stringify(stripped_object));
+
+//  return send_object;
 };
 
 
@@ -533,7 +550,7 @@ var inheritsFrom = function (child, parent) {
 };
 
 
-flow_object_classes = [FlowObjectMqttSubscribe, FlowObjectMqttPublish, FlowObjectReadFile, FlowObjectMapValues, FlowObjectMapLabels, FlowObjectTimer, FlowObjectCombineData, FlowObjectAddData];
+flow_object_classes = [FlowObjectMqttSubscribe, FlowObjectMqttPublish, FlowObjectReadFile, FlowObjectMapValues, FlowObjectMapLabels, FlowObjectCombineData, FlowObjectAddData];
 
 
 function FlowObjectMqttSubscribe(paper, sidebar, shape, backend_data){
@@ -542,8 +559,8 @@ function FlowObjectMqttSubscribe(paper, sidebar, shape, backend_data){
 
   FlowObject.prototype.constructor.call(this, paper, sidebar);
 
-  this.data = { label: 'MQTT Subscription',
-                description: 'Monitor MQTT for a specific topic.',
+  this.data = { class_label: 'MQTT Subscription',
+                class_description: 'Monitor MQTT for a specific topic.',
                 shape: {
                   width: 100,
                   height: 50,
@@ -564,11 +581,8 @@ function FlowObjectMqttSubscribe(paper, sidebar, shape, backend_data){
                     }},
                   inputs: {},
                   outputs: {
-                    0: {
-                      description: 'Default output',
-                      port_label: 'default_out',
-                      sample_data: {}
-                      } } }
+                    default_out: []
+                      } }
               };
 
   if(paper){
@@ -576,7 +590,7 @@ function FlowObjectMqttSubscribe(paper, sidebar, shape, backend_data){
     this.setup(backend_data);
 
     if(getPath(backend_data, 'data.general.subscribed_topic') !== undefined){
-      this.data.data.general.subscribed_topic.value = 'homeautomation/+/' + backend_data.data.general.subscribed_topic;
+      this.data.data.general.subscribed_topic.value = 'homeautomation/+/' + backend_data.data.general.subscribed_topic.value;
       this.setContents();
     }
   }
@@ -587,14 +601,12 @@ inheritsFrom(FlowObjectMqttSubscribe, FlowObject);
 FlowObjectMqttSubscribe.prototype.setContents = function(contents){
   'use strict';
 	// Update sample_data according to subscribed topic.
-  this.data.data.outputs[0].sample_data = {};
 	var topic = this.data.data.general.subscribed_topic.value.split('/').slice(2).join('/');
 	var topics = Data.GetMatchingTopics(topic);
 	for(var i = 0; i < topics.length; i++){
 		console.log(Data.mqtt_data[topics[i]]);
 		for(var j = 0; j < Data.mqtt_data[topics[i]].length; j++){
 			var sample_payload = Data.mqtt_data[topics[i]][j];
-			this.data.data.outputs[0].sample_data[sample_payload._subject] = sample_payload;
 		}
 	}
 
@@ -606,8 +618,8 @@ FlowObjectMqttSubscribe.prototype.ExportObject = function(){
   // TODO need to modify subscribed_topic before we call this.$super.ExportObject()
   var send_object = this.$super.ExportObject.call(this, send_object);
 
-  send_object.data.general.subscribed_topic = this.data.data.general.subscribed_topic.value;
-  send_object.data.general.subscribed_topic.replace('homeautomation/+/', '');
+  //send_object.data.general.subscribed_topic = this.data.data.general.subscribed_topic.value;
+  //send_object.data.general.subscribed_topic.replace('homeautomation/+/', '');
 }
 
 
@@ -617,8 +629,8 @@ function FlowObjectMqttPublish(paper, sidebar, shape, backend_data){
   console.log("FlowObjectMqttPublish");
 
   FlowObject.prototype.constructor.call(this, paper, sidebar);
-  this.data = { label: 'MQTT Publish',
-                description: 'Publish MQTT a message for a specific topic.',
+  this.data = { class_label: 'MQTT Publish',
+                class_description: 'Publish MQTT a message for a specific topic.',
                 shape: {
                   width: 100,
                   height: 50,
@@ -649,8 +661,7 @@ function FlowObjectMqttPublish(paper, sidebar, shape, backend_data){
                     0: {
                       description: 'Publish',
                       port_label: 'default_in',
-                      tag: 'publish',
-                      sample_data: {},
+                      value: 'publish',
                       trigger_success: [] }},
                   outputs: {}}
               };
@@ -664,103 +675,13 @@ inheritsFrom(FlowObjectMqttPublish, FlowObject);
 
 
 
-function FlowObjectTimer(paper, sidebar, shape, backend_data){
-  'use strict';
-  console.log("FlowObjectTimer");
-
-  FlowObject.prototype.constructor.call(this, paper, sidebar);
-  this.data = { label: 'Timer',
-                description: 'Trigger output after a set delay.',
-                shape: {
-                  width: 100,
-                  height: 50,
-                  color: 'coral',
-                },
-                data: {
-                  general: {
-                    instance_name: {
-                      description: 'Name',
-                      updater: 'ha-general-attribute',
-                      update_on_change: this.setInstanceName,
-                      //value: 'Object_' + shareBetweenShapes.unique_id 
-                      },
-                    period: {
-                      description: 'Time between output trigger. (seconds)',
-                      updater: 'ha-general-attribute',
-                      value: '10'
-                    },
-                    run_at_start: {
-                      description: 'Timer running at startup?',
-                      updater: 'ha-general-attribute',
-                      value: true,
-                    },
-                    repeated: {
-                      description: 'Restart automatically after triggering?',
-                      updater: 'ha-general-attribute',
-                      value: true,
-                    }},
-                  inputs: {
-                    0: {
-                      description: 'Start',
-                      port_label: 'start_in',
-                      peramiters:{
-                        trigger_label: INPUT_PORT,
-                        trigger_value: INPUT_PORT,
-                      },
-                      sample_data: {},
-                      },
-                    1: {
-                      description: 'Stop',
-                      port_label: 'stop_in',
-                      peramiters:{
-                        trigger_label: INPUT_PORT,
-                        trigger_value: INPUT_PORT
-                      },
-                      sample_data: {},
-                      },
-                    2: {
-                      description: 'Reset',
-                      port_label: 'reset_in',
-                      peramiters:{
-                        trigger_label: INPUT_PORT,
-                        trigger_value: INPUT_PORT
-                      },
-                      sample_data: {},
-                      }},
-                  outputs: {
-                    0: {
-                      description: 'Default output',
-                      peramiters:{
-                        output_label: {
-                          description: 'Ouput label',
-                          updater: 'ha-general-attribute',
-                          label: 'ouput_label',
-                          value: '_default' },
-                        output_data: {
-                          description: 'Ouput data',
-                          updater: 'ha-general-attribute',
-                          label: 'ouput_data',
-                          value: true },
-                        },
-                      sample_data: {},
-                      } } }
-              };
-  if(paper){
-    this.shape = shape || paper.box(0, 0, this.data.shape.width, this.data.shape.height, this.data.shape.color);
-    this.setup(backend_data);
-  }
-};
-
-inheritsFrom(FlowObjectTimer, FlowObject);
-
-
 function FlowObjectMapValues(paper, sidebar, shape, backend_data){
   'use strict';
   console.log("FlowObjectMapValues(", backend_data, ')');
 
   FlowObject.prototype.constructor.call(this, paper, sidebar);
-  this.data = { label: 'Map values',
-                description: 'Filter or modify input variables to different output.',
+  this.data = { class_label: 'Map values',
+                class_description: 'Filter or modify input variables to different output.',
                 shape: {
                   width: 75,
                   height: 50,
@@ -786,15 +707,10 @@ function FlowObjectMapValues(paper, sidebar, shape, backend_data){
                           port_out: 0,
                           values: {} }
                         },
-                      sample_data: {}
                       },
                     },
                   outputs: {
-                    0: {
-                      description: 'Default output',
-                      port_label: 'default_out',
-                      sample_data: {}
-                      }
+                    default_out: []
                     }}};
   if(paper){
     this.shape = shape || paper.box(0, 0, this.data.shape.width, this.data.shape.height, this.data.shape.color);
@@ -847,8 +763,8 @@ function FlowObjectMapLabels(paper, sidebar, shape, backend_data){
   console.log("FlowObjectMapLabels(", backend_data, ')');
 
   FlowObject.prototype.constructor.call(this, paper, sidebar);
-  this.data = { label: 'Map labels',
-                description: 'Modify labels names.',
+  this.data = { class_label: 'Map labels',
+                class_description: 'Modify labels names.',
                 shape: {
                   width: 75,
                   height: 50,
@@ -877,15 +793,10 @@ function FlowObjectMapLabels(paper, sidebar, shape, backend_data){
                           updater: 'ha-general-attribute',
                           value: '' }
                       },
-                      sample_data: {}
                       },
                     },
                   outputs: {
-                    0: {
-                      description: 'Default output',
-                      port_label: 'default_out',
-                      sample_data: {}
-                      }
+                    default_out: []
                     }}};
   if(paper){
     this.shape = shape || paper.box(0, 0, this.data.shape.width, this.data.shape.height, this.data.shape.color);
@@ -893,7 +804,7 @@ function FlowObjectMapLabels(paper, sidebar, shape, backend_data){
     if(getPath(backend_data, 'data.inputs.default_in.rules') !== undefined){
       // TODO handle more than one label.
       this.data.data.inputs[0].peramiters.else = {updater: "ha-general-attribute",
-        description: "When no matching label."};
+                                                  description: "When no matching label."};
       var else_found;
       for(var key in backend_data.data.inputs.default_in.rules){
         var action = backend_data.data.inputs.default_in.rules[key].action;
@@ -934,8 +845,8 @@ function FlowObjectTestData(paper, sidebar, shape, backend_data){
   console.log("FlowObjectTestData");
 
   FlowObject.prototype.constructor.call(this, paper, sidebar);
-  this.data = { label: 'Test data',
-                description: 'Generate some fake data for testing this UI.',
+  this.data = { class_label: 'Test data',
+                class_description: 'Generate some fake data for testing this UI.',
                 shape: {
                   width: 100,
                   height: 50,
@@ -959,15 +870,8 @@ function FlowObjectTestData(paper, sidebar, shape, backend_data){
                   },
                   inputs: {},
                   outputs: {
-                    0: {
-                      description: 'Default output',
-                      port_label: 'default_out',
-                      sample_data: {
-                        'test/path/1': { '_subject': 'test/path/1', '_label1': 'string 1', '_label2': 'true', 'label3': 44},
-                        'test/path/2': { '_subject': 'test/path/2', '_label1': 'String 2', '_label2': 'false', 'label3': 0},
-                        'test/some_other_path': { '_subject': 'test/some_other_path', '_label2': 'false', 'label3': 1},
-                        }
-                      } } }
+                    default_out: []
+                      } }
               };
   if(paper){
     this.shape = shape || paper.box(0, 0, this.data.shape.width, this.data.shape.height, this.data.shape.color);
@@ -979,7 +883,6 @@ inheritsFrom(FlowObjectTestData, FlowObject);
 
 FlowObjectTestData.prototype.displaySideBar = function(){
   'use strict';
-  this.data.data.outputs[0].sample_data = JSON.parse(this.data.data.general.test_data.value);
 
   this.$super.displaySideBar.call(this);
 };
@@ -991,8 +894,8 @@ function FlowObjectCombineData(paper, sidebar, shape, backend_data){
   console.log('FlowObjectCombineData(', paper, sidebar, shape, backend_data, ')');
 
   FlowObject.prototype.constructor.call(this, paper, sidebar);
-  this.data = { label: 'Combine data',
-                description: 'Combine data sharing specified label from multiple data payloads.',
+  this.data = { class_label: 'Combine data',
+                class_description: 'Combine data sharing specified label from multiple data payloads.',
                 shape: {
                   width: 100,
                   height: 50,
@@ -1018,16 +921,11 @@ function FlowObjectCombineData(paper, sidebar, shape, backend_data){
                           port_out: 0,
                           value: '' }
                         },
-                      sample_data: {} 
                     },
                     // TODO add reset.
                   },
                 outputs: {
-                    0: {
-                      description: 'Default output',
-                      port_label: 'default_out',
-                      sample_data: {}
-                    }
+                    default_out: []
                 }
               }
 	};
@@ -1050,8 +948,8 @@ function FlowObjectAddData(paper, sidebar, shape, backend_data){
   console.log('FlowObjectAddData(', paper, sidebar, shape, backend_data, ')');
 
   FlowObject.prototype.constructor.call(this, paper, sidebar);
-  this.data = { label: 'Add data',
-                description: 'Add data from multiple data payloads.',
+  this.data = { class_label: 'Add data',
+                class_description: 'Add data from multiple data payloads.',
                 shape: {
                   width: 100,
                   height: 50,
@@ -1077,16 +975,11 @@ function FlowObjectAddData(paper, sidebar, shape, backend_data){
                           port_out: 0,
                           value: '' }
                         },
-                      sample_data: {} 
                     },
                     // TODO add reset.
                   },
                 outputs: {
-                    0: {
-                      description: 'Default output',
-                      port_label: 'default_out',
-                      sample_data: {}
-                    }
+                    default_out: []
                 }
               }
 	};
@@ -1110,8 +1003,8 @@ function FlowObjectReadFile(paper, sidebar, shape, backend_data){
   console.log('FlowObjectReadFile(', paper, sidebar, shape, backend_data, ')');
 
   FlowObject.prototype.constructor.call(this, paper, sidebar);
-  this.data = { label: 'Read file',
-                description: 'Read data from a file on disk.',
+  this.data = { class_label: 'Read file',
+                class_description: 'Read data from a file on disk.',
                 shape: {
                   width: 100,
                   height: 50,
@@ -1136,11 +1029,7 @@ function FlowObjectReadFile(paper, sidebar, shape, backend_data){
                     // TODO add trigger.
                   },
                 outputs: {
-                    0: {
-                      description: 'Default output',
-                      port_label: 'default_out',
-                      sample_data: {}
-                    }
+                    default_out: []
                 }
               }
 	};
@@ -1149,7 +1038,7 @@ function FlowObjectReadFile(paper, sidebar, shape, backend_data){
     this.setup(backend_data);
 
     if(getPath(backend_data, 'data.general.filename') !== undefined){
-      this.data.data.general.filename.value = backend_data.data.general.filename;
+      this.data.data.general.filename.value = backend_data.data.general.filename.value;
 		}
   }
 };
@@ -1163,8 +1052,8 @@ function FlowObjectAddTime(paper, sidebar, shape, backend_data){
   console.log('FlowObjectAddTime(', paper, sidebar, shape, backend_data, ')');
 
   FlowObject.prototype.constructor.call(this, paper, sidebar);
-  this.data = { label: 'Add time',
-                description: 'Add time data to payload.',
+  this.data = { class_label: 'Add time',
+                class_description: 'Add time data to payload.',
                 shape: {
                   width: 75,
                   height: 50,
@@ -1183,15 +1072,10 @@ function FlowObjectAddTime(paper, sidebar, shape, backend_data){
                     0: {
                       description: 'Default input',
                       port_label: 'default_in',
-                      sample_data: {} 
                     },
                   },
                 outputs: {
-                    0: {
-                      description: 'Default output',
-                      port_label: 'default_out',
-                      sample_data: {}
-                    }
+                    default_out: []
                 }
               }
 	};
