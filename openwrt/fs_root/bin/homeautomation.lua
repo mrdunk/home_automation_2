@@ -299,40 +299,33 @@ function initilize()
     --c1:send_output()
     log('----------')
 
-    local dhcp_watcher = FlowObjectMqttSubscribe:new()
-    dhcp_watcher:setup('FlowObjectMqttSubscribe', 'dhcp_watcher', '_uid_1')
+    local dhcp_watcher = FlowObjectMqttSubscribe:new{instance_name='dhcp_watcher', unique_id='_uid_1'}
     dhcp_watcher:add_general('subscribed_topic', 'dhcp/_announce')
 
-    local registered_users = FlowObjectReadFile:new()
-    registered_users:setup('FlowObjectReadFile', 'registered_users', '_uid_2')
+    local registered_users = FlowObjectReadFile:new({instance_name='registered_users', unique_id='_uid_2'})
     registered_users:add_general('filename', '/etc/homeautomation/registered_users.conf')
 
-    local consolidate = FlowObjectCombineData:new()
-    consolidate:setup('FlowObjectCombineData', 'consolidate', '_uid_3')
+    local consolidate = FlowObjectCombineData:new({instance_name='consolidate', unique_id='_uid_3'})
     consolidate:add_input('default_in', {primary_key_label = '_subject'})
 
-    local someone_home = FlowObjectMapValues:new()
-    someone_home:setup('FlowObjectMapValues', 'someone_home', '_uid_4')
+    local someone_home = FlowObjectMapValues:new({instance_name='someone_home', unique_id='_uid_4'})
     someone_home:add_input('default_in', {label = '_user_name',
                                          rules = { _a = {match = '_missing',
                                                          action = '_drop'},
                                                    _b = {match = '_else',
                                                          action = '_forward'} } })
 
-    local combine_users = FlowObjectAddData:new()
-    combine_users:setup('FlowObjectAddData', 'combine_users', '_uid_5')
+    local combine_users = FlowObjectAddData:new({instance_name='combine_users', unique_id='_uid_5'})
     combine_users:add_input('default_in', {primary_key_label = '_subject'})
 
-    local modify_label = FlowObjectMapLabels:new()
-    modify_label:setup('FlowObjectMapLabels', 'modify_label', '_uid_6')
+    local modify_label = FlowObjectMapLabels:new({instance_name='modify_label', unique_id='_uid_6'})
     modify_label:add_input('default_in', {rules = { _a = {match = '_reachable',
                                                        action = '_string',
                                                        value = '_command'},
                                                  _b = {match = '_else',
                                                        action = '_drop'} } } )
 
-    local modify_value = FlowObjectMapValues:new()
-    modify_value:setup('FlowObjectMapValues', 'modify_value', '_uid_7')
+    local modify_value = FlowObjectMapValues:new({instance_name='modify_value', unique_id='_uid_7'})
     modify_value:add_input('default_in', {label = '_command',
                                        rules = { _a = {match = 'true',
                                                        action = '_string',
@@ -341,11 +334,9 @@ function initilize()
                                                        action = '_string',
                                                        value = 'off'} } })
 
-    local tag_time = FlowObjectAddTime:new()
-    tag_time:setup('FlowObjectAddTime', 'tag_time', '_uid_10')
+    local tag_time = FlowObjectAddTime:new({instance_name='tag_time', unique_id='_uid_10'})
  
-    local set_jess_warning_lamp = FlowObjectMqttPublish:new()
-    set_jess_warning_lamp:setup('FlowObjectMqttPublish', 'set_jess_warning_lamp', '_uid_9')
+    local set_jess_warning_lamp = FlowObjectMqttPublish:new({instance_name='set_jess_warning_lamp', unique_id='_uid_9'})
     set_jess_warning_lamp:add_general('publish_topic', 'lighting/extension/jess_warning_lamp')
 
     registered_users:add_link(consolidate, 'default_in', 'default_out')
@@ -563,6 +554,7 @@ end
 -- Create a webpage of all the information contained in "info".
 -- Currently used as a debugging aid but may be used later so we can create dashboards without access to MQTT.
 function create_web_page(filename, data)
+  log('create_web_page')
   if info.host.processes.uhttpd.enabled == true then
     local handle = io.open(TEMP_DIR .. filename .. '.tmp', "w") 
     if handle then
@@ -584,7 +576,9 @@ function _itterate_info(info_branch, key, output)
     local table_populated
     for name, value in pairs(info_branch) do
       table_populated = true
-      if key ~= '' then
+      if tostring(name) == '__index' then
+        -- Pass
+      elseif key ~= '' then
         output = _itterate_info(value, key .. '.' .. tostring(name), output)
       else
         output = _itterate_info(value, name, output)

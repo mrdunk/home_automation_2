@@ -30,7 +30,6 @@ function control.new()
     os.execute('ln -s ' .. TEMP_DIR .. 'control.txt ' .. WEB_DIR .. 'control.txt')
   end
 
-
   return self
 end
 
@@ -98,28 +97,38 @@ end
 component = {}
 
 function component:new(o)
-  log("component.new()")
-
+  log('component:new()')
   o = o or {}
+  
   setmetatable(o, self)
   self.__index = self
+
+  if o.object_type then
+    log('o.object_type:', o.object_type)
+    self.object_type = o.object_type
+  end
+    
+  if o.unique_id then
+	  o:setup(o.instance_name, o.unique_id)
+  end
 
   return o
 end
 
-function component:setup(object_type, instance_name, unique_id)
-  self.object_type = object_type
+function component:setup(instance_name, unique_id)
+  log('component:setup(', instance_name, unique_id, ')')
   self.unique_id = unique_id
+  self.object_type = self.object_type  -- Copy from constructor to object so it serialises using JSON methods.
 
-  -- self._subject is the unique identifier on the web interface.
-  -- TODO check for duplicate instance_name.
-  self._subject = 'control/' .. instance_name
-  
   self.data = {}
   self.data.general = {}
   self.data.inputs = {}
   self.data.outputs = {}
 
+  -- self._subject is the unique identifier on the web interface.
+  -- TODO check for duplicate instance_name.
+  self._subject = 'control/' .. instance_name
+  
   self:add_general('instance_name', instance_name)
 
   -- Add number to any duplicate unique_id.
@@ -207,9 +216,11 @@ function component:send_one_output(data, label)
   if self.data.outputs[label] then
     for _, link_data in pairs(self.data.outputs[label]) do
       print(flatten_data(link_data), info.components[link_data.destination_object])
-      local target_name = info.components[link_data.destination_object]:get_general('instance_name')
-      control_instance:update_log('(' .. self.object_type .. ')' .. self:get_general('instance_name') .. ' -> ' .. flatten_data(data) .. ' -> ' .. target_name .. '\n')
-      info.components[link_data.destination_object]:receive_input(data, link_data.destination_port)
+      if(info.components[link_data.destination_object] and info.components[link_data.destination_object]:get_general('instance_name')) then
+        local target_name = info.components[link_data.destination_object]:get_general('instance_name')
+        control_instance:update_log('(' .. self.object_type .. ')' .. self:get_general('instance_name') .. ' -> ' .. flatten_data(data) .. ' -> ' .. target_name .. '\n')
+        info.components[link_data.destination_object]:receive_input(data, link_data.destination_port)
+      end
     end
   end
 end
@@ -224,11 +235,12 @@ function component:receive_input(data, label)
 end
 
 
+FlowObjectMqttSubscribe = component:new({object_type='FlowObjectMqttSubscribe'})
 
-FlowObjectMqttSubscribe = component:new()
+function FlowObjectMqttSubscribe:setup(instance_name, unique_id)
+	log('FlowObjectMqttSubscribe:setup(', instance_name, unique_id, ')')
 
-function FlowObjectMqttSubscribe:setup(object_type, instance_name, unique_id)
-  component.setup(self, object_type, instance_name, unique_id)
+  component.setup(self, instance_name, unique_id)
   info.mqtt.callbacks[instance_name] = self
 end
 
@@ -256,7 +268,7 @@ function FlowObjectMqttSubscribe:subscribe()
 end
 
 
-FlowObjectMapValues = component:new()
+FlowObjectMapValues = component:new({object_type='FlowObjectMapValues'})
 
 function FlowObjectMapValues:receive_input(data, l)
   log(" ~~", "FlowObjectMapValues:receive_input(", flatten_data(data), l, ")")
@@ -298,7 +310,7 @@ function FlowObjectMapValues:receive_input(data, l)
 end
 
 
-FlowObjectMapLabels = component:new()
+FlowObjectMapLabels = component:new({object_type='FlowObjectMapLabels'})
 
 function FlowObjectMapLabels:receive_input(data, l)
   log(" ==", "FlowObjectMapLabels:receive_input(", data, l, ")")
@@ -383,7 +395,7 @@ function in_time_window(time_start, time_end, time_now)
 end]]--
 
 
-FlowObjectMqttPublish = component:new()
+FlowObjectMqttPublish = component:new({object_type='FlowObjectMqttPublish'})
 
 function FlowObjectMqttPublish:receive_input(data, l)
 	local topic = 'homeautomation/0/' .. self.data.general.publish_topic.value
@@ -456,10 +468,11 @@ function FlowObjectReadFile:send_output(match_data_label, match_data_value)
 end
 
 
-FlowObjectCombineData = component:new()
+FlowObjectCombineData = component:new({object_type='FlowObjectCombineData'})
 
-function FlowObjectCombineData:setup(object_type, instance_name, unique_id)
-  component.setup(self, object_type, instance_name, unique_id)
+function FlowObjectCombineData:setup(instance_name, unique_id)
+  log('FlowObjectCombineData:setup(', instance_name, unique_id, ')')
+  component.setup(self, instance_name, unique_id)
   self.data.data = {}
 end
 
@@ -480,10 +493,11 @@ function FlowObjectCombineData:receive_input(data, input_label)
 end
 
 
-FlowObjectAddData = component:new()
+FlowObjectAddData = component:new({object_type='FlowObjectAddData'})
 
-function FlowObjectAddData:setup(object_type, instance_name, unique_id)
-  component.setup(self, object_type, instance_name, unique_id)
+function FlowObjectAddData:setup(instance_name, unique_id)
+  log('FlowObjectAddData:setup(', instance_name, unique_id, ')')
+  component.setup(self, instance_name, unique_id)
   self.data.data = {}
 end
 
@@ -573,10 +587,11 @@ function flatten_data(data_in)
 
     return data_out:sub(0, -3)
   end
+  return ''
 end
 
 
-FlowObjectAddTime = component:new()
+FlowObjectAddTime = component:new({object_type='FlowObjectAddTime'})
 
 function FlowObjectAddTime:receive_input(data, l)
   log(" ^^", "FlowObjectAddTime:receive_input(", flatten_data(data), l, ")")
