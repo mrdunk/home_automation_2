@@ -1,10 +1,8 @@
 #!/usr/bin/lua
 
--- # opkg install luci-lib-json
-local json = require "luci.json"
+require 'helper_functions'
 
 info.components = {}
-
 
 
 local control = {}
@@ -36,7 +34,7 @@ end
 function control:subscribe()
 	local subscriptions = {}
 
-	subscriptions[#subscriptions +1] = {role = 'component', address = 'current'}
+  subscriptions[#subscriptions +1] = {role = 'control', address = '_announce'}
 
 	return subscriptions
 end
@@ -67,7 +65,23 @@ function control:callback(path, incoming_data)
 
 	local incoming_command = incoming_data._command
 	if incoming_command == 'solicit' then
+    -- TODO Only one needs to respond if there is more than one of these on the network.
 		self:announce()
+  elseif incoming_data.unique_id then
+    log(incoming_data.unique_id, flatten_data(incoming_data))
+    local object = self:object_from_uid(incoming_data.unique_id)
+    
+    if(object == nil) then
+      -- New object needed.
+      if get_path(incoming_data, 'data.general.instance_name') and incoming_data.unique_id and incoming_data.object_type then
+			  local instance_name = incoming_data.data.general.instance_name.value
+				print('New object:', incoming_data.object_type, instance_name, incoming_data.unique_id)
+				object = _G[incoming_data.object_type]:new{instance_name=instance_name, unique_id=incoming_data.unique_id}
+      end
+    end
+		if(object ~= nil) then
+      object:merge(incoming_data)
+    end
 	end
 end
 
@@ -89,6 +103,10 @@ function control:update_log(data)
     control.filehandle:write(tostring(control.line_count) .. ' ' .. os.date("%Y/%b/%d %I:%M:%S") .. '\t' .. data)
     control.line_count = control.line_count +1
   end
+end
+
+function control:object_from_uid(unique_id)
+  return info.components[unique_id]
 end
 
 
@@ -139,6 +157,20 @@ function component:setup(instance_name, unique_id)
   end
   self.unique_id = unique_id
   info.components[unique_id] = self
+end
+
+function component:merge(new_data)
+  if get_path(new_data, 'data.general.instance_name') then
+    self:add_general('instance_name', new_data.data.general.instance_name.value)
+  end
+
+  if get_path(new_data, 'shape') then
+    self.shape = new_data.shape
+  end
+
+	if get_path(new_data, 'data.outputs') then
+    self.data.outputs = new_data.data.outputs
+	end
 end
 
 function component:add_general(label, value)
@@ -215,10 +247,11 @@ function component:send_one_output(data, label)
 
   if self.data.outputs[label] then
     for _, link_data in pairs(self.data.outputs[label]) do
-      print(flatten_data(link_data), info.components[link_data.destination_object])
+      --print(flatten_data(link_data), info.components[link_data.destination_object])
+      log('component:send_one_output:', self.unique_id, label, '->', link_data.destination_object, link_data.destination_port)
       if(info.components[link_data.destination_object] and info.components[link_data.destination_object]:get_general('instance_name')) then
         local target_name = info.components[link_data.destination_object]:get_general('instance_name')
-        control_instance:update_log('(' .. self.object_type .. ')' .. self:get_general('instance_name') .. ' -> ' .. flatten_data(data) .. ' -> ' .. target_name .. '\n')
+        --control_instance:update_log('(' .. self.object_type .. ')' .. self:get_general('instance_name') .. ' -> ' .. flatten_data(data) .. ' -> ' .. target_name .. '\n')
         info.components[link_data.destination_object]:receive_input(data, link_data.destination_port)
       end
     end
@@ -245,7 +278,7 @@ function FlowObjectMqttSubscribe:setup(instance_name, unique_id)
 end
 
 function FlowObjectMqttSubscribe:receive_mqtt(data, label)
-  log(" ", "FlowObjectMqttSubscribe:receive_input() triggered", label)
+  --log(" ", "FlowObjectMqttSubscribe:receive_input() triggered", label)
   self:send_output(data)
 end
 
@@ -271,7 +304,7 @@ end
 FlowObjectMapValues = component:new({object_type='FlowObjectMapValues'})
 
 function FlowObjectMapValues:receive_input(data, l)
-  log(" ~~", "FlowObjectMapValues:receive_input(", flatten_data(data), l, ")")
+  --log(" ~~", "FlowObjectMapValues:receive_input(", flatten_data(data), l, ")")
   local label = self.data.inputs.default_in.value.label
   local rules = self.data.inputs.default_in.value.rules
 
@@ -281,7 +314,7 @@ function FlowObjectMapValues:receive_input(data, l)
     if label == data_label then
       found_label = label
       found_value = data_value
-      log(" ~~", found_label, found_value)
+      --log(" ~~", found_label, found_value)
     end
   end
 
@@ -290,18 +323,18 @@ function FlowObjectMapValues:receive_input(data, l)
     -- TODO: Handle numbers.
     if tostring(rule.match) == tostring(found_value) or rule.match == '_else' or (rule.match == '_missing' and found_label == nil) then
       if rule.action == '_forward' then
-        log("~~~~~", rule.match, '_forward', found_label, found_value)
-        log("~~~~~", flatten_data(data))
+        --log("~~~~~", rule.match, '_forward', found_label, found_value)
+        --log("~~~~~", flatten_data(data))
         self:send_output(data)
         break
       elseif rule.action == '_string' or rule.action == '_boolean' then
-        log("~~~~~", 'modify', found_label, found_value, rule.value)
+        --log("~~~~~", 'modify', found_label, found_value, rule.value)
         data[found_label] = rule.value
-        log("~~~~~", flatten_data(data))
+        --log("~~~~~", flatten_data(data))
         self:send_output(data)
         break
       elseif rule.action == '_drop' then
-        log("~~~~~", rule.match, '_drop')
+        --log("~~~~~", rule.match, '_drop')
         control_instance:update_log('(' .. self.object_type .. ')' .. self:get_general('instance_name') .. ' -> ' .. flatten_data(data) .. ' -> DROP\n')
         break
       end
@@ -313,7 +346,7 @@ end
 FlowObjectMapLabels = component:new({object_type='FlowObjectMapLabels'})
 
 function FlowObjectMapLabels:receive_input(data, l)
-  log(" ==", "FlowObjectMapLabels:receive_input(", data, l, ")")
+  --log(" ==", "FlowObjectMapLabels:receive_input(", data, l, ")")
   local forward_data = {}
   local rules = self.data.inputs.default_in.value.rules
 
@@ -332,67 +365,9 @@ function FlowObjectMapLabels:receive_input(data, l)
       end
     end
   end
-  log("=====", flatten_data(forward_data))
+  --log("=====", flatten_data(forward_data))
   self:send_output(forward_data)
 end
-
-
---[[component_time_window = component:new()
-
-function component_time_window:receive_input(data, l)
-  -- TODO: Make 2 outputs: one for within_window and one for outside_window.
-  -- TODO: Make this re-send last received data whenever we tick over to within_window/outside_window.
-
-  log(" @@", "component_time_window:receive_input(", data, l, ")")
-  self.last_data = data
-
-  local forward_data = {}
-
-  if in_time_window(tonumber(self.data.general.start_time), tonumber(self.data.general.end_time), tonumber(os.date('%H'))) then
-    if self.data.general.within_window.action == '_forward' then
-      forward_data = data
-    elseif self.data.general.within_window.action == 'custom' then
-      local label = self.data.general.within_window.label
-      local value = self.data.general.within_window.value
-      if label ~= nil and value ~= nil then
-        forward_data[label] = value
-      end
-    end
-  else
-    if self.data.general.outside_window.action == '_forward' then
-      forward_data = data
-    elseif self.data.general.outside_window.action == 'custom' then
-      local label = self.data.general.outside_window.label
-      local value = self.data.general.outside_window.value
-      if label ~= nil and value ~= nil then
-	      forward_data[label] = value
-			end
-    end
-	end
-	log("@@@@@", flatten_data(forward_data))
-	self:send_output(forward_data)
-end
-
-function in_time_window(time_start, time_end, time_now)
-	while time_now >= 24 do
-		time_now = time_now - 24
-	end
-
-  if time_start < time_end then
-    if time_start <= time_now and time_end > time_now then
-      return true
-    end
-  else
-		-- Time window straddles midnight.
-    if time_start <= time_now and 24 > time_now then
-      return true
-    elseif 0 <= time_now and time_end > time_now then
-      return true
-    end
-	end
-
-  return false
-end]]--
 
 
 FlowObjectMqttPublish = component:new({object_type='FlowObjectMqttPublish'})
@@ -400,12 +375,12 @@ FlowObjectMqttPublish = component:new({object_type='FlowObjectMqttPublish'})
 function FlowObjectMqttPublish:receive_input(data, l)
 	local topic = 'homeautomation/0/' .. self.data.general.publish_topic.value
 	local payload = flatten_data(data)
-	log("&&&&& FlowObjectMqttPublish:receive_input:", topic, payload)
+	--log("&&&&& FlowObjectMqttPublish:receive_input:", topic, payload)
 	mqtt_instance:publish(topic, payload)
 end
 
 
-FlowObjectReadFile = component:new()
+FlowObjectReadFile = component:new({object_type='FlowObjectReadFile'})
 
 function FlowObjectReadFile:add_link(destination_component, destination_port_label, source_port_label)
   component.add_link(self, destination_component, destination_port_label, source_port_label)
@@ -460,7 +435,7 @@ function FlowObjectReadFile:send_output(match_data_label, match_data_value)
     local parsed_file_data = parse_payload(file_data)
     if parsed_file_data then
       if match_data_label == nil or parsed_file_data[match_data_label] == match_data_value then
-        log('+++++', match_data_label, match_data_value, flatten_data(parsed_file_data))
+        --log('+++++', match_data_label, match_data_value, flatten_data(parsed_file_data))
 	      component.send_output(self, parsed_file_data)
       end
     end
@@ -487,7 +462,7 @@ function FlowObjectCombineData:receive_input(data, input_label)
       end
       self.data.data[primary_key][label] = value
     end
-    log("-----", flatten_data(self.data.data[primary_key]))
+    --log("-----", flatten_data(self.data.data[primary_key]))
 		self:send_output(self.data.data[primary_key])
   end
 end
@@ -502,7 +477,7 @@ function FlowObjectAddData:setup(instance_name, unique_id)
 end
 
 function FlowObjectAddData:receive_input(data, input_label)
-  log("'''''", flatten_data(data))
+  --log("'''''", flatten_data(data))
   local primary_key_label = self.data.inputs.default_in.value.primary_key_label
 
   if data[primary_key_label] == nil then
@@ -522,16 +497,16 @@ function FlowObjectAddData:receive_input(data, input_label)
 	for _, entry in pairs(self.data.data) do
 		for label, value in pairs(entry) do
 			if label ~= primary_key_label then
-        log("'''''", "", label, value)
+        --log("'''''", "", label, value)
         if combined_entry[label] == nil then
           if tonumber(value) ~= nil then
-            log("'''''", "", 'number')
+            --log("'''''", "", 'number')
             combined_entry[label] = tonumber(value)
           elseif toBoolean(value) ~= nil then
-            log("'''''", "", 'bool')
+            --log("'''''", "", 'bool')
             combined_entry[label] = toBoolean(value)
           elseif type(value) == 'string' then
-            log("'''''", "", 'string')
+            --log("'''''", "", 'string')
             combined_entry[label] = value
           end
         elseif type(combined_entry[label]) == 'string' then
@@ -555,7 +530,7 @@ function FlowObjectAddData:receive_input(data, input_label)
       end
     end
 	end
-	log("'''''", flatten_data(combined_entry))
+	--log("'''''", flatten_data(combined_entry))
 	self:send_output(combined_entry)
 end
 
@@ -594,13 +569,13 @@ end
 FlowObjectAddTime = component:new({object_type='FlowObjectAddTime'})
 
 function FlowObjectAddTime:receive_input(data, l)
-  log(" ^^", "FlowObjectAddTime:receive_input(", flatten_data(data), l, ")")
+  --log(" ^^", "FlowObjectAddTime:receive_input(", flatten_data(data), l, ")")
 
   data._time_weekday = os.date('%w')
   data._time_hour = os.date('%H')
   data._time_minute = os.date('%M')
   
-  log(" ^^", "FlowObjectAddTime:receive_input(", flatten_data(data), l, ")")
+  --log(" ^^", "FlowObjectAddTime:receive_input(", flatten_data(data), l, ")")
 	self:send_output(data)
 end
 

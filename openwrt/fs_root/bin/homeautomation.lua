@@ -16,6 +16,8 @@
 package.path = package.path .. ';/usr/share/homeautomation/?.lua'
 require 'os'
 require 'file_utils'
+-- # opkg install luci-lib-json
+json = require "luci.json"
 
 -- Globals
 info = {}
@@ -50,7 +52,7 @@ function mqtt_instance_ON_PUBLISH()
 end
 
 function mqtt_instance_ON_MESSAGE(mid, topic, payload)
-  --log(" ** mqtt_instance_ON_MESSAGE", mid, topic, payload)
+  --log("mqtt_instance_ON_MESSAGE", mid, topic, payload)
 
   if topic == nil or payload == nil then
     return
@@ -119,7 +121,7 @@ function parse_payload(data)
   for _, atom in pairs(atoms) do
     local key, value = atom:match("^%s*([%w_]+)%s*:%s*([%w_./]+)")
     if key == nil then
-      -- Values with whitespace in them bust be surrounded by quotes. (")
+      -- Values with whitespace in them must be surrounded by quotes. (")
       key, value = atom:match("^%s*([%w_]+)%s*:%s*\"([%s%w_./]+)\"")
     end
     if key ~= nil then
@@ -131,7 +133,8 @@ function parse_payload(data)
   if valid_data == true then
     return return_table
   end
-  return nil
+
+  return json.decode(data)
 end
 
 function subscribe_to_all(class_instance, role, address)
@@ -188,7 +191,7 @@ function match_paths(path_one, path_two, all)
       return
     end
   end
-  log("Match:", path_one, path_two)
+  --log("Match:", path_one, path_two)
   return true
 end
 
@@ -215,7 +218,6 @@ function initilize()
 
   info.mqtt = {}
   info.mqtt.callbacks = {}
-
 
   if not info.mqtt.subscriptions then
     info.mqtt.subscriptions = {}
@@ -279,24 +281,6 @@ function initilize()
       info.mqtt.callbacks['control'] = control_instance
 
     
-    --local c1 = component:new()
-    --c1:setup('c1')
-    
-    --local c2 = FlowObjectMqttSubscribe:new()
-    --c2:setup('c2')
-
-    --local c3 = component_cache:new()
-    --c3:setup('c3')
-
-    --c2:add_link(c3)
-    --c2:add_input('dhcp/_all')
-
-    --c1:display()
-    --c2:display()
-    --c3:display()
-
-    log('----------')
-    --c1:send_output()
     log('----------')
 
     local dhcp_watcher = FlowObjectMqttSubscribe:new{instance_name='dhcp_watcher', unique_id='_uid_1'}
@@ -554,7 +538,7 @@ end
 -- Create a webpage of all the information contained in "info".
 -- Currently used as a debugging aid but may be used later so we can create dashboards without access to MQTT.
 function create_web_page(filename, data)
-  log('create_web_page')
+  --log('create_web_page')
   if info.host.processes.uhttpd.enabled == true then
     local handle = io.open(TEMP_DIR .. filename .. '.tmp', "w") 
     if handle then
