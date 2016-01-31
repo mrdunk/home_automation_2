@@ -262,6 +262,7 @@ xtag.register('ha-flowobject-data', {
       list_content = this.getElementsByClassName('input')[0];
       for(var input_id in data.inputs){
         var input_attributes = document.createElement('ha-input-attributes');
+        console.log(input_id, data.inputs[input_id]);
         input_attributes.populate(data.inputs[input_id], flow_object);
         list_content.appendChild(input_attributes);
       }
@@ -290,10 +291,13 @@ xtag.register('ha-input-attributes', {
       var form = this.getElementsByClassName('form')[0];
 
       // Modifiable attributes.
-      for(var label in data.peramiters){
-        var general_attributes = document.createElement(data.peramiters[label].updater);
-        general_attributes.populate(data.peramiters[label], flow_object);
-        form.appendChild(general_attributes);        
+      for(var label in data){
+        if(typeof(data[label]) === 'object'){
+          console.log(label, data[label]);
+          var general_attributes = document.createElement(data[label].updater);
+          general_attributes.populate(data[label], flow_object);
+          form.appendChild(general_attributes);
+        }
       }
     }
   }
@@ -742,37 +746,46 @@ xtag.register('ha-transitions', {
 xtag.register('ha-topic-chooser', {
   lifecycle:{
     created: function(){
+      var template = document.getElementById('ha-output-attribute').innerHTML;
+      xtag.innerHTML(this, template);
     },
-  },
-  events: {
-    change: function(event){
-      console.log('ha-topic-chooser: change', event, event.target.value);
-      this.flow_object.data.data.general.subscribed_topic.value = event.target.value;
-      
-      this.flow_object.setContents();
-      this.flow_object.displaySideBar();
-      //this.flow_object.setAdjacentInputSamples();
-      console.log(this.flow_object.data.data.outputs[0]);
-    }
   },
   methods: {
     populate: function(data, flow_object){
+      this.getElementsByClassName('description')[0].innerHTML = data.description;
+
       this.flow_object = flow_object;
       var topic_list = [];
       var key;
       for(key in Data.mqtt_data){
         if(typeof(key) === 'string' && key !== 'updated' && typeof(Data.mqtt_data[key]) === 'object'){
           topic_list.push(key);
+
+          if(SUBJECTS_ARE_TARGETS.indexOf(key) >= 0){
+            for(var i=0; i < Data.mqtt_data[key].length; i++){
+              topic_list.push(Data.mqtt_data[key][i]._subject);
+            }
+          }
         }
       }
-      topic_list = Data.ExpandTopics(topic_list);
+      //topic_list = Data.ExpandTopics(topic_list);
+
+      var container = document.createElement('span');
+      this.getElementsByClassName('form')[0].appendChild(container);
+
+      var topic_header = document.createElement('div');
+      topic_header.innerHTML = 'homeautomation/+/';
+      container.appendChild(topic_header);
+
+      var input_wrapper = document.createElement('div');
+      container.appendChild(input_wrapper);
 
       var input = document.createElement('input');
       input.setAttribute('list', 'topics');
       input.setAttribute('name', 'topics');
       input.setAttribute('value', data.value);
-      this.appendChild(input);
-      
+      input_wrapper.appendChild(input);
+
       var datalist = document.createElement('DATALIST');
       datalist.id = 'topics';
       this.appendChild(datalist);
@@ -781,9 +794,18 @@ xtag.register('ha-topic-chooser', {
 			datalist.appendChild(option);
       for(key in topic_list){
         option = document.createElement("OPTION");
-        option.setAttribute("value", 'homeautomation/+/' + topic_list[key]);
+        option.setAttribute("value", topic_list[key]);
         datalist.appendChild(option);
       }
+
+      input.onchange = this.update_callback.bind({element: input, data: data, flow_object: flow_object});
+    },
+    update_callback: function(update_event){
+      console.log('update_callback', this, update_event);
+			this.data.value = this.element.value;
+
+			this.flow_object.setContents();
+      this.flow_object.displaySideBar();
     }
   }
 });

@@ -1,6 +1,6 @@
 /*global BROKER_ADDRESS*/ 
 /*global BROKER_PORT*/ 
-/*global ANNOUNCE_SUBSCRIPTION*/ 
+/*global UI_SUBSCRIPTION*/ 
 /*global USE_TLS*/ 
 /*global CLEANSESSION*/ 
 /*global username*/ 
@@ -59,6 +59,8 @@ Data.storeIncomingMqtt = function(topic, data) {
 
   dataReceived(topic, data);
   Data.cleanOutOfDateMqtt(MQTT_CACHE_TIME);
+
+  console.log(Data.mqtt_data)
 };
 
 Data.cleanOutOfDateMqtt = function(max_age){
@@ -141,8 +143,8 @@ Mqtt.MQTTconnect = function() {
 Mqtt.onConnect = function() {
   'use strict';
   console.log('Connected to ' + BROKER_ADDRESS + ':' + BROKER_PORT);
-  Mqtt.broker.subscribe(ANNOUNCE_SUBSCRIPTION, {qos: 0});
-  console.log('Subscribed: ' + ANNOUNCE_SUBSCRIPTION);
+  Mqtt.broker.subscribe(UI_SUBSCRIPTION, {qos: 0});
+  console.log('Subscribed: ' + UI_SUBSCRIPTION);
 
   Mqtt.send(Page.topics.all_devices, '_command : solicit');
   console.log('Sent: ' + Page.topics.all_devices + ' = {_command : solicit}');
@@ -151,6 +153,7 @@ Mqtt.onConnect = function() {
 Mqtt.onConnectionLost = function(response) {
   'use strict';
   setTimeout(Mqtt.MQTTconnect, Mqtt.reconnectTimeout);
+  console.log('----------------------------------------------');
   console.log("connection lost: " + response.errorMessage + ". Reconnecting");
 };
 
@@ -226,7 +229,7 @@ Mqtt.data_to_object = function(data) {
 
   // The "_subject" in data_object refers to the target that this MQTT packet is about and
   // should also look like a topic.
-  if (!data_object._subject.match(Mqtt.regex_topic)) {
+  if (data_object._subject && !data_object._subject.match(Mqtt.regex_topic)) {
     console.log('Mqtt.onMessageArrived: Malformed _subject: ' + data_object._subject);
     return;
   }

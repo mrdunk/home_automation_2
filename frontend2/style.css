@@ -156,8 +156,11 @@ ha-transitions .output-transition div {
 	height: 1.4em;
 }
 
+ha-topic-chooser div {
+  display: inline-block;
+}
+
 ha-topic-chooser input {
-  width: 20em;
 }
 
 ha-input-attributes div.form, ha-output-attributes div.form {

@@ -146,23 +146,25 @@ Raphael.st.setInputs = function(parent_context){
         }
         var height_offset = 0;
         for(var data_key in parent_context.data.data.inputs){
-          var port_label = parent_context.data.data.inputs[data_key].port_label;
-          var object_id = parent_context.data.unique_id;
-          var shape = this.paper.rect(x - PORT_WIDTH, y + PORT_HEIGHT + (i * PORT_HEIGHT), PORT_WIDTH, PORT_HEIGHT, 2);
-          shape.data('port_label', port_label);
-					shape.data('port_type', 'input');
-          shape.data('object_id', object_id);
-          shape.x_offset = -PORT_WIDTH;
-          shape.y_offset = PORT_HEIGHT + (height_offset * PORT_HEIGHT);
-          shape.attr({"fill": color, "stroke": "#000"});
-          shape.label = port_label;
-          
-				  shape.mouseover(parent_context.onmouseover);
-          shape.mouseout(parent_context.onmouseout);
-          shape.mouseup(parent_context.onmouseup);
+          if(parent_context.data.data.inputs[data_key].port_label !== undefined){
+            var port_label = parent_context.data.data.inputs[data_key].port_label;
+            var object_id = parent_context.data.unique_id;
+            var shape = this.paper.rect(x - PORT_WIDTH, y + PORT_HEIGHT + (i * PORT_HEIGHT), PORT_WIDTH, PORT_HEIGHT, 2);
+            shape.data('port_label', port_label);
+            shape.data('port_type', 'input');
+            shape.data('object_id', object_id);
+            shape.x_offset = -PORT_WIDTH;
+            shape.y_offset = PORT_HEIGHT + (height_offset * PORT_HEIGHT);
+            shape.attr({"fill": color, "stroke": "#000"});
+            shape.label = port_label;
 
-          this.items[i].push(shape);
-          height_offset++;
+            shape.mouseover(parent_context.onmouseover);
+            shape.mouseout(parent_context.onmouseout);
+            shape.mouseup(parent_context.onmouseup);
+
+            this.items[i].push(shape);
+            height_offset++;
+          }
         }
         // For some reason new shapes added to a set do not appear until they are moved.
         setBoxPosition(this.items[i], x, y);
@@ -286,9 +288,9 @@ Raphael.el.getShapePosition = function(){
 
 Raphael.el.setBoxPosition = function(x, y){
   'use strict';
+  //console.log('Raphael.el.setBoxPosition(', x, y, ')')
   if(x !== undefined && y !== undefined){
     setBoxPosition(this.data('whole_shape'), x, y);
-    //setBoxPosition(this, x, y);
   }
 
   var object = getFlowObjectByUniqueId(this.getIdentity().object_id);

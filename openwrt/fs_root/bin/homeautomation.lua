@@ -285,9 +285,10 @@ function initilize()
 
     local dhcp_watcher = FlowObjectMqttSubscribe:new{instance_name='dhcp_watcher', unique_id='_uid_1'}
     dhcp_watcher:add_general('subscribed_topic', 'dhcp/_announce')
+    dhcp_watcher:add_input('subscription', {subscribed_topic = {value = 'dhcp/_announce'}})
 
     local registered_users = FlowObjectReadFile:new({instance_name='registered_users', unique_id='_uid_2'})
-    registered_users:add_general('filename', '/etc/homeautomation/registered_users.conf')
+    registered_users:add_input('load_from_file', {filename = {value = '/etc/homeautomation/registered_users.conf'}})
 
     local consolidate = FlowObjectCombineData:new({instance_name='consolidate', unique_id='_uid_3'})
     consolidate:add_input('default_in', {primary_key_label = '_subject'})

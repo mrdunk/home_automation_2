@@ -3,15 +3,26 @@
 require 'helper_functions'
 
 info.components = {}
+info.thread_counter = 0
 
 
 local control = {}
 control.__index = control
 
+function TableConcat(t1,t2)
+	if t1 == nil or #t1 == 0 then
+		return t2
+  end
+
+  for i=1, #t2 do
+    t1[#t1 +1] = t2[i]
+  end
+  return t1
+end
+
 function control.new()
   log("control.new()")
   local self = setmetatable({}, control)
-
 
   if not is_file_or_dir(WEB_DIR) then
     log('Creating ' .. WEB_DIR)
@@ -93,7 +104,7 @@ function control:open_log()
 end
 
 function control:update_log(data)
-  if info.host.processes.uhttpd.enabled == true then
+  --if info.host.processes.uhttpd.enabled == true then
     if(control.line_count > 1000) then
       control.filehandle:close()
       control.filehandle = nil
@@ -102,7 +113,7 @@ function control:update_log(data)
     self:open_log()
     control.filehandle:write(tostring(control.line_count) .. ' ' .. os.date("%Y/%b/%d %I:%M:%S") .. '\t' .. data)
     control.line_count = control.line_count +1
-  end
+  --end
 end
 
 function control:object_from_uid(unique_id)
@@ -186,12 +197,11 @@ function component:get_general(label)
 end
 
 function component:add_input(label, value)
-  log("component:add_input(", label, ")")
+  log("component:add_input(", label, value, ")")
   label = label or 'default_in'
   label = path_to_var(label)
-  
-  self.data.inputs[label] = {}
-  self.data.inputs[label].value = value
+  print('@@',label)
+  self.data.inputs[label] = value
 end
 
 function component:add_link(destination_component, destination_port_label, source_port_label)
@@ -230,13 +240,17 @@ function component:display()
   end
 end
 
-function component:send_output(data)
+function component:send_output(data, output_label)
   if data == nil then
     return
   end
 
-  for label, _ in pairs(self.data.outputs) do
-    self:send_one_output(data, label)
+  if output_label ~= nil then
+    self:send_one_output(data, output_label)
+  else
+    for label, _ in pairs(self.data.outputs) do
+      self:send_one_output(data, label)
+    end
   end
 end
 
@@ -245,9 +259,21 @@ function component:send_one_output(data, label)
   --log("component:send_output(", data, label, ")")
   label = label or 'default_out'
 
+  -- Send debug data.
+  -- TODO. Allow this to be turned on/off.
+  local topic = 'homeautomation/0/debug/' .. self.unique_id .. '/out/' .. label
+  --local payload = flatten_data(data)
+  local payload = json.encode(data)
+  mqtt_instance:publish(topic, payload)
+  control_instance:update_log(topic .. '\t' .. payload .. '\n')
+
+  if label == '_drop' then
+    --control_instance:update_log('(' .. self.object_type .. ')' .. self:get_general('instance_name') .. ' -> ' .. flatten_data(data) .. ' -> DROP\n')
+    return
+  end
+
   if self.data.outputs[label] then
     for _, link_data in pairs(self.data.outputs[label]) do
-      --print(flatten_data(link_data), info.components[link_data.destination_object])
       log('component:send_one_output:', self.unique_id, label, '->', link_data.destination_object, link_data.destination_port)
       if(info.components[link_data.destination_object] and info.components[link_data.destination_object]:get_general('instance_name')) then
         local target_name = info.components[link_data.destination_object]:get_general('instance_name')
@@ -279,6 +305,9 @@ end
 
 function FlowObjectMqttSubscribe:receive_mqtt(data, label)
   --log(" ", "FlowObjectMqttSubscribe:receive_input() triggered", label)
+  data.thread_track = {}
+  data.thread_track[1] = info.thread_counter
+  info.thread_counter = info.thread_counter +1
   self:send_output(data)
 end
 
@@ -291,7 +320,10 @@ end
 
 function FlowObjectMqttSubscribe:subscribe()
   local subscritions = {}
-  local path = path_to_var(self.data.general.subscribed_topic.value)
+  --local path = path_to_var(self.data.general.subscribed_topic.value)
+  print(self.data.inputs)
+  print(flatten_data(self.data.inputs.subscription))
+  local path = path_to_var(self.data.inputs.subscription.subscribed_topic.value)
   local role, address = path:match('(.-)__(.+)')
   if role and address then
     subscritions[#subscritions +1] = {role = role, address = address}
@@ -305,8 +337,8 @@ FlowObjectMapValues = component:new({object_type='FlowObjectMapValues'})
 
 function FlowObjectMapValues:receive_input(data, l)
   --log(" ~~", "FlowObjectMapValues:receive_input(", flatten_data(data), l, ")")
-  local label = self.data.inputs.default_in.value.label
-  local rules = self.data.inputs.default_in.value.rules
+  local label = self.data.inputs.default_in.label
+  local rules = self.data.inputs.default_in.rules
 
   local found_label, found_value
 
@@ -335,7 +367,8 @@ function FlowObjectMapValues:receive_input(data, l)
         break
       elseif rule.action == '_drop' then
         --log("~~~~~", rule.match, '_drop')
-        control_instance:update_log('(' .. self.object_type .. ')' .. self:get_general('instance_name') .. ' -> ' .. flatten_data(data) .. ' -> DROP\n')
+        --control_instance:update_log('(' .. self.object_type .. ')' .. self:get_general('instance_name') .. ' -> ' .. flatten_data(data) .. ' -> DROP\n')
+        self:send_output(data, '_drop')
         break
       end
     end
@@ -347,8 +380,8 @@ FlowObjectMapLabels = component:new({object_type='FlowObjectMapLabels'})
 
 function FlowObjectMapLabels:receive_input(data, l)
   --log(" ==", "FlowObjectMapLabels:receive_input(", data, l, ")")
-  local forward_data = {}
-  local rules = self.data.inputs.default_in.value.rules
+  local forward_data = {thread_track = data.thread_track}
+  local rules = self.data.inputs.default_in.rules
 
   for data_label, data_value in pairs(data) do
     for _, rule in pairs(rules) do
@@ -393,7 +426,7 @@ function FlowObjectReadFile:add_link(destination_component, destination_port_lab
 end
 
 function FlowObjectReadFile:parse_data_from_file()
-	local filename = self.data.general.filename.value
+	local filename = self.data.inputs.load_from_file.filename.value
 
   if is_file_or_dir(filename) then
     local file_last_read_at = file_mod_time(filename)
@@ -435,8 +468,13 @@ function FlowObjectReadFile:send_output(match_data_label, match_data_value)
     local parsed_file_data = parse_payload(file_data)
     if parsed_file_data then
       if match_data_label == nil or parsed_file_data[match_data_label] == match_data_value then
+        parsed_file_data.thread_track = {}
+        parsed_file_data.thread_track[1] = info.thread_counter
+        info.thread_counter = info.thread_counter +1
+
         --log('+++++', match_data_label, match_data_value, flatten_data(parsed_file_data))
-	      component.send_output(self, parsed_file_data)
+        component.send_output(self, parsed_file_data)
+        --self:send_output(parsed_file_data)
       end
     end
   end
@@ -452,7 +490,7 @@ function FlowObjectCombineData:setup(instance_name, unique_id)
 end
 
 function FlowObjectCombineData:receive_input(data, input_label)
-  local primary_key_label = self.data.inputs.default_in.value.primary_key_label
+  local primary_key_label = self.data.inputs.default_in.primary_key_label
 
   if data[primary_key_label] ~= nil then
     local primary_key = data[primary_key_label]
@@ -478,7 +516,7 @@ end
 
 function FlowObjectAddData:receive_input(data, input_label)
   --log("'''''", flatten_data(data))
-  local primary_key_label = self.data.inputs.default_in.value.primary_key_label
+  local primary_key_label = self.data.inputs.default_in.primary_key_label
 
   if data[primary_key_label] == nil then
     return
@@ -498,7 +536,9 @@ function FlowObjectAddData:receive_input(data, input_label)
 		for label, value in pairs(entry) do
 			if label ~= primary_key_label then
         --log("'''''", "", label, value)
-        if combined_entry[label] == nil then
+        if label == 'thread_track' then
+          combined_entry[label] = TableConcat(combined_entry[label], value)
+        elseif combined_entry[label] == nil then
           if tonumber(value) ~= nil then
             --log("'''''", "", 'number')
             combined_entry[label] = tonumber(value)

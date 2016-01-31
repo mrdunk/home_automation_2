@@ -39,7 +39,7 @@ var dataReceived = function(topic, received_data){
       if(flow_object === undefined || flow_object.data.version < received_data.version){
         console.log('Adding...', received_data);
         flow_object = new flow_objects[index](ha_control.paper, ha_control.sidebar, undefined, received_data);
-        //console.log('Added');
+        console.log('Added');
       }
 
       flow_object.shape.setOutputLinks(flow_object.data.data.outputs);
