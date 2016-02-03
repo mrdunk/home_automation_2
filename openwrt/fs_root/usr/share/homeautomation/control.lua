@@ -10,8 +10,8 @@ local control = {}
 control.__index = control
 
 function TableConcat(t1,t2)
-	if t1 == nil or #t1 == 0 then
-		return t2
+	if t1 == nil then
+		t1 = {}
   end
 
   for i=1, #t2 do
@@ -278,16 +278,16 @@ function component:send_one_output(data, label)
       if(info.components[link_data.destination_object] and info.components[link_data.destination_object]:get_general('instance_name')) then
         local target_name = info.components[link_data.destination_object]:get_general('instance_name')
         --control_instance:update_log('(' .. self.object_type .. ')' .. self:get_general('instance_name') .. ' -> ' .. flatten_data(data) .. ' -> ' .. target_name .. '\n')
-        info.components[link_data.destination_object]:receive_input(data, link_data.destination_port)
+        info.components[link_data.destination_object]:receive_input(data, link_data.destination_port, self.unique_id, label)
       end
     end
   end
 end
 
-function component:receive_input(data, label)
-  label = label or 'default_in'
+function component:receive_input(data, port_label, from_unique_id, from_port_label)
+  port_label = port_label or 'default_in'
 
-  if label == 'default_in' then
+  if port_label == 'default_in' then
     -- Pasthrough this component and trigger the default output.
     self:send_output(data)
   end
@@ -489,19 +489,44 @@ function FlowObjectCombineData:setup(instance_name, unique_id)
   self.data.data = {}
 end
 
-function FlowObjectCombineData:receive_input(data, input_label)
+function FlowObjectCombineData:receive_input(data, input_label, from_unique_id, from_port_label)
   local primary_key_label = self.data.inputs.default_in.primary_key_label
 
   if data[primary_key_label] ~= nil then
     local primary_key = data[primary_key_label]
-    for label, value in pairs(data) do
-      if self.data.data[primary_key] == nil then
-        self.data.data[primary_key] = {}
-      end
-      self.data.data[primary_key][label] = value
+    if self.data.data[from_unique_id] == nil then
+      self.data.data[from_unique_id] = {}
     end
-    --log("-----", flatten_data(self.data.data[primary_key]))
-		self:send_output(self.data.data[primary_key])
+    if self.data.data[from_unique_id][from_port_label] == nil then
+      self.data.data[from_unique_id][from_port_label] = {}
+    end
+    if self.data.data[from_unique_id][from_port_label][primary_key] == nil then
+      self.data.data[from_unique_id][from_port_label][primary_key] = {}
+    end
+
+    -- Store data, indexed by the object and port it came from.
+    for label, value in pairs(data) do
+      self.data.data[from_unique_id][from_port_label][primary_key][label] = value
+    end
+
+    -- Combine data from different sources.
+    local output = {}
+    output[primary_key_label] = primary_key
+    for _from_unique_id, data1  in pairs(self.data.data) do
+      for _from_port_label, data2  in pairs(data1) do
+        if data2[primary_key] ~= nil then
+          for label, value in pairs(data2[primary_key]) do
+            if label == 'thread_track' then
+              output.thread_track = TableConcat(output.thread_track, value)
+            else
+              output[label] = value
+            end
+          end
+        end
+      end
+    end
+
+		self:send_output(output)
   end
 end
 

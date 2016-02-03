@@ -53,41 +53,77 @@ var getFlowObjectByInstanceName = function(instance_name){
   return;
 };
 
-var setLink = function(link_data){
-  //console.log('setLink(', link_data, ')');
-  var link, shape;
-  var paper = document.getElementsByTagName('ha-control')[0].paper;
-  var links = document.getElementsByTagName('ha-control')[0].links;
-  for(var i = 0; i < links.length; i++){
-    if(links[i].data.source_object === link_data.source_object &&
-        links[i].data.source_port === link_data.source_port &&
-        links[i].data.destination_object === link_data.destination_object &&
-        links[i].data.destination_port === link_data.destination_port){
-      link = links[i];
-      break;
-    }
-  }
-  var source_object = getFlowObjectByUniqueId(link_data.source_object);
-  var source_port_shape = getPortShape(link_data.source_object, link_data.source_port);
-  var destination_port_shape = getPortShape(link_data.destination_object, link_data.destination_port);
+var Link = function(link_data){
+  'use strict';
+  //console.log('Link(', link_data, ')');
+  this.data = link_data;
+  this.paper = document.getElementsByTagName('ha-control')[0].paper;
+}
+
+Link.prototype.update = function(){
+  'use strict';
+  //console.log('Link.update()');
+	var source_port_shape = getPortShape(this.data.source_object, this.data.source_port);
+	var destination_port_shape = getPortShape(this.data.destination_object, this.data.destination_port);
   if(source_port_shape && destination_port_shape){
+    if(this.shape){
+		  this.shape.remove();
+    }
     var source_port_position = source_port_shape.getShapePosition();
     var destination_port_position = destination_port_shape.getShapePosition();
     source_port_position.x += source_port_shape.getBBox().width;
     source_port_position.y += source_port_shape.getBBox().height / 2;
-    //destination_port_position.x -= destination_port_shape.getBBox().width;
     destination_port_position.y += destination_port_shape.getBBox().height / 2;
-    shape = paper.arrow(source_port_position, destination_port_position, 'teal');
+
+    this.shape = this.paper.arrow(source_port_position, destination_port_position, 'teal');
+    this.shape.data('type', 'link');
+    this.shape.data('source_object', this.data.source_object);
+    this.shape.data('source_port', this.data.source_port);
+    this.shape.data('destination_object', this.data.destination_object);
+    this.shape.data('destination_port', this.data.destination_port);
+    this.shape.drag(function(){console.log('shape.drag.move');},
+                    this.onDragStart,
+                    function(){console.log('shape.drag.end');});
+
   }
-  if(link === undefined){
-    link = {data: link_data, shape: shape};
-    document.getElementsByTagName('ha-control')[0].links.push(link);
-  } else {
-    if(link.shape){
-      link.shape.remove();
+}
+
+Link.prototype.onDragStart = function(){
+  'use strict';
+  console.log('Link.onDragStart');
+	var clicked_shape = this.getIdentity();
+  //var link_object = getLink(clicked_shape);
+  //console.log(clicked_shape, link_object);
+  
+  var old_selected = getFlowObjectByUniqueId(shareBetweenShapes.selected);
+  if(typeof(shareBetweenShapes.selected) === 'object' && shareBetweenShapes.selected.type === 'link'){
+    getLink(shareBetweenShapes.selected).shape.setHighlight('teal');
+  }else if(shareBetweenShapes.selected !== undefined){
+    getFlowObjectByUniqueId(shareBetweenShapes.selected).shape.setHighlight(false);
+  }
+  shareBetweenShapes.selected = clicked_shape;
+
+  this.setHighlight(true);
+}
+
+var getLink = function(link_data){
+  'use strict';
+  //console.log('getLink(', link_data, ')');
+  var links = document.getElementsByTagName('ha-control')[0].links;
+  for(var i = 0; i < links.length; i++){
+		if(links[i].data.source_object === link_data.source_object &&
+        links[i].data.source_port === link_data.source_port &&
+        links[i].data.destination_object === link_data.destination_object &&
+        links[i].data.destination_port === link_data.destination_port
+				){
+      return links[i];
     }
-    link.shape = shape;
   }
+
+  console.log('getLink: new link');
+  var link = new Link(link_data);
+  link.update();
+	links.push(link);
 }
 
 
@@ -105,7 +141,8 @@ FlowObject.prototype.updateLinks = function(){
   var links = document.getElementsByTagName('ha-control')[0].links;
   for(var i = 0; i < links.length; i++){
     if(links[i].data.source_object === this.data.unique_id || links[i].data.destination_object === this.data.unique_id){
-      setLink(links[i].data);
+      //setLink(links[i].data);
+      links[i].update();
     }
   }
 }
@@ -268,7 +305,9 @@ FlowObject.prototype.setBoxPosition = function(x, y){
 FlowObject.prototype.select = function(){
   'use strict';
   //console.log('FlowObject.select:', this);
-  if(shareBetweenShapes.selected !== undefined){
+  if(typeof(shareBetweenShapes.selected) === 'object' && shareBetweenShapes.selected.type === 'link'){
+    getLink(shareBetweenShapes.selected).shape.setHighlight('teal');
+  }else if(shareBetweenShapes.selected !== undefined){
     getFlowObjectByUniqueId(shareBetweenShapes.selected).shape.setHighlight(false);
   }
   this.shape.setHighlight(true);
@@ -322,7 +361,6 @@ FlowObject.prototype.displaySideBar = function(){
 
 FlowObject.prototype.onmouseover = function(){
   'use strict';
-  //console.log(this.getIdentity());
   if(shareBetweenShapes.dragging){
     var clicked_shape = this.getIdentity();
     if(clicked_shape.type === 'input'){

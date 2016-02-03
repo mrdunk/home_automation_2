@@ -91,9 +91,9 @@ Raphael.fn.box = function(x, y, width, height, color){
   set_outputs.label = 'outputs';
   set_main.push(set_outputs);
 
-  var set_links = this.set();
+/*  var set_links = this.set();
   set_links.label = 'links';
-  set_main.push(set_links);
+  set_main.push(set_links);*/
 
   set_main.data('whole_shape', set_main);
 
@@ -224,7 +224,9 @@ Raphael.st.setOutputLinks = function(outputs){
   for(var output_id in outputs){
     for(var key_link = 0; key_link < outputs[output_id].length; key_link++){
       var link_data = outputs[output_id][key_link];
-      setLink({source_object: this_identity.object_id, source_port: link_data.source_port,
+      //setLink({source_object: this_identity.object_id, source_port: link_data.source_port,
+      //         destination_object: link_data.destination_object, destination_port: link_data.destination_port});
+      getLink({source_object: this_identity.object_id, source_port: link_data.source_port,
                destination_object: link_data.destination_object, destination_port: link_data.destination_port});
     }
   }
@@ -266,10 +268,14 @@ Raphael.el.setHighlight = function(color, thickness){
   }
   thickness = thickness || 1;
 
-  for(var key_types in this.data('whole_shape').items){
-    if(this.data('whole_shape').items[key_types].label === 'container'){
-      this.data('whole_shape').items[key_types].attr({stroke: color, 'stroke-width': thickness});
+  if(this.data('whole_shape')){
+    for(var key_types in this.data('whole_shape').items){
+      if(this.data('whole_shape').items[key_types].label === 'container'){
+        this.data('whole_shape').items[key_types].attr({stroke: color, 'stroke-width': thickness});
+      }
     }
+  } else {
+    this.attr('stroke', color);
   }
 };
 
@@ -308,6 +314,14 @@ Raphael.st.getShapePosition = function(){
 
 Raphael.el.getIdentity = function(){
   'use strict';
+  if(this.data('type') === 'link'){
+    return {type:               'link',
+            source_object:      this.data('source_object'),
+            source_port:        this.data('source_port'),
+            destination_object: this.data('destination_object'),
+            destination_port:   this.data('destination_port')};
+  }
+
   return {type:       (this.data('type') || this.data('port_type')),
           object_id:  this.data('object_id'),
           port_label: this.data('port_label')};
