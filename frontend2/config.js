@@ -1,6 +1,7 @@
 var BROKER_ADDRESS='192.168.192.10';
 var BROKER_PORT=18883;
 var UI_SUBSCRIPTION='homeautomation/+/+/_announce';
+var DEBUG_SUBSCRIPTION='homeautomation/+/debug/#';
 //var UI_SUBSCRIPTION='homeautomation/+/+/#';
 
 // When trying to build a list of all possible MQTT target addresses,

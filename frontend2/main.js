@@ -1,6 +1,7 @@
 /*global BROKER_ADDRESS*/ 
 /*global BROKER_PORT*/ 
 /*global UI_SUBSCRIPTION*/ 
+/*global DEBUG_SUBSCRIPTION*/
 /*global USE_TLS*/ 
 /*global CLEANSESSION*/ 
 /*global username*/ 
@@ -30,43 +31,54 @@ Page.exit = function() {
   clearInterval(Page._intervalId_);
 };
 
-var Data = { mqtt_data: {} };
+var Data = { mqtt_data: {announcments: {}, debug: {}} };
 
 Data.storeIncomingMqtt = function(topic, data) {
   'use strict';
   if(topic === undefined || data === undefined) {
     return;
   }
-  topic = topic.split('/').slice(2).join('/');
+  var component = topic.split('/')[2];
+  var topic_identifier = topic.split('/').slice(3).join('/');
+  topic = component + '/' + topic_identifier;
 
-  if(Data.mqtt_data[topic] === undefined){
-    Data.mqtt_data[topic] = [];
-  }
-  Data.mqtt_data[topic].updated = Date.now();
-
-  var found;
-  data.updated = Date.now();
-  for(var key in Data.mqtt_data[topic]){
-    if(Data.mqtt_data[topic][key]._subject === data._subject){
-      Data.mqtt_data[topic][key] = data;
-      found = true;
-      break;
+  if(component === 'debug'){
+    for(var i=0; i< data.thread_track.length; i++){
+      var track = data.thread_track[i];
+      if(Data.mqtt_data.debug[track] === undefined){
+        Data.mqtt_data.debug[track] = {};
+      }
+      Data.mqtt_data.debug[track][topic_identifier] = data;
     }
-  }
-  if(!found){
-    Data.mqtt_data[topic].push(data);
-  }
+  } else {
+    if(Data.mqtt_data.announcments[topic] === undefined){
+      Data.mqtt_data.announcments[topic] = [];
+    }
+    Data.mqtt_data.announcments[topic].updated = Date.now();
 
-  dataReceived(topic, data);
-  Data.cleanOutOfDateMqtt(MQTT_CACHE_TIME);
+    var found;
+    data.updated = Date.now();
+    for(var key in Data.mqtt_data.announcments[topic]){
+      if(Data.mqtt_data.announcments[topic][key]._subject === data._subject){
+        Data.mqtt_data.announcments[topic][key] = data;
+        found = true;
+        break;
+      }
+    }
+    if(!found){
+      Data.mqtt_data.announcments[topic].push(data);
+    }
 
+    dataReceived(topic, data);
+    Data.cleanOutOfDateMqtt(MQTT_CACHE_TIME);
+  }
   console.log(Data.mqtt_data)
 };
 
 Data.cleanOutOfDateMqtt = function(max_age){
   'use strict';
   max_age = max_age * 1000;  // ms to seconds.
-  var pointer = Data.mqtt_data;
+  var pointer = Data.mqtt_data.announcments;
   var f = function(pointer, max_age){
     var loop_complete;
     while(!loop_complete){
@@ -95,9 +107,9 @@ Data.getLabels = function(){
   'use strict';
   var labels_object = {};
   var label;
-  for(var topic in Data.mqtt_data){
+  for(var topic in Data.mqtt_data.announcments){
     for(var subject in Data.mqtt_data[topic]){
-      for(label in Data.mqtt_data[topic][subject]){
+      for(label in Data.mqtt_data.announcments[topic][subject]){
         if(label[0] === '_'){
           labels_object[label] = true;
         }
@@ -143,8 +155,12 @@ Mqtt.MQTTconnect = function() {
 Mqtt.onConnect = function() {
   'use strict';
   console.log('Connected to ' + BROKER_ADDRESS + ':' + BROKER_PORT);
+
   Mqtt.broker.subscribe(UI_SUBSCRIPTION, {qos: 0});
   console.log('Subscribed: ' + UI_SUBSCRIPTION);
+
+  Mqtt.broker.subscribe(DEBUG_SUBSCRIPTION, {qos: 0});
+  console.log('Subscribed: ' + DEBUG_SUBSCRIPTION);
 
   Mqtt.send(Page.topics.all_devices, '_command : solicit');
   console.log('Sent: ' + Page.topics.all_devices + ' = {_command : solicit}');

@@ -183,3 +183,11 @@ draggable-button {
   border: 1px solid blue;
   border-radius: 5px;
 }
+
+ha-link-content div {overflow: auto; }
+ha-link-json pre {outline: 1px solid #ccc; margin: 4px; }
+ha-link-json .string { color: green; }
+ha-link-json .number { color: darkorange; }
+ha-link-json .boolean { color: blue; }
+ha-link-json .null { color: magenta; }
+ha-link-json .key { color: red; }

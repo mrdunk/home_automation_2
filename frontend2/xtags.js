@@ -240,6 +240,47 @@ xtag.register('ha-sidebar', {
   },
 });
 
+xtag.register('ha-flowobject-header', {
+  lifecycle:{
+    created: function(){
+    }
+  },
+  methods: {
+    populate: function(data, flow_object){
+			var header_content = document.createElement('div');
+      var header_text = document.createElement('span');
+			header_text.className = 'text';
+			var header_icon = document.createElement('span');
+			header_icon.className = 'object-color';
+			header_content.appendChild(header_text);
+			header_content.appendChild(header_icon);
+
+			var h1 = document.createElement('div');
+			var h2 = document.createElement('div');
+			var h3 = document.createElement('a');
+			h1.innerHTML = data.data.general.instance_name.value;
+			h2.innerHTML = data.unique_id + ' ' + data.version;
+			h3.innerHTML = 'delete';
+			h3.onclick=function(){console.log(this);
+				this.delete();
+			}.bind(flow_object);
+			header_text.appendChild(h1);
+			header_text.appendChild(h2);
+			header_text.appendChild(h3);
+
+			if(flow_object.getColor() === undefined){
+				header_icon.style.height = '0';
+				header_icon.style.visibility = "hidden";
+			} else {
+				header_icon.style.height = '2em';
+				header_icon.style.visibility = "visible";
+				header_icon.style.background = flow_object.getColor();
+			}
+			this.appendChild(header_content);
+    }
+  },
+});
+
 xtag.register('ha-flowobject-data', {
   lifecycle:{
     created: function(){
@@ -276,6 +317,117 @@ xtag.register('ha-flowobject-data', {
     }
   },
 });
+
+xtag.register('ha-link-header', {
+  lifecycle:{
+    created: function(){
+    }
+  },
+  methods: {
+    populate: function(link_data){
+      console.log('ha-link-header.populate(', link_data, ')');
+      var source_object = getFlowObjectByUniqueId(link_data.source_object);
+      var destination_object = getFlowObjectByUniqueId(link_data.destination_object);
+
+      var header_content = document.createElement('div');
+      var header_text_from = document.createElement('span');
+      header_text_from.className = 'text';
+      var header_text_to = document.createElement('span');
+      header_text_to.className = 'text';
+      var header_spacer = document.createElement('span');
+      header_spacer.className = 'text';
+
+      header_text_from.innerHTML = source_object.data.data.general.instance_name.value;
+      header_text_to.innerHTML = destination_object.data.data.general.instance_name.value;
+      header_spacer.innerHTML = '&nbsp;->&nbsp;';
+
+      header_content.appendChild(header_text_from);
+      header_content.appendChild(header_spacer);
+      header_content.appendChild(header_text_to);
+
+
+      this.appendChild(header_content);
+    }
+  },
+});
+
+xtag.register('ha-link-content', {
+  lifecycle:{
+    created: function(){
+    }
+  },
+  methods: {
+    populate: function(link_data){
+      console.log('ha-link-content.populate(', link_data, ')');
+
+			var source_object = getFlowObjectByUniqueId(link_data.source_object);
+      var destination_object = getFlowObjectByUniqueId(link_data.destination_object);
+
+      var content = document.createElement('div');
+      for(var thread in Data.mqtt_data.debug){
+        for(var topic in Data.mqtt_data.debug[thread]){
+          var debug_uid = topic.split('/')[0];
+          var debug_port = topic.split('/')[2];
+          if(link_data.source_object === debug_uid && link_data.source_port === debug_port){
+            var line = document.createElement('ha-link-json');
+            line.populate(Data.mqtt_data.debug[thread][topic]);
+            content.appendChild(line);
+          }
+        }
+      }
+      this.appendChild(content);
+    }
+  },
+});
+
+xtag.register('ha-link-json', {
+  methods: {
+    populate: function(link_data){
+      this.link_data = link_data;
+      this.expanded = false;
+      var content = document.createElement('pre');
+      content.innerHTML = syntaxHighlight(link_data, this.expanded);
+      this.appendChild(content);
+    }
+  },
+  events: {
+    tap: function(){
+      this.expanded = !this.expanded;
+      this.innerHTML = '';
+      var content = document.createElement('pre');
+      content.innerHTML = syntaxHighlight(this.link_data, this.expanded);
+      this.appendChild(content);
+    }
+  }
+});
+
+// Json pretty print:
+//   http://stackoverflow.com/questions/4810841/how-can-i-pretty-print-json-using-javascript
+function syntaxHighlight(json, expand) {
+    if (typeof json != 'string') {
+      if(!expand){
+			  json = JSON.stringify(json);
+      } else {
+        json = JSON.stringify(json, null, 2);
+      }
+    }
+    json = json.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    return json.replace(/("(\\u[a-zA-Z0-9]{4}|\\[^u]|[^\\"])*"(\s*:)?|\b(true|false|null)\b|-?\d+(?:\.\d*)?(?:[eE][+\-]?\d+)?)/g, function (match) {
+        var cls = 'number';
+        if (/^"/.test(match)) {
+            if (/:$/.test(match)) {
+                cls = 'key';
+            } else {
+                cls = 'string';
+            }
+        } else if (/true|false/.test(match)) {
+            cls = 'boolean';
+        } else if (/null/.test(match)) {
+            cls = 'null';
+        }
+        return '<span class="' + cls + '">' + match + '</span>';
+    });
+}
 
 xtag.register('ha-input-attributes', {
   lifecycle:{
@@ -757,13 +909,13 @@ xtag.register('ha-topic-chooser', {
       this.flow_object = flow_object;
       var topic_list = [];
       var key;
-      for(key in Data.mqtt_data){
-        if(typeof(key) === 'string' && key !== 'updated' && typeof(Data.mqtt_data[key]) === 'object'){
+      for(key in Data.mqtt_data.announcments){
+        if(typeof(key) === 'string' && key !== 'updated' && typeof(Data.mqtt_data.announcments[key]) === 'object'){
           topic_list.push(key);
 
           if(SUBJECTS_ARE_TARGETS.indexOf(key) >= 0){
-            for(var i=0; i < Data.mqtt_data[key].length; i++){
-              topic_list.push(Data.mqtt_data[key][i]._subject);
+            for(var i=0; i < Data.mqtt_data.announcments[key].length; i++){
+              topic_list.push(Data.mqtt_data.announcments[key][i]._subject);
             }
           }
         }

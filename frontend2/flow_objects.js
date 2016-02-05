@@ -58,6 +58,7 @@ var Link = function(link_data){
   //console.log('Link(', link_data, ')');
   this.data = link_data;
   this.paper = document.getElementsByTagName('ha-control')[0].paper;
+	this.sidebar = document.getElementsByTagName('ha-sidebar')[1];
 }
 
 Link.prototype.update = function(){
@@ -84,7 +85,6 @@ Link.prototype.update = function(){
     this.shape.drag(function(){console.log('shape.drag.move');},
                     this.onDragStart,
                     function(){console.log('shape.drag.end');});
-
   }
 }
 
@@ -92,7 +92,7 @@ Link.prototype.onDragStart = function(){
   'use strict';
   console.log('Link.onDragStart');
 	var clicked_shape = this.getIdentity();
-  //var link_object = getLink(clicked_shape);
+  var link_object = getLink(clicked_shape);
   //console.log(clicked_shape, link_object);
   
   var old_selected = getFlowObjectByUniqueId(shareBetweenShapes.selected);
@@ -101,6 +101,14 @@ Link.prototype.onDragStart = function(){
   }else if(shareBetweenShapes.selected !== undefined){
     getFlowObjectByUniqueId(shareBetweenShapes.selected).shape.setHighlight(false);
   }
+  var header_content = document.createElement('ha-link-header');
+  header_content.populate(clicked_shape);
+  link_object.sidebar.setHeader(header_content);
+
+  var flowobject_data = document.createElement('ha-link-content');
+  flowobject_data.populate(clicked_shape);
+  link_object.sidebar.setContent(flowobject_data);
+
   shareBetweenShapes.selected = clicked_shape;
 
   this.setHighlight(true);
@@ -320,37 +328,8 @@ FlowObject.prototype.displaySideBar = function(){
   'use strict';
   //console.log('FlowObject.displaySideBar()');
 
-  // Header
-  var header_content = document.createElement('div');
-  var header_text = document.createElement('span');
-  header_text.className = 'text';
-  var header_icon = document.createElement('span');
-  header_icon.className = 'object-color';
-	header_content.appendChild(header_text);
-  header_content.appendChild(header_icon);
-
-	var h1 = document.createElement('div');
-	var h2 = document.createElement('div');
-  var h3 = document.createElement('a');
-	h1.innerHTML = this.data.data.general.instance_name.value;
-	h2.innerHTML = this.data.unique_id + ' ' + this.data.version;
-  h3.innerHTML = 'delete';
-  h3.onclick=function(){console.log(this);
-                        this.delete();
-                       }.bind(this);
-  header_text.appendChild(h1);
-  header_text.appendChild(h2);
-  header_text.appendChild(h3);
-
-  if(this.getColor() === undefined){
-    header_icon.style.height = '0';
-    header_icon.style.visibility = "hidden";
-  } else {
-    header_icon.style.height = '2em';
-    header_icon.style.visibility = "visible";
-    header_icon.style.background = this.getColor();
-  }
-
+  var header_content = document.createElement('ha-flowobject-header');
+  header_content.populate(this.data, this);
   this.sidebar.setHeader(header_content);
 
   // Content
