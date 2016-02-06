@@ -13,6 +13,9 @@ function TableConcat(t1,t2)
 	if t1 == nil then
 		t1 = {}
   end
+	if t2 == nil then
+    return t1
+  end
 
   for i=1, #t2 do
     t1[#t1 +1] = t2[i]
@@ -87,7 +90,9 @@ function control:callback(path, incoming_data)
       if get_path(incoming_data, 'data.general.instance_name') and incoming_data.unique_id and incoming_data.object_type then
 			  local instance_name = incoming_data.data.general.instance_name.value
 				print('New object:', incoming_data.object_type, instance_name, incoming_data.unique_id)
-				object = _G[incoming_data.object_type]:new{instance_name=instance_name, unique_id=incoming_data.unique_id}
+        if(_G[incoming_data.object_type] ~= nil) then
+				  object = _G[incoming_data.object_type]:new{instance_name=instance_name, unique_id=incoming_data.unique_id}
+        end
       end
     end
 		if(object ~= nil) then
@@ -259,6 +264,11 @@ function component:send_one_output(data, label)
   --log("component:send_output(", data, label, ")")
   label = label or 'default_out'
 
+  if(data.__trace == nil) then
+    data.__trace = {}
+  end
+  table.insert(data.__trace, {source_object=self.unique_id, source_port=label})
+
   -- Send debug data.
   -- TODO. Allow this to be turned on/off.
   local topic = 'homeautomation/0/debug/' .. self.unique_id .. '/out/' .. label
@@ -268,7 +278,6 @@ function component:send_one_output(data, label)
   control_instance:update_log(topic .. '\t' .. payload .. '\n')
 
   if label == '_drop' then
-    --control_instance:update_log('(' .. self.object_type .. ')' .. self:get_general('instance_name') .. ' -> ' .. flatten_data(data) .. ' -> DROP\n')
     return
   end
 
@@ -277,7 +286,6 @@ function component:send_one_output(data, label)
       log('component:send_one_output:', self.unique_id, label, '->', link_data.destination_object, link_data.destination_port)
       if(info.components[link_data.destination_object] and info.components[link_data.destination_object]:get_general('instance_name')) then
         local target_name = info.components[link_data.destination_object]:get_general('instance_name')
-        --control_instance:update_log('(' .. self.object_type .. ')' .. self:get_general('instance_name') .. ' -> ' .. flatten_data(data) .. ' -> ' .. target_name .. '\n')
         info.components[link_data.destination_object]:receive_input(data, link_data.destination_port, self.unique_id, label)
       end
     end
@@ -286,6 +294,14 @@ end
 
 function component:receive_input(data, port_label, from_unique_id, from_port_label)
   port_label = port_label or 'default_in'
+
+  if(data.__trace == nil) then
+    data.__trace = {{destination_object=self.unique_id, destination_port=label}}
+	else
+  	--table.insert(data.__trace, {destination_object=self.unique_id, destination_port=label})
+		data.__trace[#data.__trace].destination_object=self.unique_id
+		data.__trace[#data.__trace].destination_port=label
+	end
 
   if port_label == 'default_in' then
     -- Pasthrough this component and trigger the default output.
@@ -304,7 +320,7 @@ function FlowObjectMqttSubscribe:setup(instance_name, unique_id)
 end
 
 function FlowObjectMqttSubscribe:receive_mqtt(data, label)
-  --log(" ", "FlowObjectMqttSubscribe:receive_input() triggered", label)
+  --log(" ", "FlowObjectMqttSubscribe:receive_mqtt() triggered", label)
   data.thread_track = {}
   data.thread_track[1] = info.thread_counter
   info.thread_counter = info.thread_counter +1
@@ -333,10 +349,19 @@ function FlowObjectMqttSubscribe:subscribe()
 end
 
 
+
 FlowObjectMapValues = component:new({object_type='FlowObjectMapValues'})
 
-function FlowObjectMapValues:receive_input(data, l)
+function FlowObjectMapValues:receive_input(data, port_label)
   --log(" ~~", "FlowObjectMapValues:receive_input(", flatten_data(data), l, ")")
+
+  if(data.__trace == nil) then
+    data.__trace = {{destination_object=self.unique_id, destination_port=port_label}}
+  else
+    data.__trace[#data.__trace].destination_object=self.unique_id
+    data.__trace[#data.__trace].destination_port=port_label
+  end
+
   local label = self.data.inputs.default_in.label
   local rules = self.data.inputs.default_in.rules
 
@@ -378,9 +403,18 @@ end
 
 FlowObjectMapLabels = component:new({object_type='FlowObjectMapLabels'})
 
-function FlowObjectMapLabels:receive_input(data, l)
-  --log(" ==", "FlowObjectMapLabels:receive_input(", data, l, ")")
-  local forward_data = {thread_track = data.thread_track}
+function FlowObjectMapLabels:receive_input(data, port_label)
+  --log(" ==", "FlowObjectMapLabels:receive_input(", data, port_label, ")")
+  if(data.__trace == nil) then
+    data.__trace = {{destination_object=self.unique_id, destination_port=port_label}}
+  else
+    data.__trace[#data.__trace].destination_object=self.unique_id
+    data.__trace[#data.__trace].destination_port=port_label
+  end
+
+  local forward_data = {thread_track = data.thread_track,
+                        __trace = data.__trace}
+
   local rules = self.data.inputs.default_in.rules
 
   for data_label, data_value in pairs(data) do
@@ -405,7 +439,14 @@ end
 
 FlowObjectMqttPublish = component:new({object_type='FlowObjectMqttPublish'})
 
-function FlowObjectMqttPublish:receive_input(data, l)
+function FlowObjectMqttPublish:receive_input(data, port_label)
+  if(data.__trace == nil) then
+    data.__trace = {{destination_object=self.unique_id, destination_port=port_label}}
+  else
+    data.__trace[#data.__trace].destination_object=self.unique_id
+    data.__trace[#data.__trace].destination_port=port_label
+  end
+
 	local topic = 'homeautomation/0/' .. self.data.general.publish_topic.value
 	local payload = flatten_data(data)
 	--log("&&&&& FlowObjectMqttPublish:receive_input:", topic, payload)
@@ -444,6 +485,13 @@ end
 
 function FlowObjectReadFile:receive_input(data, input_label)
 	-- If data is sent to this Component, make it send data.
+
+  if(data.__trace == nil) then
+    data.__trace = {{destination_object=self.unique_id, destination_port=input_label}}
+  else
+    data.__trace[#data.__trace].destination_object=self.unique_id
+    data.__trace[#data.__trace].destination_port=input_label
+  end
 
   local match_data_label = self.data.general.match_data_label.value
   local match_data_value = self.data.general.match_data_value.value
@@ -490,6 +538,13 @@ function FlowObjectCombineData:setup(instance_name, unique_id)
 end
 
 function FlowObjectCombineData:receive_input(data, input_label, from_unique_id, from_port_label)
+  if(data.__trace == nil) then
+    data.__trace = {{destination_object=self.unique_id, destination_port=input_label}}
+  else
+    data.__trace[#data.__trace].destination_object=self.unique_id
+    data.__trace[#data.__trace].destination_port=input_label
+  end
+
   local primary_key_label = self.data.inputs.default_in.primary_key_label
 
   if data[primary_key_label] ~= nil then
@@ -512,12 +567,14 @@ function FlowObjectCombineData:receive_input(data, input_label, from_unique_id, 
     -- Combine data from different sources.
     local output = {}
     output[primary_key_label] = primary_key
-    for _from_unique_id, data1  in pairs(self.data.data) do
+    for _from_unique_id, data1 in pairs(self.data.data) do
       for _from_port_label, data2  in pairs(data1) do
         if data2[primary_key] ~= nil then
           for label, value in pairs(data2[primary_key]) do
             if label == 'thread_track' then
               output.thread_track = TableConcat(output.thread_track, value)
+            elseif(label == '__trace') then
+              output.__trace = TableConcat(output.__trace, value)
             else
               output[label] = value
             end
@@ -541,6 +598,13 @@ end
 
 function FlowObjectAddData:receive_input(data, input_label)
   --log("'''''", flatten_data(data))
+  if(data.__trace == nil) then
+    data.__trace = {{destination_object=self.unique_id, destination_port=input_label}}
+  else
+    data.__trace[#data.__trace].destination_object=self.unique_id
+    data.__trace[#data.__trace].destination_port=input_label
+  end
+
   local primary_key_label = self.data.inputs.default_in.primary_key_label
 
   if data[primary_key_label] == nil then
@@ -561,7 +625,7 @@ function FlowObjectAddData:receive_input(data, input_label)
 		for label, value in pairs(entry) do
 			if label ~= primary_key_label then
         --log("'''''", "", label, value)
-        if label == 'thread_track' then
+        if label == 'thread_track' or label == '__trace' then
           combined_entry[label] = TableConcat(combined_entry[label], value)
         elseif combined_entry[label] == nil then
           if tonumber(value) ~= nil then
@@ -633,8 +697,14 @@ end
 
 FlowObjectAddTime = component:new({object_type='FlowObjectAddTime'})
 
-function FlowObjectAddTime:receive_input(data, l)
+function FlowObjectAddTime:receive_input(data, port_label)
   --log(" ^^", "FlowObjectAddTime:receive_input(", flatten_data(data), l, ")")
+  if(data.__trace == nil) then
+    data.__trace = {{destination_object=self.unique_id, destination_port=port_label}}
+  else
+    data.__trace[#data.__trace].destination_object=self.unique_id
+    data.__trace[#data.__trace].destination_port=port_label
+  end
 
   data._time_weekday = os.date('%w')
   data._time_hour = os.date('%H')

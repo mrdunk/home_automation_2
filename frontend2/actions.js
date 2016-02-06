@@ -7,10 +7,10 @@ var flow_objects = {FlowObjectMqttSubscribe: FlowObjectMqttSubscribe,
                     FlowObjectReadFile: FlowObjectReadFile,
                     FlowObjectMapValues: FlowObjectMapValues,
                     FlowObjectMapLabels: FlowObjectMapLabels,
-                    //component_time_window: FlowObjectTimer,
                     FlowObjectAddTime: FlowObjectAddTime,
                     FlowObjectCombineData: FlowObjectCombineData,
                     FlowObjectAddData: FlowObjectAddData,
+                    FlowObjectFilterByTime: FlowObjectFilterByTime,
                     };
 
 

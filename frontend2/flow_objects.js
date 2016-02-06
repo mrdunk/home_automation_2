@@ -114,7 +114,7 @@ Link.prototype.onDragStart = function(){
   this.setHighlight(true);
 }
 
-var getLink = function(link_data){
+var getLink = function(link_data, create_link){
   'use strict';
   //console.log('getLink(', link_data, ')');
   var links = document.getElementsByTagName('ha-control')[0].links;
@@ -128,10 +128,12 @@ var getLink = function(link_data){
     }
   }
 
-  console.log('getLink: new link');
-  var link = new Link(link_data);
-  link.update();
-	links.push(link);
+  if(create_link !== false){
+    console.log('getLink: new link');
+    var link = new Link(link_data);
+    link.update();
+    links.push(link);
+  }
 }
 
 
@@ -567,7 +569,7 @@ var inheritsFrom = function (child, parent) {
 };
 
 
-flow_object_classes = [FlowObjectMqttSubscribe, FlowObjectMqttPublish, FlowObjectReadFile, FlowObjectMapValues, FlowObjectMapLabels, FlowObjectCombineData, FlowObjectAddData];
+flow_object_classes = [FlowObjectMqttSubscribe, FlowObjectMqttPublish, FlowObjectReadFile, FlowObjectMapValues, FlowObjectMapLabels, FlowObjectAddTime, FlowObjectCombineData, FlowObjectAddData, FlowObjectFilterByTime];
 
 
 function FlowObjectMqttSubscribe(paper, sidebar, shape, backend_data){
@@ -737,30 +739,31 @@ function FlowObjectMapValues(paper, sidebar, shape, backend_data){
     this.shape = shape || paper.box(0, 0, this.data.shape.width, this.data.shape.height, this.data.shape.color);
     this.setup(backend_data);
 
-    //if(getPath(backend_data, 'data.inputs.default_in.label') !== undefined){
-    for(var input_label in this.data.data.inputs){
-      var label = backend_data.data.inputs.default_in.label;
-      this.data.data.inputs[input_label].transitions.values[label] = [];
-      var found_else;
-      for(var key in backend_data.data.inputs.default_in.rules){
-        var input = backend_data.data.inputs.default_in.rules[key].match;
-        if(typeof(input) === 'string' && input.toLowerCase().trim() === 'true'){
-          input = true;
+    if(getPath(backend_data, 'data.inputs.default_in.label') !== undefined){
+      for(var input_label in this.data.data.inputs){
+        var label = backend_data.data.inputs.default_in.label;
+        this.data.data.inputs[input_label].transitions.values[label] = [];
+        var found_else;
+        for(var key in backend_data.data.inputs.default_in.rules){
+          var input = backend_data.data.inputs.default_in.rules[key].match;
+          if(typeof(input) === 'string' && input.toLowerCase().trim() === 'true'){
+            input = true;
+          }
+          if(typeof(input) === 'string' && input.toLowerCase().trim() === 'false'){
+            input = false;
+          }
+          var output = backend_data.data.inputs.default_in.rules[key].action;
+          if(output === '_string'){
+            output = backend_data.data.inputs.default_in.rules[key].value;
+          }
+          this.data.data.inputs[input_label].transitions.values[label].push({input: input, output: output});
+          if(input === '_else'){
+            found_else = true;
+          }
         }
-        if(typeof(input) === 'string' && input.toLowerCase().trim() === 'false'){
-          input = false;
+        if(found_else === undefined){
+          this.data.data.inputs[input_label].transitions.values[label].push({input: '_else', output: '_drop'});
         }
-        var output = backend_data.data.inputs.default_in.rules[key].action;
-        if(output === '_string'){
-          output = backend_data.data.inputs.default_in.rules[key].value;
-        }
-        this.data.data.inputs[input_label].transitions.values[label].push({input: input, output: output});
-        if(input === '_else'){
-          found_else = true;
-        }
-      }
-      if(found_else === undefined){
-        this.data.data.inputs[input_label].transitions.values[label].push({input: '_else', output: '_drop'});
       }
     }
   }
@@ -822,37 +825,38 @@ function FlowObjectMapLabels(paper, sidebar, shape, backend_data){
     this.shape = shape || paper.box(0, 0, this.data.shape.width, this.data.shape.height, this.data.shape.color);
     this.setup(backend_data);
     for(var input_label in this.data.data.inputs){
-    //if(getPath(backend_data, 'data.inputs.default_in.rules') !== undefined){
       // TODO handle more than one label.
       this.data.data.inputs[input_label].else = {updater: "ha-general-attribute",
                                                   description: "When no matching label."};
       var else_found;
-      for(var key in backend_data.data.inputs.default_in.rules){
-        var action = backend_data.data.inputs.default_in.rules[key].action;
-        var match = backend_data.data.inputs.default_in.rules[key].match;
-        var value = backend_data.data.inputs.default_in.rules[key].value;
-        if(match === '_else'){
-          if(action === '_string'){
-            this.data.data.inputs[input_label].else.value = value
-          } else if(action === '_forward'){
-            this.data.data.inputs[input_label].else.value = match;
-          } else if(action === '_drop'){
-            this.data.data.inputs[input_label].else.value = '_drop';
-          }
-        } else {
-          else_found = true;
-          this.data.data.inputs[input_label].label_in.value = match;
-          if(action === '_string'){
-            this.data.data.inputs[input_label].label_out.value = value
-          } else if(action === '_forward'){
-            this.data.data.inputs[input_label].label_out.value = match;
-          } else if(action === '_drop'){
-            this.data.data.inputs[input_label].label_out.value = '_drop';
+      if(getPath(backend_data, 'data.inputs.default_in.rules') !== undefined){
+        for(var key in backend_data.data.inputs.default_in.rules){
+          var action = backend_data.data.inputs.default_in.rules[key].action;
+          var match = backend_data.data.inputs.default_in.rules[key].match;
+          var value = backend_data.data.inputs.default_in.rules[key].value;
+          if(match === '_else'){
+            if(action === '_string'){
+              this.data.data.inputs[input_label].else.value = value
+            } else if(action === '_forward'){
+              this.data.data.inputs[input_label].else.value = match;
+            } else if(action === '_drop'){
+              this.data.data.inputs[input_label].else.value = '_drop';
+            }
+          } else {
+            else_found = true;
+            this.data.data.inputs[input_label].label_in.value = match;
+            if(action === '_string'){
+              this.data.data.inputs[input_label].label_out.value = value
+            } else if(action === '_forward'){
+              this.data.data.inputs[input_label].label_out.value = match;
+            } else if(action === '_drop'){
+              this.data.data.inputs[input_label].label_out.value = '_drop';
+            }
           }
         }
-      }
-      if(else_found === undefined){
-        this.data.data.inputs[input_label].else.value = '_drop';
+        if(else_found === undefined){
+          this.data.data.inputs[input_label].else.value = '_drop';
+        }
       }
     }
   }  
@@ -946,9 +950,10 @@ function FlowObjectCombineData(paper, sidebar, shape, backend_data){
     this.shape = shape || paper.box(0, 0, this.data.shape.width, this.data.shape.height, this.data.shape.color);
     this.setup(backend_data);
 
-    //if(getPath(backend_data, 'data.inputs.default_in.primary_key_label') !== undefined){
-    for(var input_label in this.data.data.inputs){
-      this.data.data.inputs[input_label].primary_key.value = backend_data.data.inputs.default_in.primary_key_label
+    if(getPath(backend_data, 'data.inputs.default_in.primary_key_label') !== undefined){
+      for(var input_label in this.data.data.inputs){
+        this.data.data.inputs[input_label].primary_key.value = backend_data.data.inputs.default_in.primary_key_label
+      }
     }
   }
 };
@@ -999,9 +1004,10 @@ function FlowObjectAddData(paper, sidebar, shape, backend_data){
     this.shape = shape || paper.box(0, 0, this.data.shape.width, this.data.shape.height, this.data.shape.color);
     this.setup(backend_data);
 
-    for(var input_label in this.data.data.inputs){
-    //if(getPath(backend_data, 'data.inputs.default_in.primary_key_label') !== undefined){
-      this.data.data.inputs[input_label].primary_key.value = backend_data.data.inputs.default_in.primary_key_label
+    if(getPath(backend_data, 'data.inputs.default_in.primary_key_label') !== undefined){
+      for(var input_label in this.data.data.inputs){
+        this.data.data.inputs[input_label].primary_key.value = backend_data.data.inputs.default_in.primary_key_label
+      }
     }
   }
 };
@@ -1067,7 +1073,6 @@ function FlowObjectReadFile(paper, sidebar, shape, backend_data){
 inheritsFrom(FlowObjectReadFile, FlowObject);
 
 
-
 function FlowObjectAddTime(paper, sidebar, shape, backend_data){
   'use strict';
   console.log('FlowObjectAddTime(', paper, sidebar, shape, backend_data, ')');
@@ -1107,4 +1112,47 @@ function FlowObjectAddTime(paper, sidebar, shape, backend_data){
 };
 
 inheritsFrom(FlowObjectAddTime, FlowObject);
+
+
+
+function FlowObjectFilterByTime(paper, sidebar, shape, backend_data){
+  'use strict';
+  console.log('FlowObjectFilterByTime(', paper, sidebar, shape, backend_data, ')');
+
+  FlowObject.prototype.constructor.call(this, paper, sidebar);
+  this.data = { class_label: 'Filter by time',
+                class_description: 'Modify data depending on time.',
+                shape: {
+                  width: 75,
+                  height: 50,
+                  color: 'lightcoral',
+                },
+                data: {
+                  general: {
+                    instance_name: {
+                      description: 'Name',
+                      updater: 'ha-general-attribute',
+                      update_on_change: this.setInstanceName,
+                      //value: 'Object_' + shareBetweenShapes.unique_id
+                      }
+                  },
+                inputs: {
+                  default_in: {
+                    description: 'Default input',
+                    port_label: 'default_in',
+                  },
+                },
+                outputs: {
+                    default_out: [],
+                    _error: {}
+                }
+              }
+  };
+  if(paper){
+    this.shape = shape || paper.box(0, 0, this.data.shape.width, this.data.shape.height, this.data.shape.color);
+    this.setup(backend_data);
+  }
+};
+
+inheritsFrom(FlowObjectFilterByTime, FlowObject);
 

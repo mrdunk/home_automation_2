@@ -15,3 +15,8 @@ var password=null;
 
 var MQTT_CACHE_TIME = 60*60*24;  // seconds
 //var MQTT_CACHE_TIME = 10;
+
+var SHAPE_THICKNESS = 1;
+var SHAPE_HIGHLIGHT_THICKNESS = 4;
+var LINK_THICKNESS = 4;
+var LINK_HIGHLIGHT_THICKNESS = 2;

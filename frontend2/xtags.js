@@ -388,6 +388,37 @@ xtag.register('ha-link-json', {
       var content = document.createElement('pre');
       content.innerHTML = syntaxHighlight(link_data, this.expanded);
       this.appendChild(content);
+      this.glow_intervals = [];
+    },
+    highlight_path: function(state){
+			if(shareBetweenShapes.links_highlight === undefined){
+				return;
+			}
+      var color = 'teal';
+      if(state){
+        color = 'darkorange';
+      }
+      for(var link_index in this.link_data.__trace){
+        var link = getLink(this.link_data.__trace[link_index], false);
+        if(link){
+          if(state){
+            link.shape.setHighlight(color, LINK_THICKNESS);
+            var track_glow = true;
+            this.glow_intervals.push(setInterval(function(){ var thickness = LINK_HIGHLIGHT_THICKNESS;
+                                                             if(this.track_glow){
+                                                               thickness = LINK_THICKNESS;
+                                                             }
+                                                             this.track_glow = !this.track_glow;
+                                                             this.link.shape.setHighlight(this.color, thickness);
+                                                           }.bind({link:link, track_glow:track_glow, color:color}), 1000));
+          } else {
+            while(this.glow_intervals.length){
+              clearInterval(this.glow_intervals.pop());
+            }
+            link.shape.setHighlight(color, LINK_THICKNESS);
+          }
+        }
+      }
     }
   },
   events: {
@@ -397,6 +428,18 @@ xtag.register('ha-link-json', {
       var content = document.createElement('pre');
       content.innerHTML = syntaxHighlight(this.link_data, this.expanded);
       this.appendChild(content);
+			this.highlight_path(false);
+			shareBetweenShapes.links_highlight = undefined;
+    },
+    enter: function(){
+      console.log('ha-link-json.enter', this.link_data.__trace);
+      shareBetweenShapes.links_highlight = this.link_data.__trace;
+			this.highlight_path(true);
+    },
+    leave: function(){
+      console.log('ha-link-json.leave');
+			this.highlight_path(false);
+      shareBetweenShapes.links_highlight = undefined;
     }
   }
 });

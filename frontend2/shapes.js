@@ -45,7 +45,7 @@ Raphael.fn.arrow = function (pos1, pos2, color) {
 
   //var path = 'M ' + pos1.x + ' ' + pos1.y + ' L ' + pos2.x + ' ' + pos2.y;
   var path = 'M ' + pos1.x + ' ' + pos1.y + ' C ' + (pos1.x + dx) + ' ' + pos1.y + ' ' + (pos2.x - dx) + ' ' + pos2.y + ' ' + pos2.x + ' ' + pos2.y;
-  return this.path(path).attr({stroke: color, fill: "none", 'stroke-width': 3, 'arrow-end': 'classic-wide'});
+  return this.path(path).attr({stroke: color, fill: "none", 'stroke-width': LINK_THICKNESS, 'arrow-end': 'classic-wide'});
 };
 
 Raphael.el.dragArrow = function(pos2) {
@@ -262,11 +262,11 @@ Raphael.st.setHighlight = function(color, thickness){
 Raphael.el.setHighlight = function(color, thickness){
   'use strict';
   color = color || 'black';
+  thickness = thickness || SHAPE_THICKNESS;
   if(color === true){
     color = 'red';
-    thickness = 3;
+    thickness = SHAPE_HIGHLIGHT_THICKNESS;
   }
-  thickness = thickness || 1;
 
   if(this.data('whole_shape')){
     for(var key_types in this.data('whole_shape').items){
@@ -275,7 +275,8 @@ Raphael.el.setHighlight = function(color, thickness){
       }
     }
   } else {
-    this.attr('stroke', color);
+    this.attr({stroke: color});
+    this.animate({'stroke-width': thickness}, 500);
   }
 };
 
