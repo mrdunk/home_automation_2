@@ -97,7 +97,7 @@ Link.prototype.onDragStart = function(){
   
   var old_selected = getFlowObjectByUniqueId(shareBetweenShapes.selected);
   if(typeof(shareBetweenShapes.selected) === 'object' && shareBetweenShapes.selected.type === 'link'){
-    getLink(shareBetweenShapes.selected).shape.setHighlight('teal');
+    getLink(shareBetweenShapes.selected).shape.setHighlight('teal', LINK_THICKNESS);
   }else if(shareBetweenShapes.selected !== undefined){
     getFlowObjectByUniqueId(shareBetweenShapes.selected).shape.setHighlight(false);
   }
@@ -111,7 +111,7 @@ Link.prototype.onDragStart = function(){
 
   shareBetweenShapes.selected = clicked_shape;
 
-  this.setHighlight(true);
+  this.setHighlight(true, LINK_THICKNESS);
 }
 
 var getLink = function(link_data, create_link){
@@ -316,7 +316,7 @@ FlowObject.prototype.select = function(){
   'use strict';
   //console.log('FlowObject.select:', this);
   if(typeof(shareBetweenShapes.selected) === 'object' && shareBetweenShapes.selected.type === 'link'){
-    getLink(shareBetweenShapes.selected).shape.setHighlight('teal');
+    getLink(shareBetweenShapes.selected).shape.setHighlight('teal', LINK_THICKNESS);
   }else if(shareBetweenShapes.selected !== undefined){
     getFlowObjectByUniqueId(shareBetweenShapes.selected).shape.setHighlight(false);
   }

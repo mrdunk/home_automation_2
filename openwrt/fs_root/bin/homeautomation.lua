@@ -16,8 +16,8 @@
 package.path = package.path .. ';/usr/share/homeautomation/?.lua'
 require 'os'
 require 'file_utils'
--- # opkg install luci-lib-json
-json = require "luci.json"
+json = require 'luci.json'
+require 'helper_functions'
 
 -- Globals
 info = {}
@@ -36,16 +36,6 @@ local MOSQUITTO_CONF = '/etc/mosquitto/mosquitto.conf'
 POWER_SCRIPT_DIR = '/usr/share/homeautomation/power_commands/'
 
 
-
-function log(...)
-  if DEBUG and arg then
-    local result = ''
-    for i,v in ipairs(arg) do
-      result = result .. tostring(v) .. "\t"
-    end
-    print(result)
-  end
-end
 
 function mqtt_instance_ON_PUBLISH()
   --log(" ** mqtt_instance_ON_PUBLISH")
@@ -169,6 +159,28 @@ function subscribe_to(class_instance, subscription)
   end
 end
 
+function unsubscribe_all(class_instance)
+  local cleanup = {}
+  for subscription, instances in pairs(info.mqtt.subscriptions) do
+    local others_interested = false
+    for instance, _ in pairs(instances) do
+      if instance ~= class_instance then
+        others_interested = true
+      end
+    end
+    info.mqtt.subscriptions[subscription][class_instance] = nil
+    if not others_interested then
+      cleanup[#cleanup +1] = subscription
+    end
+  end
+
+  for _, subscription in pairs(cleanup) do
+    log('Removing subscription: ' .. class_instance .. ' ' .. subscription)
+    info.mqtt.subscriptions[subscription] = nil
+    mqtt_instance:unsubscribe('homeautomation/+/' .. var_to_path(subscription))
+  end
+end
+
 function match_paths(path_one, path_two, all)
   local role_one, address_one = path_one:match('(.-)/(.+)')
   local role_two, address_two = path_two:match('(.-)/(.+)')
@@ -281,60 +293,62 @@ function initilize()
       info.mqtt.callbacks['control'] = control_instance
 
     
-    log('----------')
+      log('----------')
 
-    local dhcp_watcher = FlowObjectMqttSubscribe:new{instance_name='dhcp_watcher', unique_id='_uid_1'}
-    dhcp_watcher:add_general('subscribed_topic', 'dhcp/_announce')
-    dhcp_watcher:add_input('subscription', {subscribed_topic = {value = 'dhcp/_announce'}})
+      --[[
+      local dhcp_watcher = FlowObjectMqttSubscribe:new{instance_name='dhcp_watcher', unique_id='_uid_1'}
+      dhcp_watcher:add_general('subscribed_topic', 'dhcp/_announce')
+      dhcp_watcher:add_input('subscription', {subscribed_topic = {value = 'dhcp/_announce'}})
 
-    local registered_users = FlowObjectReadFile:new({instance_name='registered_users', unique_id='_uid_2'})
-    registered_users:add_input('load_from_file', {filename = {value = '/etc/homeautomation/registered_users.conf'}})
+      local registered_users = FlowObjectReadFile:new({instance_name='registered_users', unique_id='_uid_2'})
+      registered_users:add_input('load_from_file', {filename = {value = '/etc/homeautomation/registered_users.conf'}})
 
-    local consolidate = FlowObjectCombineData:new({instance_name='consolidate', unique_id='_uid_3'})
-    consolidate:add_input('default_in', {primary_key_label = '_subject'})
+      local consolidate = FlowObjectCombineData:new({instance_name='consolidate', unique_id='_uid_3'})
+      consolidate:add_input('default_in', {primary_key_label = '_subject'})
 
-    local someone_home = FlowObjectMapValues:new({instance_name='someone_home', unique_id='_uid_4'})
-    someone_home:add_input('default_in', {label = '_user_name',
-                                         rules = { _a = {match = '_missing',
-                                                         action = '_drop'},
-                                                   _b = {match = '_else',
+      local someone_home = FlowObjectMapValues:new({instance_name='someone_home', unique_id='_uid_4'})
+      someone_home:add_input('default_in', {label = '_user_name',
+                                           rules = { _a = {match = '_missing',
+                                                           action = '_drop'},
+                                                       _b = {match = '_else',
                                                          action = '_forward'} } })
 
-    local combine_users = FlowObjectAddData:new({instance_name='combine_users', unique_id='_uid_5'})
-    combine_users:add_input('default_in', {primary_key_label = '_subject'})
+      local combine_users = FlowObjectAddData:new({instance_name='combine_users', unique_id='_uid_5'})
+      combine_users:add_input('default_in', {primary_key_label = '_subject'})
 
-    local modify_label = FlowObjectMapLabels:new({instance_name='modify_label', unique_id='_uid_6'})
-    modify_label:add_input('default_in', {rules = { _a = {match = '_reachable',
-                                                       action = '_string',
-                                                       value = '_command'},
-                                                 _b = {match = '_else',
-                                                       action = '_drop'} } } )
+      local modify_label = FlowObjectMapLabels:new({instance_name='modify_label', unique_id='_uid_6'})
+      modify_label:add_input('default_in', {rules = { _a = {match = '_reachable',
+                                                         action = '_string',
+                                                         value = '_command'},
+                                                   _b = {match = '_else',
+                                                         action = '_drop'} } } )
 
-    local modify_value = FlowObjectMapValues:new({instance_name='modify_value', unique_id='_uid_7'})
-    modify_value:add_input('default_in', {label = '_command',
-                                       rules = { _a = {match = 'true',
-                                                       action = '_string',
-                                                       value = 'on'},
-                                                 _b = {match = 'false',
-                                                       action = '_string',
-                                                       value = 'off'} } })
+      local modify_value = FlowObjectMapValues:new({instance_name='modify_value', unique_id='_uid_7'})
+      modify_value:add_input('default_in', {label = '_command',
+                                         rules = { _a = {match = 'true',
+                                                         action = '_string',
+                                                         value = 'on'},
+                                                   _b = {match = 'false',
+                                                         action = '_string',
+                                                         value = 'off'} } })
 
-    local tag_time = FlowObjectAddTime:new({instance_name='tag_time', unique_id='_uid_10'})
+      local tag_time = FlowObjectAddTime:new({instance_name='tag_time', unique_id='_uid_10'})
  
-    local set_jess_warning_lamp = FlowObjectMqttPublish:new({instance_name='set_jess_warning_lamp', unique_id='_uid_9'})
-    set_jess_warning_lamp:add_general('publish_topic', 'lighting/extension/jess_warning_lamp')
+      local set_jess_warning_lamp = FlowObjectMqttPublish:new({instance_name='set_jess_warning_lamp', unique_id='_uid_9'})
+      set_jess_warning_lamp:add_general('publish_topic', 'lighting/extension/jess_warning_lamp')
 
-    registered_users:add_link(consolidate, 'default_in', 'default_out')
-    dhcp_watcher:add_link(tag_time, 'default_in', 'default_out')
-    tag_time:add_link(consolidate, 'default_in', 'default_out')
-    consolidate:add_link(someone_home, 'default_in', 'default_out')
-    someone_home:add_link(combine_users, 'default_in', 'default_out')
-    combine_users:add_link(modify_label, 'default_in', 'default_out')
+      registered_users:add_link(consolidate, 'default_in', 'default_out')
+      dhcp_watcher:add_link(tag_time, 'default_in', 'default_out')
+      tag_time:add_link(consolidate, 'default_in', 'default_out')
+      consolidate:add_link(someone_home, 'default_in', 'default_out')
+      someone_home:add_link(combine_users, 'default_in', 'default_out')
+      combine_users:add_link(modify_label, 'default_in', 'default_out')
 
-    modify_label:add_link(modify_value, 'default_in', 'default_out')
-    modify_value:add_link(set_jess_warning_lamp, 'default_in', 'default_out')
+      modify_label:add_link(modify_value, 'default_in', 'default_out')
+      modify_value:add_link(set_jess_warning_lamp, 'default_in', 'default_out')
+      ]]--
 
-  end
+    end
 	end
 
   -- Set required files and directories.

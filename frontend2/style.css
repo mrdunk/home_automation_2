@@ -1,6 +1,6 @@
 html,body {
-  height:100%;
-  /*overflow: hidden;*/
+  height: 100%;
+  overflow: hidden;
   margin: 0;
   padding: 0;
 }
@@ -27,12 +27,9 @@ ha-sidebar {
   background: ghostwhite;
   position: relative;
   z-index: 99;
-  overflow: hidden;
 }
 
 ha-sidebar div.container {
-  padding-left: 8px;
-  padding-right: 8px;
   z-index: 99;
 }
 
@@ -93,6 +90,14 @@ ha-sidebar .object-color {
   border-width: 1px;
   width: 2em;
   height: 0;
+}
+
+ha-sidebar .sidebar-content {
+	width: 100%;
+	top: 60px;
+	bottom: 50px;
+	position: absolute;
+  overflow: auto;
 }
 
 ha-transitions select, button, input, input[type=text], input[type=number] {
@@ -184,7 +189,7 @@ draggable-button {
   border-radius: 5px;
 }
 
-ha-link-content div {overflow: auto; }
+/*ha-link-content div {overflow: auto; }*/
 ha-link-json pre {outline: 1px solid #ccc; margin: 4px; }
 ha-link-json .string { color: green; }
 ha-link-json .number { color: darkorange; }

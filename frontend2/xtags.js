@@ -189,10 +189,10 @@ xtag.register('ha-sidebar', {
 
         if(sidebar.align === 'right'){
           this.style.right = (sidebar.getBoundingClientRect().right - mouse_event.clientX - (this.getBoundingClientRect().width /2)) + 'px';
-          sidebar.style.width = (sidebar.getBoundingClientRect().right - this.getBoundingClientRect().left -1) + 'px';
+          sidebar.style.width = (sidebar.getBoundingClientRect().right - this.getBoundingClientRect().right -1) + 'px';
         } else {
           this.style.left = (-sidebar.getBoundingClientRect().left + mouse_event.clientX - (this.getBoundingClientRect().width /2) -2) + 'px';
-          sidebar.style.width = (-sidebar.getBoundingClientRect().left + this.getBoundingClientRect().right -1) + 'px';
+          sidebar.style.width = (-sidebar.getBoundingClientRect().left + this.getBoundingClientRect().left -1) + 'px';
         }
       }
     }
@@ -200,10 +200,10 @@ xtag.register('ha-sidebar', {
   methods: {
     resize: function(width){
       if(this.align === 'right'){
-        this.style.width = width + 'px';
+        this.style.width = (width - this.handle.getBoundingClientRect().width) + 'px';
         this.handle.style.right = (width - this.handle.getBoundingClientRect().width) + 'px';
       } else {
-        this.style.width = width + 'px';
+        this.style.width = (width - this.handle.getBoundingClientRect().width) + 'px';
         this.handle.style.left = (width - this.handle.getBoundingClientRect().width) + 'px';
       }
     },
@@ -449,9 +449,9 @@ xtag.register('ha-link-json', {
 function syntaxHighlight(json, expand) {
     if (typeof json != 'string') {
       if(!expand){
-			  json = JSON.stringify(json);
+			  json = JSON.stringify(json, replacer);
       } else {
-        json = JSON.stringify(json, null, 2);
+        json = JSON.stringify(json, replacer, 2);
       }
     }
     json = json.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
@@ -470,6 +470,13 @@ function syntaxHighlight(json, expand) {
         }
         return '<span class="' + cls + '">' + match + '</span>';
     });
+}
+
+function replacer(key, value) {
+  if(key.substr(0,2) === '__'){
+    return;
+  }
+  return value;
 }
 
 xtag.register('ha-input-attributes', {

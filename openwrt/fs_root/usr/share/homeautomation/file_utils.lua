@@ -39,6 +39,14 @@ function file_mod_time(filename)
   return
 end
 
+function sanitize_object_name(name)
+  name = name:gsub('%s+', '_')
+  name = name:gsub('[^_%w]', '')
+  if name:gsub('[_]','') == '' then
+    return ''
+  end
+  return name
+end
 
 function sanitize_text(text)
   return text:gsub('[^%.%-_%w%s:]','')
@@ -83,6 +91,13 @@ end
 
 function sanitize_topic(topic)
   if topic:gsub('[%w%-_/]' , '') == '' then
+    return topic
+  end
+  return ''
+end
+
+function sanitize_topic_with_wild(topic)
+  if topic:gsub('[%w%-_/#%+]' , '') == '' then
     return topic
   end
   return ''

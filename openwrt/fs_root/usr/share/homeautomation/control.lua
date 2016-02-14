@@ -9,20 +9,6 @@ info.thread_counter = 0
 local control = {}
 control.__index = control
 
-function TableConcat(t1,t2)
-	if t1 == nil then
-		t1 = {}
-  end
-	if t2 == nil then
-    return t1
-  end
-
-  for i=1, #t2 do
-    t1[#t1 +1] = t2[i]
-  end
-  return t1
-end
-
 function control.new()
   log("control.new()")
   local self = setmetatable({}, control)
@@ -66,7 +52,7 @@ end
 
 -- This gets called whenever a topic this module is subscribed to appears on the bus.
 function control:callback(path, incoming_data)
-	log("control:callback(", path, incoming_data, ")")
+	log("control:callback(", path, json.encode(incoming_data), ")")
   if path == nil or incoming_data == nil then 
     return
   end
@@ -82,7 +68,6 @@ function control:callback(path, incoming_data)
     -- TODO Only one needs to respond if there is more than one of these on the network.
 		self:announce()
   elseif incoming_data.unique_id then
-    log(incoming_data.unique_id, flatten_data(incoming_data))
     local object = self:object_from_uid(incoming_data.unique_id)
     
     if(object == nil) then
@@ -97,6 +82,7 @@ function control:callback(path, incoming_data)
     end
 		if(object ~= nil) then
       object:merge(incoming_data)
+      object:update()
     end
 	end
 end
@@ -151,10 +137,10 @@ end
 
 function component:setup(instance_name, unique_id)
   log('component:setup(', instance_name, unique_id, ')')
-  self.unique_id = unique_id
   self.object_type = self.object_type  -- Copy from constructor to object so it serialises using JSON methods.
 
   self.data = {}
+  self.version = 0
   self.data.general = {}
   self.data.inputs = {}
   self.data.outputs = {}
@@ -166,27 +152,56 @@ function component:setup(instance_name, unique_id)
   self:add_general('instance_name', instance_name)
 
   -- Add number to any duplicate unique_id.
-  local count = 0
-  while info.components[unique_id] ~= nil do
-    count = count +1
-    unique_id = self.unique_id .. '-' .. tostring(count)
+  if self.was_setup == nil then
+    self.was_setup = true
+    local count = 0
+    while info.components[unique_id] ~= nil do
+      count = count +1
+      unique_id = self.unique_id .. '-' .. tostring(count)
+    end
+    self.unique_id = unique_id
   end
-  self.unique_id = unique_id
   info.components[unique_id] = self
 end
 
 function component:merge(new_data)
-  if get_path(new_data, 'data.general.instance_name') then
-    self:add_general('instance_name', new_data.data.general.instance_name.value)
+  if get_path(new_data, 'version') then
+    if new_data.version < self.version then
+      return
+    elseif new_data.version == self.version then
+      -- TODO Investigate the implications of this.
+      log('WARNING: Matching version numbers in component:merge()')
+    end
+    self.version = new_data.version
+  else
+    return
+  end
+
+  if get_path(new_data, 'data.general.instance_name.value') then
+    local name = sanitize_object_name(new_data.data.general.instance_name.value)
+    if name ~= '' then
+      self:add_general('instance_name', name)
+    else
+      return
+    end
   end
 
   if get_path(new_data, 'shape') then
+    -- TODO Make sure position is in visible range.
     self.shape = new_data.shape
+  end
+
+  --[[
+  if get_path(new_data, 'data.inputs') then
+    self.data.inputs = new_data.data.inputs
   end
 
 	if get_path(new_data, 'data.outputs') then
     self.data.outputs = new_data.data.outputs
 	end
+  ]]--
+
+  return true
 end
 
 function component:add_general(label, value)
@@ -205,7 +220,6 @@ function component:add_input(label, value)
   log("component:add_input(", label, value, ")")
   label = label or 'default_in'
   label = path_to_var(label)
-  print('@@',label)
   self.data.inputs[label] = value
 end
 
@@ -232,16 +246,20 @@ function component:add_link(destination_component, destination_port_label, sourc
   end
 end
 
-function component:serialise()
-	
-end
+function component:delete_link(destination_component, destination_port_label, source_port_label)
+  source_port_label = source_port_label or 'default_out'
+  destination_port_label = destination_port_label or 'default_in'
 
-function component:display()
-  log('Name: ' .. self:get_general('instance_name'))
-  for label, targets in pairs(self.data.outputs) do
-    for _, target in pairs(targets) do
-      log('  Output ' .. label .. ': ' .. target:get_general('instance_name'))
+  local found = {}
+	for index, existing_output in pairs(self.data.outputs[source_port_label]) do
+    if existing_output.destination_object == destination_component.unique_id and
+        existing_output.destination_port == destination_port_label and
+        existing_output.source_port == source_port_label then
+      found[#found +1] = index
     end
+  end
+  for _, index in pairs(found) do
+    table.remove(self.data.outputs[source_port_label], index)
   end
 end
 
@@ -309,6 +327,10 @@ function component:receive_input(data, port_label, from_unique_id, from_port_lab
   end
 end
 
+function component:update()
+end
+
+
 
 FlowObjectMqttSubscribe = component:new({object_type='FlowObjectMqttSubscribe'})
 
@@ -316,36 +338,53 @@ function FlowObjectMqttSubscribe:setup(instance_name, unique_id)
 	log('FlowObjectMqttSubscribe:setup(', instance_name, unique_id, ')')
 
   component.setup(self, instance_name, unique_id)
+  
+  populate_object(info, 'mqtt.callbacks')
   info.mqtt.callbacks[instance_name] = self
 end
 
-function FlowObjectMqttSubscribe:receive_mqtt(data, label)
-  --log(" ", "FlowObjectMqttSubscribe:receive_mqtt() triggered", label)
+function FlowObjectMqttSubscribe:callback(path, data)
+  --log(" ", "FlowObjectMqttSubscribe:callback(" .. tostring(path) .. ", " .. flatten_data(data) .. ")")
   data.thread_track = {}
   data.thread_track[1] = info.thread_counter
   info.thread_counter = info.thread_counter +1
   self:send_output(data)
 end
 
-function FlowObjectMqttSubscribe:callback(path, data)
-  --log(" ", "FlowObjectMqttSubscribe:callback(" .. tostring(path) .. ", " .. flatten_data(data) .. ")")
-
-  path = var_to_path(path)
-  self:receive_mqtt(data, path_to_var(path))
-end
-
 function FlowObjectMqttSubscribe:subscribe()
-  local subscritions = {}
-  --local path = path_to_var(self.data.general.subscribed_topic.value)
-  print(self.data.inputs)
-  print(flatten_data(self.data.inputs.subscription))
+  --TODO Ensure old subscriptions don't accumulate when this one is changed.
+  log('FlowObjectMqttSubscribe:subscribe', json.encode(self.data))
+  local subscriptions = {}
+
+  unsubscribe_all(self.instance_name)
+
   local path = path_to_var(self.data.inputs.subscription.subscribed_topic.value)
   local role, address = path:match('(.-)__(.+)')
   if role and address then
-    subscritions[#subscritions +1] = {role = role, address = address}
+    subscribe_to_all(self, role, address)
+    subscriptions[#subscriptions +1] = {role = role, address = address}
   end
 
-  return subscritions
+  return subscriptions
+end
+
+function FlowObjectMqttSubscribe:update()
+  self:subscribe()
+end
+
+function FlowObjectMqttSubscribe:merge(new_data)
+  if component.merge(self, new_data) then
+    populate_object(self, 'data.inputs.subscription.subscribed_topic')
+    if get_path(new_data, 'data.inputs.subscription.subscribed_topic.value') then
+      local topic = sanitize_topic_with_wild(new_data.data.inputs.subscription.subscribed_topic.value)
+      if topic == '' then
+        return
+      end
+      self.data.inputs.subscription.subscribed_topic.value = topic
+    end
+    populate_object(self, 'data.outputs.default_out')
+    return true
+  end
 end
 
 
