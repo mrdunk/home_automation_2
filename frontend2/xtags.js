@@ -1139,9 +1139,44 @@ xtag.register('ha-switch-rules', {
     },
     'click:delegate(select)': function(mouseEvent){
       console.log(mouseEvent.srcElement.value);
+
+      var parent;
+      for (var i = 0; i < mouseEvent.path.length; i++){
+        if(xtag.matchSelector(mouseEvent.path[i], 'ha-switch-rules')){
+          parent = mouseEvent.path[i];
+          break;
+        }
+      }
+      if(parent === undefined){
+        return;
+      }
+
+      var click_value = mouseEvent.srcElement.value;
+			
+			var click_type = click_value.split('|')[0];
+      var rule_value = click_value.split('|')[1];
+      var rule_index = parseInt(click_value.split('|')[2]);
+			console.log(click_type, rule_value, rule_index);
+			if(click_type === 'if_type') {
+        parent.data.values.rules[rule_index].if_type = rule_value;
+        var description = if_types[rule_value].description;
+			  parent.rules.getElementsByTagName('ha-switch-rule')[rule_index].getElementsByTagName('div')[0].innerHTML = description;
+      } else if(click_value.split('|')[0] === 'send_to') {
+        parent.data.values.rules[rule_index].send_to = rule_value;
+      }
     }
   }
 });
+
+var if_types = {bool: {text: 'boolean',
+                       description: 'True or False'},
+                number: {text: 'number',
+                         description: 'A number'},
+                string: {text: 'string',
+                      description: 'A text string.'},
+                missing: {text: 'missing',
+                          description: 'Label not found in data.'}
+}
 
 xtag.register('ha-switch-rule', {
   lifecycle:{
@@ -1150,29 +1185,22 @@ xtag.register('ha-switch-rule', {
   },
   methods: {
     populate: function(data, flow_object){
+      console.log(data);
 			var remove_button = document.createElement('button');
       remove_button.textContent = '-';
       remove_button.value = 'remove_rule|' + data.rule_number;
       this.appendChild(remove_button);
 
-      var if_types = {bool: {text: 'boolean',
-                             description: 'True or False'},
-                      number: {text: 'number',
-                               description: 'A number'},
-                      string: {text: 'string',
-                            description: 'A text string.'},
-                      missing: {text: 'missing',
-                                description: 'Label not found in data.'}
-      }
-
       var if_type = document.createElement('select');
       for(var if_type_opt_str in if_types){
         var if_type_option = document.createElement("option");
         if_type_option.text = if_types[if_type_opt_str].text;
-        if_type_option.value = if_type_opt_str + '|' + data.rule_number;
+        if_type_option.value = 'if_type|' + if_type_opt_str + '|' + data.rule_number;
+        if(if_type_opt_str === data.if_type){
+          if_type_option.selected = true;
+        }
         if_type.add(if_type_option);
       }
-      if_type.value = data.if_type;
       this.appendChild(if_type);
 
 			var if_value = document.createElement('input');
@@ -1184,14 +1212,16 @@ xtag.register('ha-switch-rule', {
       for(var output_name in flow_object.data.data.outputs){
         output = document.createElement("option");
         output.text = output_name;
-        output.value = output_name + '|' + data.rule_number;
+        output.value = 'send_to|' + output_name + '|' + data.rule_number;
+        if(output_name === data.send_to){
+          output.selected = true;
+        }
         send_to.add(output);
       }
-      send_to.value = data.send_to;
       this.appendChild(send_to);
 
       var description = document.createElement('div');
-      description.innerHTML = if_types[if_type.value.split('|')[0]].description;
+      description.innerHTML = if_types[if_type.value.split('|')[1]].description;
       this.appendChild(description);
     }
 	}
