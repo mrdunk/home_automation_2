@@ -21,7 +21,7 @@ function component:new(o)
 end
 
 function component:receive_input(data, port_label, from_unique_id, from_port_label)
-  print('component:receive_input(', json.encode(data), port_label, from_unique_id, from_port_label, ')')
+  log('component:receive_input(', json.encode(data), port_label, from_unique_id, from_port_label, ')')
 	self.last_received = data
 end
 

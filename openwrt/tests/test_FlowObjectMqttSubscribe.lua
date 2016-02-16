@@ -1,6 +1,6 @@
 #!/usr/bin/lua
 
-DEBUG = true
+--DEBUG = true
 
 package.path = package.path .. ';../fs_root/usr/share/homeautomation/?.lua'
 require 'os'
@@ -237,6 +237,12 @@ end
 
 function main()
   print('Starting.')
+  for i,v in pairs(arg) do
+    if v == '-d' then
+      DEBUG = true
+      print('  debugging on.')
+    end
+  end
 
   testHelperFunctionsGetPath()
   testHelperFunctionsPopulateObject()

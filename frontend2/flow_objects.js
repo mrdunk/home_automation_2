@@ -504,33 +504,6 @@ FlowObject.prototype.ExportObject = function(send_object){
   'use strict';
   this.data.version += 1;
 
-/*  send_object = send_object || {data: {inputs: {}, outputs: {}, general: {}}};
-  send_object.unique_id = this.data.unique_id;
-  send_object.data.general.instance_name = {};
-  send_object.data.general.instance_name.value = this.data.data.general.instance_name.value;
-  send_object.version = this.data.version;
-  send_object.shape = this.data.shape;
-  send_object.shape.position = this.shape.getShapePosition();
-
-  for(var object_type in flow_objects){
-    if(flow_objects[object_type].name === this.constructor.name){
-      send_object.object_type = object_type;
-    }
-  }
-
-  send_object.data.outputs = this.data.data.outputs;
-
-  for(var general_name in this.data.data.general){
-    if(general_name !== 'instance_name'){
-		  send_object.data.general[general_name] = this.data.data.general[general_name].value;
-    }
-	}
-
-  console.log('**', JSON.stringify(send_object));
-  console.log('**', JSON.stringify(this.data));
-  Mqtt.send('homeautomation/0/control/_announce', JSON.stringify(send_object));
-*/
-
   var stripedVersion = function(obj){
     if (obj === null || typeof obj !== 'object') {
       return;
@@ -569,7 +542,7 @@ var inheritsFrom = function (child, parent) {
 };
 
 
-flow_object_classes = [FlowObjectMqttSubscribe, FlowObjectMqttPublish, FlowObjectReadFile, FlowObjectMapValues, FlowObjectMapLabels, FlowObjectAddTime, FlowObjectCombineData, FlowObjectAddData, FlowObjectFilterByTime];
+flow_object_classes = [FlowObjectMqttSubscribe, FlowObjectMqttPublish, FlowObjectReadFile, FlowObjectMapValues, FlowObjectMapLabels, FlowObjectAddTime, FlowObjectCombineData, FlowObjectAddData, FlowObjectFilterByTime, FlowObjectSwitch];
 
 
 function FlowObjectMqttSubscribe(paper, sidebar, shape, backend_data){
@@ -781,6 +754,99 @@ var stringToBoolean = function(string){
     default: return;
   }
 };
+
+
+
+function FlowObjectSwitch(paper, sidebar, shape, backend_data){
+  'use strict';
+  console.log("FlowObjectSwitch(", backend_data, ')');
+
+  FlowObject.prototype.constructor.call(this, paper, sidebar);
+  this.data = { class_label: 'Switch',
+                class_description: 'Switch between outputs based on a value.',
+                shape: {
+                  width: 60,
+                  height: 50,
+                  color: 'crimson',
+                },
+                data: {
+                  general: {
+                    instance_name: {
+                      description: 'Name',
+                      updater: 'ha-general-attribute',
+                      update_on_change: this.setInstanceName,
+                      //value: 'Object_' + shareBetweenShapes.unique_id
+                    },
+                    output_count: {
+                      description: 'Number of outputs',
+                      updater: 'ha-general-attribute',
+                      update_on_change: this.updateOutputCount,
+                      value: 1
+                    }
+                  },
+                  inputs: {
+                    default_in: {
+                      description: 'Input 1',
+                      port_label: 'default_in',
+                      transitions: {
+                          description: 'Map Input ranges to desired Output.',
+                          updater: 'ha-switch-rules',
+                          //updater: 'ha-general-attribute',
+                          values: {
+                            label: '_subject',
+                            rules: [{if_type: 'bool',
+                                     if_value: true,
+                                     send_to: 'branch_1'}],
+                            otherwise: {send_to: 'drop'}
+                          }
+                      },
+                    },
+                  },
+                  outputs: {
+							      branch_1: [],
+                    drop: []
+                  }}};
+  if(paper){
+    this.shape = shape || paper.box(0, 0, this.data.shape.width, this.data.shape.height, this.data.shape.color);
+    this.setup(backend_data);
+
+    if(getPath(backend_data, 'data.inputs.default_in.label') !== undefined){
+      this.updateSwitch(backend_data);
+    }
+  }
+};
+
+inheritsFrom(FlowObjectSwitch, FlowObject);
+
+FlowObjectSwitch.prototype.updateOutputCount = function(new_count){
+  this.data.data.general.output_count.value = new_count;
+  var remove_these = [];
+  var max_found = 0;
+  for(var output in this.data.data.outputs){
+    if(this.data.data.outputs.hasOwnProperty(output) && output.split('_')[0] === 'branch'){
+      if(parseInt(output.split('_')[1]) > this.data.data.general.output_count.value){
+        remove_these.push(output);
+      } else if(parseInt(output.split('_')[1]) > max_found) {
+        max_found = parseInt(output.split('_')[1]);
+      }
+    }
+  }
+  var remove = remove_these.pop();
+  while(remove){
+    delete this.data.data.outputs[remove];
+    remove = remove_these.pop();
+  }
+
+  for(var i=max_found; i <= this.data.data.general.output_count.value; i++){
+    this.data.data.outputs['branch_' + i] = []
+  }
+
+  this.setShape(this.shape);
+}
+
+FlowObjectSwitch.prototype.updateSwitch = function(backend_data){
+}
+
 
 
 function FlowObjectMapLabels(paper, sidebar, shape, backend_data){

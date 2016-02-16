@@ -196,3 +196,20 @@ ha-link-json .number { color: darkorange; }
 ha-link-json .boolean { color: blue; }
 ha-link-json .null { color: magenta; }
 ha-link-json .key { color: red; }
+
+ha-switch {
+  display: block;
+	overflow: auto;
+}
+
+ha-switch-rule {
+	display: block;
+	white-space: nowrap;
+}
+
+ha-switch-rule > div {
+  border: 1px solid red;
+  display: inline;
+  white-space: nowrap;
+}
+

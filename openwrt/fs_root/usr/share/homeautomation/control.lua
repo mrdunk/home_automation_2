@@ -195,11 +195,12 @@ function component:merge(new_data)
   if get_path(new_data, 'data.inputs') then
     self.data.inputs = new_data.data.inputs
   end
+  ]]--
 
+  -- TODO Sanitize output data.
 	if get_path(new_data, 'data.outputs') then
     self.data.outputs = new_data.data.outputs
 	end
-  ]]--
 
   return true
 end

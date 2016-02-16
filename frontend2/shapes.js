@@ -141,7 +141,7 @@ Raphael.st.setInputs = function(parent_context){
     for(var i = 0; i < this.items.length; i++){
       if(this.items[i].label === 'inputs'){
         while(this.items[i].items.length){
-          node = this.items[i].pop();
+          var node = this.items[i].pop();
           node.remove();
         }
         var height_offset = 0;
@@ -184,7 +184,7 @@ Raphael.st.setOutputs = function(parent_context){
     for(var i = 0; i < this.items.length; i++){
       if(this.items[i].label === 'outputs'){
         while(this.items[i].items.length){
-          node = this.items[i].pop();
+          var node = this.items[i].pop();
           node.remove();
         }
 

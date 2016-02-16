@@ -303,7 +303,6 @@ xtag.register('ha-flowobject-data', {
       list_content = this.getElementsByClassName('input')[0];
       for(var input_id in data.inputs){
         var input_attributes = document.createElement('ha-input-attributes');
-        console.log(input_id, data.inputs[input_id]);
         input_attributes.populate(data.inputs[input_id], flow_object);
         list_content.appendChild(input_attributes);
       }
@@ -432,12 +431,12 @@ xtag.register('ha-link-json', {
 			shareBetweenShapes.links_highlight = undefined;
     },
     enter: function(){
-      console.log('ha-link-json.enter', this.link_data.__trace);
+      //console.log('ha-link-json.enter', this.link_data.__trace);
       shareBetweenShapes.links_highlight = this.link_data.__trace;
 			this.highlight_path(true);
     },
     leave: function(){
-      console.log('ha-link-json.leave');
+      //console.log('ha-link-json.leave');
 			this.highlight_path(false);
       shareBetweenShapes.links_highlight = undefined;
     }
@@ -548,7 +547,6 @@ xtag.register('ha-general-attribute', {
         input = document.createElement("input");
       }
 			input.value = data.value;
-			input.name = name;
 			input.onchange = this.update_callback.bind({element: input, data: data, flow_object: flow_object});
 			this.getElementsByClassName('form')[0].appendChild(input);
     },
@@ -1063,6 +1061,140 @@ xtag.register('draggable-button', {
       this.style.background = color;
     }
   }
+});
+
+xtag.register('ha-switch-rules', {
+  lifecycle:{
+    created: function(){
+    }
+  },
+  methods: {
+    populate: function(data, flow_object){
+			console.log('ha-switch-rules(', data, flow_object, ')');
+
+      this.data = data;
+      this.flow_object = flow_object;
+
+      var labels_content = document.createElement('ha-general-attribute');
+      labels_content.populate({value: data.values.label, description: 'Label:'}, flow_object)
+      this.appendChild(labels_content);
+
+      this.rules = document.createElement('div');
+      this.appendChild(this.rules);
+
+			for(var i=0; i < data.values.rules.length; i++){
+				var rule = document.createElement('ha-switch-rule');
+        data.values.rules[i].rule_number = i;
+        rule.populate(data.values.rules[i], flow_object);
+        this.rules.appendChild(rule);
+			}
+
+      var add_button = document.createElement('button');
+      add_button.textContent = '+';
+      add_button.value = 'add_rule';
+      this.appendChild(add_button);
+    }
+  },
+  events: {
+    'click:delegate(button)': function(mouseEvent){
+      console.log(mouseEvent.srcElement.value);
+
+      var parent;
+      for (var i = 0; i < mouseEvent.path.length; i++){
+        if(xtag.matchSelector(mouseEvent.path[i], 'ha-switch-rules')){
+          parent = mouseEvent.path[i];
+          break;
+        }
+      }
+      if(parent === undefined){
+        return;
+      }
+
+			var click_value = mouseEvent.srcElement.value;
+			if(click_value === 'add_rule'){
+        var rule = document.createElement('ha-switch-rule');
+        var data = {rule_number: parent.data.values.rules.length,
+                    if_type: 'bool',
+                    if_value: true,
+                    send_to: 'branch_1'};
+        parent.data.values.rules.push(data);
+        rule.populate(data, parent.flow_object);
+        parent.rules.appendChild(rule);
+      } else if(click_value.split('|')[0] === 'remove_rule') {
+        var rule_index = parseInt(click_value.split('|')[1]);
+        for(var i=0; i < parent.rules.getElementsByTagName('ha-switch-rule').length; i++){
+          if(i === rule_index){
+            console.log(parent.rules.getElementsByTagName('ha-switch-rule')[i]);
+            parent.rules.removeChild(parent.rules.getElementsByTagName('ha-switch-rule')[i]);
+            parent.data.values.rules.splice(i, 1);
+            break;
+          }
+        }
+        // Since an element was removed, we need to re-number the button IDs to match their order in the array.
+        for(var i=0; i < parent.rules.getElementsByTagName('ha-switch-rule').length; i++){
+          parent.rules.getElementsByTagName('ha-switch-rule')[i].getElementsByTagName('button')[0].value = 'remove_rule|' + i;
+          parent.data.values.rules[i].rule_number = i;
+        }
+      }
+    },
+    'click:delegate(select)': function(mouseEvent){
+      console.log(mouseEvent.srcElement.value);
+    }
+  }
+});
+
+xtag.register('ha-switch-rule', {
+  lifecycle:{
+    created: function(){
+    }
+  },
+  methods: {
+    populate: function(data, flow_object){
+			var remove_button = document.createElement('button');
+      remove_button.textContent = '-';
+      remove_button.value = 'remove_rule|' + data.rule_number;
+      this.appendChild(remove_button);
+
+      var if_types = {bool: {text: 'boolean',
+                             description: 'True or False'},
+                      number: {text: 'number',
+                               description: 'A number'},
+                      string: {text: 'string',
+                            description: 'A text string.'},
+                      missing: {text: 'missing',
+                                description: 'Label not found in data.'}
+      }
+
+      var if_type = document.createElement('select');
+      for(var if_type_opt_str in if_types){
+        var if_type_option = document.createElement("option");
+        if_type_option.text = if_types[if_type_opt_str].text;
+        if_type_option.value = if_type_opt_str + '|' + data.rule_number;
+        if_type.add(if_type_option);
+      }
+      if_type.value = data.if_type;
+      this.appendChild(if_type);
+
+			var if_value = document.createElement('input');
+			if_value.value = data.if_value;
+			this.appendChild(if_value);
+
+      var send_to = document.createElement('select');
+      var output;
+      for(var output_name in flow_object.data.data.outputs){
+        output = document.createElement("option");
+        output.text = output_name;
+        output.value = output_name + '|' + data.rule_number;
+        send_to.add(output);
+      }
+      send_to.value = data.send_to;
+      this.appendChild(send_to);
+
+      var description = document.createElement('div');
+      description.innerHTML = if_types[if_type.value.split('|')[0]].description;
+      this.appendChild(description);
+    }
+	}
 });
 
 })();
