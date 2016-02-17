@@ -303,25 +303,48 @@ function component:send_one_output(data, label)
   if self.data.outputs[label] then
     for _, link_data in pairs(self.data.outputs[label]) do
       log('component:send_one_output:', self.unique_id, label, '->', link_data.destination_object, link_data.destination_port)
-      if(info.components[link_data.destination_object] and info.components[link_data.destination_object]:get_general('instance_name')) then
-        local target_name = info.components[link_data.destination_object]:get_general('instance_name')
-        info.components[link_data.destination_object]:receive_input(data, link_data.destination_port, self.unique_id, label)
+      if info.components[link_data.destination_object] then
+				local data_copy = info.components[link_data.destination_object]:make_data_copy(data, link_data.destination_port, self.unique_id, label)
+        info.components[link_data.destination_object]:receive_input(data_copy, link_data.destination_port, self.unique_id, label)
       end
     end
   end
 end
 
+-- Each path through the objects needs it's own copy of 'data'.
+-- Also add tracking data about the input port so we can check for loops.
+function component:make_data_copy(data, port_label, from_unique_id, from_port_label)
+  port_label = port_label or 'default_in'
+  data = deepcopy(data)
+  if(data.__trace == nil) then
+    data.__trace = {{destination_object=self.unique_id, destination_port=port_label}}
+    data.error = 'Data was not correclty marked with source object and port.'
+  elseif data.__trace[#data.__trace].destination_object ~= nil or
+         data.__trace[#data.__trace].destination_port ~= nil  then
+    data.error = 'Unexpected __trace configuration.'
+  else
+    for _, trace_entry in pairs(data.__trace) do
+      if trace_entry.destination_object == self.unique_id and trace_entry.destination_port == port_label then
+        data.error = 'Loop detected! Data has already passed through this port.'
+        break
+      end
+    end
+    data.__trace[#data.__trace].destination_object=self.unique_id
+    data.__trace[#data.__trace].destination_port=port_label
+  end
+  return data
+end
+
 function component:receive_input(data, port_label, from_unique_id, from_port_label)
   port_label = port_label or 'default_in'
 
-  if(data.__trace == nil) then
+--[[  if(data.__trace == nil) then
     data.__trace = {{destination_object=self.unique_id, destination_port=label}}
 	else
-  	--table.insert(data.__trace, {destination_object=self.unique_id, destination_port=label})
 		data.__trace[#data.__trace].destination_object=self.unique_id
 		data.__trace[#data.__trace].destination_port=label
 	end
-
+]]--
   if port_label == 'default_in' then
     -- Pasthrough this component and trigger the default output.
     self:send_output(data)
@@ -394,13 +417,14 @@ FlowObjectMapValues = component:new({object_type='FlowObjectMapValues'})
 
 function FlowObjectMapValues:receive_input(data, port_label)
   --log(" ~~", "FlowObjectMapValues:receive_input(", flatten_data(data), l, ")")
-
+--[[
   if(data.__trace == nil) then
     data.__trace = {{destination_object=self.unique_id, destination_port=port_label}}
   else
     data.__trace[#data.__trace].destination_object=self.unique_id
     data.__trace[#data.__trace].destination_port=port_label
   end
+]]--
 
   local label = self.data.inputs.default_in.label
   local rules = self.data.inputs.default_in.rules
@@ -445,12 +469,13 @@ FlowObjectMapLabels = component:new({object_type='FlowObjectMapLabels'})
 
 function FlowObjectMapLabels:receive_input(data, port_label)
   --log(" ==", "FlowObjectMapLabels:receive_input(", data, port_label, ")")
-  if(data.__trace == nil) then
+--[[  if(data.__trace == nil) then
     data.__trace = {{destination_object=self.unique_id, destination_port=port_label}}
   else
     data.__trace[#data.__trace].destination_object=self.unique_id
     data.__trace[#data.__trace].destination_port=port_label
   end
+]]--
 
   local forward_data = {thread_track = data.thread_track,
                         __trace = data.__trace}
@@ -480,12 +505,12 @@ end
 FlowObjectMqttPublish = component:new({object_type='FlowObjectMqttPublish'})
 
 function FlowObjectMqttPublish:receive_input(data, port_label)
-  if(data.__trace == nil) then
+--[[  if(data.__trace == nil) then
     data.__trace = {{destination_object=self.unique_id, destination_port=port_label}}
   else
     data.__trace[#data.__trace].destination_object=self.unique_id
     data.__trace[#data.__trace].destination_port=port_label
-  end
+  end]]--
 
 	local topic = 'homeautomation/0/' .. self.data.general.publish_topic.value
 	local payload = flatten_data(data)
@@ -526,12 +551,12 @@ end
 function FlowObjectReadFile:receive_input(data, input_label)
 	-- If data is sent to this Component, make it send data.
 
-  if(data.__trace == nil) then
+--[[  if(data.__trace == nil) then
     data.__trace = {{destination_object=self.unique_id, destination_port=input_label}}
   else
     data.__trace[#data.__trace].destination_object=self.unique_id
     data.__trace[#data.__trace].destination_port=input_label
-  end
+  end]]--
 
   local match_data_label = self.data.general.match_data_label.value
   local match_data_value = self.data.general.match_data_value.value
@@ -578,12 +603,12 @@ function FlowObjectCombineData:setup(instance_name, unique_id)
 end
 
 function FlowObjectCombineData:receive_input(data, input_label, from_unique_id, from_port_label)
-  if(data.__trace == nil) then
+--[[  if(data.__trace == nil) then
     data.__trace = {{destination_object=self.unique_id, destination_port=input_label}}
   else
     data.__trace[#data.__trace].destination_object=self.unique_id
     data.__trace[#data.__trace].destination_port=input_label
-  end
+  end]]--
 
   local primary_key_label = self.data.inputs.default_in.primary_key_label
 
@@ -638,12 +663,12 @@ end
 
 function FlowObjectAddData:receive_input(data, input_label)
   --log("'''''", flatten_data(data))
-  if(data.__trace == nil) then
+--[[  if(data.__trace == nil) then
     data.__trace = {{destination_object=self.unique_id, destination_port=input_label}}
   else
     data.__trace[#data.__trace].destination_object=self.unique_id
     data.__trace[#data.__trace].destination_port=input_label
-  end
+  end]]--
 
   local primary_key_label = self.data.inputs.default_in.primary_key_label
 
@@ -738,24 +763,21 @@ end
 FlowObjectAddTime = component:new({object_type='FlowObjectAddTime'})
 
 function FlowObjectAddTime:receive_input(data, port_label)
-  --log(" ^^", "FlowObjectAddTime:receive_input(", flatten_data(data), l, ")")
-  if(data.__trace == nil) then
-    data.__trace = {{destination_object=self.unique_id, destination_port=port_label}}
-  else
-    data.__trace[#data.__trace].destination_object=self.unique_id
-    data.__trace[#data.__trace].destination_port=port_label
-  end
-
   data._time_weekday = os.date('%w')
   data._time_hour = os.date('%H')
   data._time_minute = os.date('%M')
   
-  --log(" ^^", "FlowObjectAddTime:receive_input(", flatten_data(data), l, ")")
 	self:send_output(data)
 end
 
 
+FlowObjectSwitch = component:new({object_type='FlowObjectSwitch'})
 
+function FlowObjectSwitch:receive_input(data, port_label)
+
+	log(" ^^", "FlowObjectSwitch:receive_input(", json.encode(data), port_label, ")")
+
+end
 
 
 return control

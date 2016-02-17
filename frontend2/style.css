@@ -197,14 +197,28 @@ ha-link-json .boolean { color: blue; }
 ha-link-json .null { color: magenta; }
 ha-link-json .key { color: red; }
 
-ha-switch {
-  display: block;
+ha-switch-rules {
+  /*display: block;*/
+	display:table;
 	overflow: auto;
 }
 
 ha-switch-rule {
-	display: block;
+	/*display: block;*/
+	display: table-row;
 	white-space: nowrap;
+}
+
+ha-switch-rule-filter {
+	display:table-cell;
+}
+
+ha-switch-rule > select {
+	display:table-cell;
+}
+
+ha-switch-rule > button {
+  display:table-cell;
 }
 
 ha-switch-rule > div {

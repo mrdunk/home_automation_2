@@ -364,13 +364,24 @@ Data.GetMatchingTopics = function(topic){
 };
 
 
+var increment_session_uid = function(){
+  var counter = 0;
+  if(localStorage.getItem('session_counter')){
+    counter = localStorage.getItem('session_counter');
+  }
+  counter++;
+  localStorage.setItem('session_counter', counter);
+  return counter;
+}
+
 var session_uid = function(){
+  var counter = localStorage.getItem('session_counter');
   if(localStorage.getItem('session_uid')){
-    return localStorage.getItem('session_uid');
+    return localStorage.getItem('session_uid') + '_' + counter;
   }
   var uid = '_' + Math.random().toString(36).substr(2, 9);
   localStorage.setItem('session_uid', uid);
-  return uid;
+  return uid + '_' + counter;
 }
 
 
@@ -379,5 +390,6 @@ window.onload = function() {
   Page.init();
   Page._intervalId_ = setInterval(Page.run, 1000 / Page.fps_);
   Mqtt.MQTTconnect();
+  increment_session_uid();
   console.log("done window.onload");
 };

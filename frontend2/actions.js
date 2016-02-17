@@ -11,6 +11,7 @@ var flow_objects = {FlowObjectMqttSubscribe: FlowObjectMqttSubscribe,
                     FlowObjectCombineData: FlowObjectCombineData,
                     FlowObjectAddData: FlowObjectAddData,
                     FlowObjectFilterByTime: FlowObjectFilterByTime,
+                    FlowObjectSwitch: FlowObjectSwitch,
                     };
 
 

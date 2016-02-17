@@ -660,11 +660,8 @@ function FlowObjectMqttPublish(paper, sidebar, shape, backend_data){
                   outputs: {}}
               };
   if(paper){
-    console.log(1)
     this.shape = shape || paper.box(0, 0, this.data.shape.width, this.data.shape.height, this.data.shape.color);
-    console.log(2)
     this.setup(backend_data);
-    console.log(3)
   }
 };
 
@@ -780,6 +777,7 @@ function FlowObjectSwitch(paper, sidebar, shape, backend_data){
                     output_count: {
                       description: 'Number of outputs',
                       updater: 'ha-general-attribute',
+                      form_type: 'number',
                       update_on_change: this.updateOutputCount,
                       value: 1
                     }
@@ -788,6 +786,12 @@ function FlowObjectSwitch(paper, sidebar, shape, backend_data){
                     default_in: {
                       description: 'Input 1',
                       port_label: 'default_in',
+                      behaviour: {
+                        description: 'Stop after first match',
+                        updater: 'ha-general-attribute',
+                        value: true,
+                        form_type: 'checkbox'
+                      },
                       transitions: {
                           description: 'Map Input ranges to desired Output.',
                           updater: 'ha-switch-rules',
@@ -804,7 +808,8 @@ function FlowObjectSwitch(paper, sidebar, shape, backend_data){
                   },
                   outputs: {
 							      branch_1: [],
-                    drop: []
+                    _drop: [],
+                    _error: []
                   }}};
   if(paper){
     this.shape = shape || paper.box(0, 0, this.data.shape.width, this.data.shape.height, this.data.shape.color);
@@ -819,6 +824,9 @@ function FlowObjectSwitch(paper, sidebar, shape, backend_data){
 inheritsFrom(FlowObjectSwitch, FlowObject);
 
 FlowObjectSwitch.prototype.updateOutputCount = function(new_count){
+  if(new_count < 1){
+    new_count = 1;
+  }
   this.data.data.general.output_count.value = new_count;
   var remove_these = [];
   var max_found = 0;

@@ -25,6 +25,10 @@ function component:receive_input(data, port_label, from_unique_id, from_port_lab
 	self.last_received = data
 end
 
+function component:make_data_copy(data, port_label, from_unique_id, from_port_label)
+	return deepcopy(data)
+end
+
 function component:get_general(label)
   return self.unique_id
 end

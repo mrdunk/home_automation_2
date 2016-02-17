@@ -162,18 +162,49 @@ function testComponentSendOutput()
   test_object:send_output({a='test data'}, 'default_out')
   assert(mock_object_1.last_received.a == 'test data')
   assert(mock_object_2.last_received.a == nil)
+  assert(#mock_object_1.last_received.__trace == 1)
+  assert(mock_object_2.last_received.__trace == nil)
 
   -- Link other object.
   test_object:add_link(mock_object_2, 'default_in', 'default_out')
   test_object:send_output({b='test data'}, 'default_out')
   assert(mock_object_1.last_received.b == 'test data')
   assert(mock_object_2.last_received.b == 'test data')
+  assert(#mock_object_1.last_received.__trace == 1)
+  assert(#mock_object_2.last_received.__trace == 1)
 
   -- Remove a link.
   test_object:delete_link(mock_object_1, 'default_in', 'default_out')
   test_object:send_output({c='test data'}, 'default_out')
   assert(mock_object_1.last_received.c == nil)
   assert(mock_object_2.last_received.c == 'test data')
+end
+
+function testComponentAddTrace()
+  print('------ testComponentAddTrace ------')
+  local control_class = require 'control'
+
+  local test_object_1 = component:new{object_type='component', instance_name='instance_name_1', unique_id='unique_id_1'}
+  local test_object_2 = component:new{object_type='component', instance_name='instance_name_2', unique_id='unique_id_2'}
+  local test_data = {a='test data', __trace={}}
+  table.insert(test_data.__trace, {source_object='source_unique_id', source_port='source_port'})
+
+  local data_copy_1 = test_object_1:make_data_copy(test_data, "port_label", "from_unique_id", "from_port_label")
+  local data_copy_2 = test_object_2:make_data_copy(test_data, "port_label", "from_unique_id", "from_port_label")
+
+  assert(test_data.__trace[1].destination_object == nil)
+  assert(data_copy_1.__trace[1].destination_object ~= nil)
+  assert(data_copy_1.__trace[1].destination_port ~= nil)
+  assert(data_copy_1.__trace[1].destination_object ~= data_copy_2.__trace[1].destination_object)
+
+  -- This should error as it's already had the destination information filled.
+  data_copy_1 = test_object_1:make_data_copy(data_copy_1, "port_label", "from_unique_id", "from_port_label")
+  assert(data_copy_1.error ~= nil)
+
+  -- This should error as we are feeding the same data back into a port it's already been through.
+  table.insert(data_copy_2.__trace, {source_object='unique_id_2', source_port='port_label'})
+  local data_copy_2_b = test_object_2:make_data_copy(data_copy_2, "port_label", "from_unique_id", "from_port_label")
+  assert(data_copy_2_b.error ~= nil)
 end
 
 function testFlowObjectMqttSubscribe()
@@ -235,6 +266,12 @@ function testFlowObjectMqttSubscribeSubscribe()
 	assert(subscribe_to_all_track)
 end
 
+function testFlowObjectSwitch()
+  print('------ testFlowObjectSwitch ------')
+
+  local test_object = FlowObjectSwitch:new{instance_name='instance_name', unique_id='unique_id'}
+end
+
 function main()
   print('Starting.')
   for i,v in pairs(arg) do
@@ -251,10 +288,13 @@ function main()
 	testComponentMerge()
   testComponentAddLink()
   testComponentSendOutput()
+  testComponentAddTrace()
 
   testFlowObjectMqttSubscribe()
   testFlowObjectMqttSubscribeMerge()
 	testFlowObjectMqttSubscribeSubscribe()
+
+  testFlowObjectSwitch()
 end
 
 

@@ -539,10 +539,19 @@ xtag.register('ha-general-attribute', {
     populate: function(data, flow_object){
       this.getElementsByClassName('description')[0].innerHTML = data.description;
 			var input;
-      if(data.form_type){
+      if(data.form_type === 'textarea'){
         input = document.createElement(data.form_type);
         input.rows = 4;
         input.cols = 50;
+			} else if(data.form_type === 'checkbox'){
+				input = document.createElement('input');
+				input.type = 'checkbox';
+				if(data.value === true || (typeof(data.value) === 'string' && data.value.toLowerCase() === 'true')){
+          input.checked = true;
+				}
+      } else if(data.form_type === 'number'){
+        input = document.createElement('input');
+        input.type = 'number';
       } else {
         input = document.createElement("input");
       }
@@ -553,21 +562,26 @@ xtag.register('ha-general-attribute', {
     update_callback: function(update_event){
       console.log('update_callback', this, update_event);
 
+      var value = this.element.value;
+      if(this.element.type === 'checkbox'){
+        value = this.element.checked;
+      }
+
       if(this.data.update_on_change){
         // Some special activity is requested when this field changes.
         if(typeof this.data.update_on_change === 'function'){
           // We have a callback function to deal with this field.
-          this.data.update_on_change.call(this.flow_object, this.element.value);
+          this.data.update_on_change.call(this.flow_object, value);
         } else {
           // Just save the data.
-          this.data.value = this.element.value;
+          this.data.value = value;
         }
 
         // Update the sidebar.
         this.flow_object.displaySideBar();
       } else {
         // No special activity requested when this field changes. Just save the data.
-        this.data.value = this.element.value;
+        this.data.value = value;
       }
 
       // Now export a copy on Mqtt.
@@ -1064,10 +1078,6 @@ xtag.register('draggable-button', {
 });
 
 xtag.register('ha-switch-rules', {
-  lifecycle:{
-    created: function(){
-    }
-  },
   methods: {
     populate: function(data, flow_object){
 			console.log('ha-switch-rules(', data, flow_object, ')');
@@ -1099,16 +1109,7 @@ xtag.register('ha-switch-rules', {
     'click:delegate(button)': function(mouseEvent){
       console.log(mouseEvent.srcElement.value);
 
-      var parent;
-      for (var i = 0; i < mouseEvent.path.length; i++){
-        if(xtag.matchSelector(mouseEvent.path[i], 'ha-switch-rules')){
-          parent = mouseEvent.path[i];
-          break;
-        }
-      }
-      if(parent === undefined){
-        return;
-      }
+      var parent = mouseEvent.currentTarget;
 
 			var click_value = mouseEvent.srcElement.value;
 			if(click_value === 'add_rule'){
@@ -1121,35 +1122,20 @@ xtag.register('ha-switch-rules', {
         rule.populate(data, parent.flow_object);
         parent.rules.appendChild(rule);
       } else if(click_value.split('|')[0] === 'remove_rule') {
+        // Remove from data.
         var rule_index = parseInt(click_value.split('|')[1]);
+        parent.data.values.rules.splice(rule_index, 1);
+        // Remove the last visible rule element.
+        parent.rules.removeChild(parent.rules.getElementsByTagName('ha-switch-rule')[0]);
+				// Now update all remaining rules to make sure they reflect the data.
         for(var i=0; i < parent.rules.getElementsByTagName('ha-switch-rule').length; i++){
-          if(i === rule_index){
-            console.log(parent.rules.getElementsByTagName('ha-switch-rule')[i]);
-            parent.rules.removeChild(parent.rules.getElementsByTagName('ha-switch-rule')[i]);
-            parent.data.values.rules.splice(i, 1);
-            break;
-          }
-        }
-        // Since an element was removed, we need to re-number the button IDs to match their order in the array.
-        for(var i=0; i < parent.rules.getElementsByTagName('ha-switch-rule').length; i++){
-          parent.rules.getElementsByTagName('ha-switch-rule')[i].getElementsByTagName('button')[0].value = 'remove_rule|' + i;
           parent.data.values.rules[i].rule_number = i;
+          parent.rules.getElementsByTagName('ha-switch-rule')[i].populate(parent.data.values.rules[i], parent.flow_object);
         }
       }
     },
     'click:delegate(select)': function(mouseEvent){
-      console.log(mouseEvent.srcElement.value);
-
-      var parent;
-      for (var i = 0; i < mouseEvent.path.length; i++){
-        if(xtag.matchSelector(mouseEvent.path[i], 'ha-switch-rules')){
-          parent = mouseEvent.path[i];
-          break;
-        }
-      }
-      if(parent === undefined){
-        return;
-      }
+      var parent = mouseEvent.currentTarget;
 
       var click_value = mouseEvent.srcElement.value;
 			
@@ -1159,9 +1145,12 @@ xtag.register('ha-switch-rules', {
 			console.log(click_type, rule_value, rule_index);
 			if(click_type === 'if_type') {
         parent.data.values.rules[rule_index].if_type = rule_value;
+        
+        parent.rules.getElementsByTagName('ha-switch-rule-filter')[rule_index].populate(parent.data.values.rules[rule_index], parent);
+
         var description = if_types[rule_value].description;
 			  parent.rules.getElementsByTagName('ha-switch-rule')[rule_index].getElementsByTagName('div')[0].innerHTML = description;
-      } else if(click_value.split('|')[0] === 'send_to') {
+      } else if(click_type === 'send_to') {
         parent.data.values.rules[rule_index].send_to = rule_value;
       }
     }
@@ -1169,23 +1158,22 @@ xtag.register('ha-switch-rules', {
 });
 
 var if_types = {bool: {text: 'boolean',
-                       description: 'True or False'},
+                       description: 'Contents of "boolean" type are either True or False.'},
                 number: {text: 'number',
-                         description: 'A number'},
+                         description: 'Contents of "number" type are a number.'},
                 string: {text: 'string',
-                      description: 'A text string.'},
+                         description: 'Contents match the text string.'},
                 missing: {text: 'missing',
-                          description: 'Label not found in data.'}
+                          description: 'Label not found in data.'},
+                exists: {text: 'exists',
+                         description: 'Label found in data. Don\'t care about the contents'}
 }
 
 xtag.register('ha-switch-rule', {
-  lifecycle:{
-    created: function(){
-    }
-  },
   methods: {
     populate: function(data, flow_object){
       console.log(data);
+      this.innerHTML = '';
 			var remove_button = document.createElement('button');
       remove_button.textContent = '-';
       remove_button.value = 'remove_rule|' + data.rule_number;
@@ -1203,8 +1191,8 @@ xtag.register('ha-switch-rule', {
       }
       this.appendChild(if_type);
 
-			var if_value = document.createElement('input');
-			if_value.value = data.if_value;
+			var if_value = document.createElement('ha-switch-rule-filter');
+			if_value.populate(data, flow_object);
 			this.appendChild(if_value);
 
       var send_to = document.createElement('select');
@@ -1225,6 +1213,237 @@ xtag.register('ha-switch-rule', {
       this.appendChild(description);
     }
 	}
+});
+
+xtag.register('ha-switch-rule-filter', {
+  methods: {
+    populate: function(data, flow_object){
+      this.innerHTML = '';
+      switch(data.if_type){
+        case 'bool':
+          var ret_val = document.createElement('ha-switch-rule-filter-bool');
+          ret_val.populate(data, flow_object);
+          this.appendChild(ret_val);
+          break;
+        case 'number':
+          var ret_val = document.createElement('ha-switch-rule-filter-number');
+          ret_val.populate(data, flow_object);
+          this.appendChild(ret_val);
+          break;
+        case 'string':
+          var ret_val = document.createElement('ha-switch-rule-filter-string');
+          ret_val.populate(data, flow_object);
+          this.appendChild(ret_val);
+          break;
+				case 'missing':
+					break;
+        case 'exists':
+          break;
+        default:
+          var ret_val = document.createElement('input');
+          ret_val.value = data.if_value;
+          this.appendChild(ret_val);
+      }
+    }
+  }
+});
+
+
+xtag.register('ha-switch-rule-filter-bool', {
+  methods: {
+    populate: function(data, flow_object){
+      var selector = document.createElement('select');
+      var output_true = document.createElement("option");
+      output_true.text = '= True';
+      output_true.value = 'if_value|true|' + data.rule_number;
+      selector.add(output_true);
+      var output_false = document.createElement("option");
+      output_false.text = '= False';
+      output_false.value = 'if_value|false|' + data.rule_number;
+      selector.add(output_false);
+			this.appendChild(selector);
+
+			if(data.if_value === true || data.if_value === 'true'){
+        output_true.selected = true;
+			} else {
+        output_false.selected = true;
+      }
+    }
+  },
+  events: {
+    'click:delegate(select)': function(mouseEvent){
+      var parent;
+      for (var i = 0; i < mouseEvent.path.length; i++){
+        if(xtag.matchSelector(mouseEvent.path[i], 'ha-switch-rules')){
+          parent = mouseEvent.path[i];
+          break;
+        }
+      }
+      if(parent === undefined){
+        return;
+      }
+
+      var click_value = mouseEvent.srcElement.value;
+
+			var click_type = click_value.split('|')[0];
+			var rule_value = click_value.split('|')[1];
+			var rule_index = parseInt(click_value.split('|')[2]);
+			if(click_type === 'if_value') {
+				console.log('ha-switch-rule-filter-bool', click_type, rule_value, rule_index)
+				parent.data.values.rules[rule_index].if_value = rule_value;
+      }
+		}
+  }
+});
+
+xtag.register('ha-switch-rule-filter-number', {
+  methods: {
+    populate: function(data, flow_object){
+      var selector = document.createElement('select');
+      var selector_options = {lt: '<',
+                              lteq: '<=',
+                              eq: '=',
+                              gteq: '>=',
+                              gt: '>'}
+      for(var val in selector_options){
+        var option = document.createElement("option");
+        option.text = selector_options[val];
+        option.value = 'if_value_opperand|' + val + '|' + data.rule_number;
+        if(data.if_value.opperand === val){
+          option.selected = true;
+        }
+        selector.add(option);
+      }
+      this.appendChild(selector);
+
+      var value = document.createElement('input');
+      value.type = 'number';
+      value.value = data.if_value.value;
+      value.id = 'if_value_value|_na|' + data.rule_number;
+      this.appendChild(value);
+    }
+  },
+  events: {
+    'click:delegate(select,input)': function(mouseEvent){
+      var parent;
+      for (var i = 0; i < mouseEvent.path.length; i++){
+        if(xtag.matchSelector(mouseEvent.path[i], 'ha-switch-rules')){
+          parent = mouseEvent.path[i];
+          break;
+        }
+      }
+      if(parent === undefined){
+        return;
+      }
+
+      var click_value = mouseEvent.srcElement.id || mouseEvent.srcElement.value;
+
+      var click_type = click_value.split('|')[0];
+      var rule_value = click_value.split('|')[1];
+      var rule_index = parseInt(click_value.split('|')[2]);
+      if(rule_value === '_na'){
+        rule_value = mouseEvent.srcElement.value;
+      }
+      console.log('ha-switch-rule-filter-number', click_type, rule_value, rule_index)
+      if(click_type === 'if_value_opperand') {
+        var value = parent.rules.getElementsByTagName('ha-switch-rule')[rule_index].getElementsByTagName('input')[0].value;
+        parent.data.values.rules[rule_index].if_value = {opperand: rule_value,
+                                                         value: value};
+      } else if(click_type === 'if_value_value') {
+        var opperand = parent.rules.getElementsByTagName('ha-switch-rule')[rule_index].getElementsByTagName('select')[1].value.split('|')[1];
+        parent.data.values.rules[rule_index].if_value = {opperand: opperand,
+                                                         value: rule_value};
+      }
+    }
+  }
+});
+
+xtag.register('ha-switch-rule-filter-string', {
+  methods: {
+    populate: function(data, flow_object){
+      var selector = document.createElement('select');
+      var selector_options = {matches: 'matches',
+                              nomatch: 'doesn\'t match',
+                              contains: 'contains',
+                              nocontain: 'doesn\'t contain'}
+      for(var val in selector_options){
+        var option = document.createElement("option");
+        option.text = selector_options[val];
+        option.value = 'if_value_opperand|' + val + '|' + data.rule_number;
+        if(data.if_value.opperand === val){
+          option.selected = true;
+        }
+        selector.add(option);
+      }
+      this.appendChild(selector);
+
+      var value = document.createElement('input');
+      value.value = data.if_value.value;
+      value.id = 'if_value_value|_na|' + data.rule_number;
+      this.appendChild(value);
+    }
+  },
+  events: {
+    'click:delegate(select,input)': function(mouseEvent){
+      var parent;
+      for (var i = 0; i < mouseEvent.path.length; i++){
+        if(xtag.matchSelector(mouseEvent.path[i], 'ha-switch-rules')){
+          parent = mouseEvent.path[i];
+          break;
+        }
+      }
+      if(parent === undefined){
+        return;
+      }
+
+      var click_value = mouseEvent.srcElement.id || mouseEvent.srcElement.value;
+
+      var click_type = click_value.split('|')[0];
+      var rule_value = click_value.split('|')[1];
+      var rule_index = parseInt(click_value.split('|')[2]);
+      if(rule_value === '_na'){
+        rule_value = mouseEvent.srcElement.value;
+      }
+      console.log('ha-switch-rule-filter-number', click_type, rule_value, rule_index)
+      if(click_type === 'if_value_opperand') {
+        var value = parent.rules.getElementsByTagName('ha-switch-rule')[rule_index].getElementsByTagName('input')[0].value;
+        parent.data.values.rules[rule_index].if_value = {opperand: rule_value,
+                                                         value: value};
+      } else if(click_type === 'if_value_value') {
+        var opperand = parent.rules.getElementsByTagName('ha-switch-rule')[rule_index].getElementsByTagName('select')[1].value.split('|')[1];
+        parent.data.values.rules[rule_index].if_value = {opperand: opperand,
+                                                         value: rule_value};
+      }
+    },
+    'focusout:delegate(input)': function(mouseEvent){
+      console.log('onfocusout');
+      var parent;
+      for (var i = 0; i < mouseEvent.path.length; i++){
+        if(xtag.matchSelector(mouseEvent.path[i], 'ha-switch-rules')){
+          parent = mouseEvent.path[i];
+          break;
+        }
+      }
+      if(parent === undefined){
+        return;
+      }
+
+      var click_value = mouseEvent.srcElement.id || mouseEvent.srcElement.value;
+
+      var click_type = click_value.split('|')[0];
+      var rule_value = click_value.split('|')[1];
+      var rule_index = parseInt(click_value.split('|')[2]);
+      if(rule_value === '_na'){
+        rule_value = mouseEvent.srcElement.value;
+      }
+      console.log('ha-switch-rule-filter-number', click_type, rule_value, rule_index)
+			if(click_type === 'if_value_value') {
+        var opperand = parent.rules.getElementsByTagName('ha-switch-rule')[rule_index].getElementsByTagName('select')[1].value.split('|')[1];
+        parent.data.values.rules[rule_index].if_value = {opperand: opperand,
+                                                         value: rule_value};
+      }
+    }
+  }
 });
 
 })();
