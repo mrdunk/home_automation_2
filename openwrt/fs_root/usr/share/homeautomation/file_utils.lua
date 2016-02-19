@@ -120,6 +120,9 @@ function split(path, deliminator)
 end
 
 function path_to_var(path)
+	if path == nul then
+		return ''
+	end
   return path:gsub('/', '__')
 end
 

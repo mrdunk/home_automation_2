@@ -786,7 +786,7 @@ function FlowObjectSwitch(paper, sidebar, shape, backend_data){
                     default_in: {
                       description: 'Input 1',
                       port_label: 'default_in',
-                      behaviour: {
+                      stop_after_match: {
                         description: 'Stop after first match',
                         updater: 'ha-general-attribute',
                         value: true,

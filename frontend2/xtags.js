@@ -310,7 +310,7 @@ xtag.register('ha-flowobject-data', {
       list_content = this.getElementsByClassName('output')[0];
       for(var output_id in data.outputs){
       	var output_attributes = document.createElement('ha-output-attributes');
-				output_attributes.populate(data.outputs[output_id], flow_object);
+				output_attributes.populate(data.outputs[output_id], output_id, flow_object);
 				list_content.appendChild(output_attributes);
       }
     }
@@ -335,9 +335,9 @@ xtag.register('ha-link-header', {
       header_text_to.className = 'text';
       var header_spacer = document.createElement('span');
       header_spacer.className = 'text';
-
-      header_text_from.innerHTML = source_object.data.data.general.instance_name.value;
-      header_text_to.innerHTML = destination_object.data.data.general.instance_name.value;
+      
+      header_text_from.innerHTML = source_object.data.data.general.instance_name.value + ':' + link_data.source_port;
+      header_text_to.innerHTML = destination_object.data.data.general.instance_name.value + ':' + link_data.destination_port;
       header_spacer.innerHTML = '&nbsp;->&nbsp;';
 
       header_content.appendChild(header_text_from);
@@ -513,16 +513,23 @@ xtag.register('ha-output-attributes', {
     }
   },
   methods: {
-    populate: function(data, flow_object){
-      this.getElementsByClassName('description')[0].innerHTML = data.description;
+    populate: function(data, output_id, flow_object){
+      this.getElementsByClassName('description')[0].innerHTML = output_id;
       var form = this.getElementsByClassName('form')[0];
 
       // Modifiable attributes.
-      for(var label in data.peramiters){
-        var general_attributes = document.createElement(data.peramiters[label].updater);
-        general_attributes.populate(data.peramiters[label], flow_object);
-        form.appendChild(general_attributes);                
+      for(var index in data){
+        var input = document.createElement('div');
+        //input.innerHTML = JSON.stringify(data[index])  //data[index].source_port
+        var destination_object = getFlowObjectByUniqueId(data[index].destination_object);
+        if(destination_object){
+          input.innerHTML = destination_object.data.data.general.instance_name.value;
+        } else {
+          input.innerHTML = data[index].destination_object;
+        }
+        form.appendChild(input);                
       }
+      //form.innerHTML = JSON.stringify(data)
     }
   }
 });
@@ -1304,7 +1311,8 @@ xtag.register('ha-switch-rule-filter-number', {
                               lteq: '<=',
                               eq: '=',
                               gteq: '>=',
-                              gt: '>'}
+                              gt: '>',
+                              noteq: '!='}
       for(var val in selector_options){
         var option = document.createElement("option");
         option.text = selector_options[val];

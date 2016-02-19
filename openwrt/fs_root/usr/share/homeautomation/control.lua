@@ -280,7 +280,7 @@ end
 
 -- Send data to only one of the targets.
 function component:send_one_output(data, label)
-  --log("component:send_output(", data, label, ")")
+  log("component:send_one_output(", data, label, ")")
   label = label or 'default_out'
 
   if(data.__trace == nil) then
@@ -773,10 +773,127 @@ end
 
 FlowObjectSwitch = component:new({object_type='FlowObjectSwitch'})
 
-function FlowObjectSwitch:receive_input(data, port_label)
+function FlowObjectSwitch:receive_input(data, out_port_label)
 
-	log(" ^^", "FlowObjectSwitch:receive_input(", json.encode(data), port_label, ")")
+	log(" ^^", "FlowObjectSwitch:receive_input(", json.encode(data), out_port_label, ")")
 
+	if data.error ~= nil then
+		self:send_one_output(data, '_error')
+		return
+	end
+  
+  if self.data.inputs.default_in == nil then
+		data.error = 'FlowObjectSwitch misconfigured. No default_in.'
+    self:send_one_output(data, '_error')
+    return
+  end
+
+  local stop_after_match = self.data.inputs.default_in.stop_after_match
+  local label = self.data.inputs.default_in.transitions
+  for rule_index, rule in pairs(self.data.inputs.default_in.transitions.values.rules) do
+    if rule.if_type == 'bool' then
+      if rule.if_value == data[label] then
+        self:send_one_output(data, rule.send_to)
+        if stop_after_match then
+          break
+        end
+      end
+    elseif rule.if_type == 'number' and tonumber(data[label]) ~= nil then
+      local number = tonumber(data[label])
+      if rule.if_value.opperand == 'lt' then
+        if rule.if_value.value < number then
+          self:send_one_output(data, rule.send_to)
+          if stop_after_match then
+            break
+          end
+        end
+      elseif rule.if_value.opperand == 'lteq' then
+        if rule.if_value.value <= number then
+          self:send_one_output(data, rule.send_to)
+          if stop_after_match then
+            break
+          end
+        end
+      elseif rule.if_value.opperand == 'eq' then
+        if rule.if_value.value == number then
+          self:send_one_output(data, rule.send_to)
+          if stop_after_match then
+            break
+          end
+        end
+      elseif rule.if_value.opperand == 'gteq' then
+        if rule.if_value.value >= number then
+          self:send_one_output(data, rule.send_to)
+          if stop_after_match then
+            break
+          end
+        end
+      elseif rule.if_value.opperand == 'gt' then
+        if rule.if_value.value > number then
+          self:send_one_output(data, rule.send_to)
+          if stop_after_match then
+            break
+          end
+        end
+      elseif rule.if_value.opperand == 'noteq' then
+        if rule.if_value.value ~= number then
+          self:send_one_output(data, rule.send_to)
+          if stop_after_match then
+            break
+          end
+        end
+      end
+    elseif rule.if_type == 'string' then
+      local string_1 = tostring(data[label]):match "^%s*(.-)%s*$"
+      local string_2 = tostring(rule.if_value.value):match "^%s*(.-)%s*$"
+      if rule.if_value.opperand == 'matches' then
+        if string_1 == string_2 then
+          self:send_one_output(data, rule.send_to)
+          if stop_after_match then
+            break
+          end
+        end
+      elseif rule.if_value.opperand == 'nomatch' then
+        if string_1 ~= string_2 then
+          self:send_one_output(data, rule.send_to)
+          if stop_after_match then
+            break
+          end
+        end
+      elseif rule.if_value.opperand == 'contains' then
+        if string.match(string_1, string_2) then
+          self:send_one_output(data, rule.send_to)
+          if stop_after_match then
+            break
+          end
+        end
+      elseif rule.if_value.opperand == 'nocontain' then
+        if not string.match(string_1, string_2) then
+          self:send_one_output(data, rule.send_to)
+          if stop_after_match then
+            break
+          end
+        end
+      end
+    elseif rule.if_type == 'missing' then
+			if data[label] == nil then
+        self:send_one_output(data, rule.send_to)
+        if stop_after_match then
+          break
+        end
+      end
+    elseif rule.if_type == 'exists' then
+      if data[label] ~= nil then
+        self:send_one_output(data, rule.send_to)
+        if stop_after_match then
+          break
+        end
+      end
+		end
+
+  end
+
+  --self:send_one_output(data, label)
 end
 
 
