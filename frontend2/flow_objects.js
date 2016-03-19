@@ -90,12 +90,16 @@ Link.prototype.update = function(){
 
 Link.prototype.onDragStart = function(){
   'use strict';
-  console.log('Link.onDragStart');
-	var clicked_shape = this.getIdentity();
+  console.log('Link.onDragStart', this);
+  var shape;
+  if(this.shape){
+    shape = this.shape;
+  }else{
+    shape = this;
+  }
+  var clicked_shape = shape.getIdentity();
   var link_object = getLink(clicked_shape);
-  //console.log(clicked_shape, link_object);
-  
-  var old_selected = getFlowObjectByUniqueId(shareBetweenShapes.selected);
+
   if(typeof(shareBetweenShapes.selected) === 'object' && shareBetweenShapes.selected.type === 'link'){
     getLink(shareBetweenShapes.selected).shape.setHighlight('teal', LINK_THICKNESS);
   }else if(shareBetweenShapes.selected !== undefined){
@@ -111,7 +115,7 @@ Link.prototype.onDragStart = function(){
 
   shareBetweenShapes.selected = clicked_shape;
 
-  this.setHighlight(true, LINK_THICKNESS);
+  shape.setHighlight(true, LINK_THICKNESS);
 }
 
 var getLink = function(link_data, create_link){
@@ -574,7 +578,13 @@ function FlowObjectMqttSubscribe(paper, sidebar, shape, backend_data){
                         description: 'MQTT topic',
 	                      updater: 'ha-topic-chooser',
   	                    value: '#'
-                    	}
+                    	},
+                      ttl: {
+                        description: 'Time to live (seconds)',
+                        updater: 'ha-general-attribute',
+                        form_type: 'number',
+                        value: 60*60
+                      },
                     }
                   },
                   outputs: {
@@ -697,7 +707,6 @@ function FlowObjectMapValues(paper, sidebar, shape, backend_data){
                       transitions: {
                           description: 'Map Input ranges to desired Output.',
                           updater: 'ha-transitions',
-                          port_out: 0,
                           values: {}
                       },
                     },
@@ -795,13 +804,15 @@ function FlowObjectSwitch(paper, sidebar, shape, backend_data){
                       transitions: {
                           description: 'Map Input ranges to desired Output.',
                           updater: 'ha-switch-rules',
-                          //updater: 'ha-general-attribute',
+                          filter_on_label: {
+                            description: 'Label',
+                            value: '_subject',
+                          },
                           values: {
-                            label: '_subject',
                             rules: [{if_type: 'bool',
                                      if_value: true,
                                      send_to: 'branch_1'}],
-                            otherwise: {send_to: 'drop'}
+                            otherwise: {send_to: '_drop'}
                           }
                       },
                     },
@@ -814,10 +825,7 @@ function FlowObjectSwitch(paper, sidebar, shape, backend_data){
   if(paper){
     this.shape = shape || paper.box(0, 0, this.data.shape.width, this.data.shape.height, this.data.shape.color);
     this.setup(backend_data);
-
-    if(getPath(backend_data, 'data.inputs.default_in.label') !== undefined){
-      this.updateSwitch(backend_data);
-    }
+    this.updateSwitch(backend_data);
   }
 };
 
@@ -853,6 +861,20 @@ FlowObjectSwitch.prototype.updateOutputCount = function(new_count){
 }
 
 FlowObjectSwitch.prototype.updateSwitch = function(backend_data){
+  console.log('FlowObjectSwitch.updateSwitch(', JSON.stringify(backend_data), ')');
+  if(getPath(backend_data, 'data.inputs.default_in.stop_after_match.value') !== undefined){
+    addPath(this.data.data, 'inputs.default_in.stop_after_match.value');
+    console.log(1)
+    this.data.data.inputs.default_in.stop_after_match.value = backend_data.data.inputs.default_in.stop_after_match.value;
+  }
+  console.log(2)
+  if(getPath(backend_data, 'data.inputs.default_in.transitions.filter_on_label.value') !== undefined){
+    addPath(this.data.data, 'inputs.default_in.transitions.filter_on_label.value');
+    console.log(3)
+    this.data.data.inputs.default_in.transitions.filter_on_label.value = backend_data.data.inputs.default_in.transitions.filter_on_label.value;
+  }
+  console.log(4)
+  console.log(this);
 }
 
 
@@ -939,7 +961,7 @@ function FlowObjectMapLabels(paper, sidebar, shape, backend_data){
 inheritsFrom(FlowObjectMapLabels, FlowObject);
 
 
-function FlowObjectTestData(paper, sidebar, shape, backend_data){
+/*function FlowObjectTestData(paper, sidebar, shape, backend_data){
   'use strict';
   console.log("FlowObjectTestData");
 
@@ -978,7 +1000,7 @@ function FlowObjectTestData(paper, sidebar, shape, backend_data){
   }
 };
 
-inheritsFrom(FlowObjectTestData, FlowObject);
+inheritsFrom(FlowObjectTestData, FlowObject);*/
 
 
 
@@ -1007,12 +1029,12 @@ function FlowObjectCombineData(paper, sidebar, shape, backend_data){
                     default_in: {
                       description: 'Default input',
                       port_label: 'default_in',
-                        primary_key: {
+                      primary_key: {
                           description: 'Primary key.',
-                          updater: 'ha-select-label',
-                          port_out: 0,
+                          //updater: 'ha-select-label',
+													updater: 'ha-general-attribute',
                           value: '' }
-                        },
+                      },
                     // TODO add reset.
                   },
                 outputs: {
@@ -1024,9 +1046,9 @@ function FlowObjectCombineData(paper, sidebar, shape, backend_data){
     this.shape = shape || paper.box(0, 0, this.data.shape.width, this.data.shape.height, this.data.shape.color);
     this.setup(backend_data);
 
-    if(getPath(backend_data, 'data.inputs.default_in.primary_key_label') !== undefined){
+    if(getPath(backend_data, 'data.inputs.default_in.primary_key') !== undefined){
       for(var input_label in this.data.data.inputs){
-        this.data.data.inputs[input_label].primary_key.value = backend_data.data.inputs.default_in.primary_key_label
+        this.data.data.inputs[input_label].primary_key.value = backend_data.data.inputs.default_in.primary_key.value
       }
     }
   }
@@ -1064,7 +1086,6 @@ function FlowObjectAddData(paper, sidebar, shape, backend_data){
                         primary_key: {
                           description: 'Primary key.',
                           updater: 'ha-select-label',
-                          port_out: 0,
                           value: '' }
                         },
                     // TODO add reset.
@@ -1080,7 +1101,7 @@ function FlowObjectAddData(paper, sidebar, shape, backend_data){
 
     if(getPath(backend_data, 'data.inputs.default_in.primary_key_label') !== undefined){
       for(var input_label in this.data.data.inputs){
-        this.data.data.inputs[input_label].primary_key.value = backend_data.data.inputs.default_in.primary_key_label
+//        this.data.data.inputs[input_label].primary_key.value = backend_data.data.inputs.default_in.primary_key_label
       }
     }
   }
@@ -1110,13 +1131,7 @@ function FlowObjectReadFile(paper, sidebar, shape, backend_data){
                       updater: 'ha-general-attribute',
                       update_on_change: this.setInstanceName,
                       //value: 'Object_' + shareBetweenShapes.unique_id
-                      },
-                    filename: {
-                      description: 'Filename',
-                      updater: 'ha-general-attribute',
-                      update_on_change: true,
-                      value: ''
-                    }
+                      }
                   },
                   inputs: {
                     // TODO add trigger.
@@ -1126,10 +1141,22 @@ function FlowObjectReadFile(paper, sidebar, shape, backend_data){
                         description: 'Filename',
                         updater: 'ha-general-attribute',
                         value: ''
-                      }
-                    }
+                      },
+                      ttl: {
+                        description: 'Time to live (seconds)',
+                        updater: 'ha-general-attribute',
+                        form_type: 'number',
+                        value: 60
+                      },
+										},
                   },
                 outputs: {
+                    ttl: {
+                      description: 'Time to live (seconds)',
+                      updater: 'ha-general-attribute',
+                      form_type: 'number',
+                      value: 60
+                    },
                     default_out: []
                 }
               }
@@ -1138,8 +1165,8 @@ function FlowObjectReadFile(paper, sidebar, shape, backend_data){
     this.shape = shape || paper.box(0, 0, this.data.shape.width, this.data.shape.height, this.data.shape.color);
     this.setup(backend_data);
 
-    if(getPath(backend_data, 'data.general.filename') !== undefined){
-      this.data.data.general.filename.value = backend_data.data.general.filename.value;
+    if(getPath(backend_data, 'data.inputs.load_from_file.filename.value') !== undefined){
+      this.data.data.inputs.load_from_file.filename.value = backend_data.data.inputs.load_from_file.filename.value;
 		}
   }
 };

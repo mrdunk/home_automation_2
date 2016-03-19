@@ -2,6 +2,12 @@
 /*global FlowObjectMqttPublish*/
 /*exported dataReceived*/
 
+var header_button_actions = {'mqtt-solicit': function(){Mqtt.send(Page.topics.all_devices, '_command : solicit');},
+                             'clear-data': function(){Data.mqtt_data.debug = {};
+                                                      Mqtt.send(Page.topics.all_devices, '_command : solicit');},
+                             'log-selected': function(){console.log(getFlowObjectByUniqueId(shareBetweenShapes.selected) || getLink(shareBetweenShapes.selected));}
+                                                      };
+
 var flow_objects = {FlowObjectMqttSubscribe: FlowObjectMqttSubscribe,
                     FlowObjectMqttPublish: FlowObjectMqttPublish,
                     FlowObjectReadFile: FlowObjectReadFile,
@@ -47,6 +53,18 @@ var dataReceived = function(topic, received_data){
 
       console.log(received_data, flow_object.data);
     }
+  }
+ 
+  // TODO Only need to update things if the data affects the currently selected object. 
+  if(shareBetweenShapes.selected !== undefined){
+		var selected_flow_object;
+		if(typeof(shareBetweenShapes.selected) === 'object' && shareBetweenShapes.selected.type === 'link'){
+			selected_flow_object = getLink(shareBetweenShapes.selected);
+      selected_flow_object.onDragStart();
+		}else if(shareBetweenShapes.selected !== undefined){
+			selected_flow_object = getFlowObjectByUniqueId(shareBetweenShapes.selected);
+      // TODO Update other objects when data comes in.
+		}
   }
   
   //console.log('dataReceived -');

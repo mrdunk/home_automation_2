@@ -84,6 +84,7 @@ function control:callback(path, incoming_data)
       object:merge(incoming_data)
       object:update()
     end
+    log('Final object: ', json.encode(object))
 	end
 end
 
@@ -165,6 +166,7 @@ function component:setup(instance_name, unique_id)
 end
 
 function component:merge(new_data)
+  log('component:merge(', json.encode(new_data), ')')
   if get_path(new_data, 'version') then
     if new_data.version < self.version then
       return
@@ -191,11 +193,8 @@ function component:merge(new_data)
     self.shape = new_data.shape
   end
 
-  --[[
-  if get_path(new_data, 'data.inputs') then
-    self.data.inputs = new_data.data.inputs
-  end
-  ]]--
+  -- TODO Sanitize input data.
+  -- But not here or it will over-ride santization done in the objects.
 
   -- TODO Sanitize output data.
 	if get_path(new_data, 'data.outputs') then
@@ -224,6 +223,8 @@ function component:add_input(label, value)
   self.data.inputs[label] = value
 end
 
+-- Only used to manually add a link.
+-- Not needed when we receive a JSON representation of an object.
 function component:add_link(destination_component, destination_port_label, source_port_label)
   source_port_label = source_port_label or 'default_out'
   destination_port_label = destination_port_label or 'default_in'
@@ -397,6 +398,7 @@ function FlowObjectMqttSubscribe:update()
 end
 
 function FlowObjectMqttSubscribe:merge(new_data)
+  log('FlowObjectMqttSubscribe:merge')
   if component.merge(self, new_data) then
     populate_object(self, 'data.inputs.subscription.subscribed_topic')
     if get_path(new_data, 'data.inputs.subscription.subscribed_topic.value') then
@@ -519,22 +521,42 @@ function FlowObjectMqttPublish:receive_input(data, port_label)
 end
 
 
+
 FlowObjectReadFile = component:new({object_type='FlowObjectReadFile'})
 
-function FlowObjectReadFile:add_link(destination_component, destination_port_label, source_port_label)
-  component.add_link(self, destination_component, destination_port_label, source_port_label)
+function FlowObjectReadFile:merge(new_data)
+  populate_object(self.data, 'inputs.load_from_file.filename')
+  if component.merge(self, new_data) then
+    if get_path(new_data, 'data.inputs.load_from_file.filename.value') and new_data.data.inputs.load_from_file.filename.value then
+      if if_path_alowed(new_data.data.inputs.load_from_file.filename.value) and
+           is_file(new_data.data.inputs.load_from_file.filename.value)  then
+        self.data.inputs.load_from_file.filename.value = new_data.data.inputs.load_from_file.filename.value
+      end
+    end
+  end
+  return true
+end
 
-  -- First check file and read if new data:
+function FlowObjectReadFile:update()
+	-- First check file and read if new data:
   self:parse_data_from_file()
 
   -- Now send data.
   self:send_output()
 end
 
+function FlowObjectReadFile:add_link(destination_component, destination_port_label, source_port_label)
+  log('""" FlowObjectReadFile:add_link');
+  component.add_link(self, destination_component, destination_port_label, source_port_label)
+
+	self:update()
+end
+
 function FlowObjectReadFile:parse_data_from_file()
 	local filename = self.data.inputs.load_from_file.filename.value
-
-  if is_file_or_dir(filename) then
+  
+  if filename and is_file_or_dir(filename) then
+		log('""" File: ', filename, ' found.');
     local file_last_read_at = file_mod_time(filename)
     if file_last_read_at ~= self.file_last_read_at then
       self.file_last_read_at = file_last_read_at
@@ -545,18 +567,17 @@ function FlowObjectReadFile:parse_data_from_file()
       end
       file_handle:close()
     end
+	else
+    log('""" File: ', filename, ' not found.');
+  end
+
+  if self.data_entries == nil then
+    self.data_entries = {}
   end
 end
 
 function FlowObjectReadFile:receive_input(data, input_label)
 	-- If data is sent to this Component, make it send data.
-
---[[  if(data.__trace == nil) then
-    data.__trace = {{destination_object=self.unique_id, destination_port=input_label}}
-  else
-    data.__trace[#data.__trace].destination_object=self.unique_id
-    data.__trace[#data.__trace].destination_port=input_label
-  end]]--
 
   local match_data_label = self.data.general.match_data_label.value
   local match_data_value = self.data.general.match_data_value.value
@@ -570,13 +591,11 @@ function FlowObjectReadFile:receive_input(data, input_label)
 		match_data_value = data[match_data_label]
 	end
 
-  -- First check file and read if new data:
-  self:parse_data_from_file()
-  -- Now send data.
-  self:send_output(match_data_label, match_data_value)
+	self:update()
 end
 
 function FlowObjectReadFile:send_output(match_data_label, match_data_value)
+  log('""" FlowObjectReadFile:send_output');
   for _, file_data in pairs(self.data_entries) do
     local parsed_file_data = parse_payload(file_data)
     if parsed_file_data then
@@ -602,6 +621,16 @@ function FlowObjectCombineData:setup(instance_name, unique_id)
   self.data.data = {}
 end
 
+function FlowObjectCombineData:merge(new_data)
+  populate_object(self.data, 'inputs.default_in.primary_key')
+  if component.merge(self, new_data) then
+    if get_path(new_data, 'data.inputs.default_in.primary_key.value') and new_data.data.inputs.default_in.primary_key.value then
+      self.data.inputs.default_in.primary_key.value = new_data.data.inputs.default_in.primary_key.value
+    end
+  end
+  return true
+end
+
 function FlowObjectCombineData:receive_input(data, input_label, from_unique_id, from_port_label)
 --[[  if(data.__trace == nil) then
     data.__trace = {{destination_object=self.unique_id, destination_port=input_label}}
@@ -609,6 +638,11 @@ function FlowObjectCombineData:receive_input(data, input_label, from_unique_id, 
     data.__trace[#data.__trace].destination_object=self.unique_id
     data.__trace[#data.__trace].destination_port=input_label
   end]]--
+
+  if self.data.inputs.default_in == nil then
+    -- Not yet linked.
+    return
+  end
 
   local primary_key_label = self.data.inputs.default_in.primary_key_label
 
@@ -789,10 +823,13 @@ function FlowObjectSwitch:receive_input(data, out_port_label)
   end
 
   local stop_after_match = self.data.inputs.default_in.stop_after_match
-  local label = self.data.inputs.default_in.transitions
+  local label = self.data.inputs.default_in.transitions.filter_on_label.value
   for rule_index, rule in pairs(self.data.inputs.default_in.transitions.values.rules) do
+		log('  ^^^', rule.if_type, rule.if_value)
     if rule.if_type == 'bool' then
-      if rule.if_value == data[label] then
+			log('  ^^^^')
+      if rule.if_value == toBoolean(data[label]) then
+				log('  ^^^^')
         self:send_one_output(data, rule.send_to)
         if stop_after_match then
           break
@@ -890,12 +927,21 @@ function FlowObjectSwitch:receive_input(data, out_port_label)
         end
       end
 		end
-
   end
 
   --self:send_one_output(data, label)
 end
 
+function FlowObjectSwitch:merge(new_data)
+  if component.merge(self, new_data) then
+    --log('xxxxx', json.encode(new_data.data.inputs));
+		if get_path(new_data, 'data.inputs') then
+			-- TODO: Sanitize data.
+		  self.data.inputs = new_data.data.inputs
+		end
+		return true
+  end
+end
 
 return control
 

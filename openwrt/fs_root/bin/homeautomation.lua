@@ -32,6 +32,7 @@ DEBUG = false
 -- Constants
 WEB_DIR = '/www/info/'
 TEMP_DIR = '/tmp/homeautomation/'
+CONFIG_DIR = '/etc/homeautomation/'
 local MOSQUITTO_CONF = '/etc/mosquitto/mosquitto.conf'
 POWER_SCRIPT_DIR = '/usr/share/homeautomation/power_commands/'
 

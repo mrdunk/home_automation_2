@@ -190,23 +190,25 @@ Raphael.st.setOutputs = function(parent_context){
 
         var height_offset = 0;
         for(var port_label in parent_context.data.data.outputs){
-          var object_id = parent_context.data.unique_id;
-          var shape = this.paper.rect(x - PORT_WIDTH, y + PORT_HEIGHT + (i * PORT_HEIGHT), PORT_WIDTH, PORT_HEIGHT, 2);
-          shape.data('port_label', port_label);
-          shape.data('port_type', 'output');
-          shape.data('object_id', object_id);
-          shape.x_offset = width;
-          shape.y_offset = PORT_HEIGHT + (height_offset * PORT_HEIGHT);
-          shape.attr({"fill": color, "stroke": "#000"});
-          shape.label = port_label;
-          
-          shape.drag(parent_context.onmove, parent_context.onstart, parent_context.onend);
-          shape.mouseover(parent_context.onmouseover);
-          shape.mouseout(parent_context.onmouseout);
-          shape.mouseup(parent_context.onmouseup);
+          if(port_label !== '_error' && port_label !== '_drop'){
+            var object_id = parent_context.data.unique_id;
+            var shape = this.paper.rect(x - PORT_WIDTH, y + PORT_HEIGHT + (i * PORT_HEIGHT), PORT_WIDTH, PORT_HEIGHT, 2);
+            shape.data('port_label', port_label);
+            shape.data('port_type', 'output');
+            shape.data('object_id', object_id);
+            shape.x_offset = width;
+            shape.y_offset = PORT_HEIGHT + (height_offset * PORT_HEIGHT);
+            shape.attr({"fill": color, "stroke": "#000"});
+            shape.label = port_label;
 
-          this.items[i].push(shape);
-          height_offset++;
+            shape.drag(parent_context.onmove, parent_context.onstart, parent_context.onend);
+            shape.mouseover(parent_context.onmouseover);
+            shape.mouseout(parent_context.onmouseout);
+            shape.mouseup(parent_context.onmouseup);
+
+            this.items[i].push(shape);
+            height_offset++;
+          }
         }
         // For some reason new shapes added to a set do not appear until they are moved.
         setBoxPosition(this.items[i], x, y);

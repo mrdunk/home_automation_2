@@ -87,7 +87,13 @@ xtag.register('ha-control-heading', {
   },
   events: {
     'click:delegate(paper-icon-button)': function(mouseEvent){
-      console.log(mouseEvent, this);
+      //console.log(mouseEvent, this);
+      for(var button_id in header_button_actions){
+        if(this.id === button_id){
+          //console.log(button_id, header_button_actions[button_id]);
+          header_button_actions[button_id]();
+        }
+      }
     }
   },
   methods: {
@@ -1093,7 +1099,8 @@ xtag.register('ha-switch-rules', {
       this.flow_object = flow_object;
 
       var labels_content = document.createElement('ha-general-attribute');
-      labels_content.populate({value: data.values.label, description: 'Label:'}, flow_object)
+//      labels_content.populate({value: data.values.label, description: 'Label:'}, flow_object)
+      labels_content.populate(data.filter_on_label, flow_object);
       this.appendChild(labels_content);
 
       this.rules = document.createElement('div');

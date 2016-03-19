@@ -6,6 +6,31 @@ function is_file_or_dir(fn)
     return os.rename(fn, fn)
 end
 
+function if_path_alowed(path)
+  local split_file_path = split(path, '/')
+  local split_CONFIG_DIR = split(CONFIG_DIR, '/')
+  local split_TEMP_DIR = split(TEMP_DIR, '/')
+
+  if(#split_file_path < 2) then
+    log('if_path_allowed: ', path, ' has less than 2 sections.')
+    return
+  end
+
+  if(array_starts_with(split_file_path, split_CONFIG_DIR) == nil and array_starts_with(split_file_path, split_TEMP_DIR) == nil) then
+    log('if_path_allowed: ', json.encode(split_file_path), ' does not start with either ', json.encode(split_CONFIG_DIR), ' or ', json.encode(split_TEMP_DIR))
+    return
+  end
+
+  for i, segment in ipairs(split_file_path) do
+    if sanitize_filename(segment) == '' then
+      log('if_path_allowed: section ', segment, ' in ', path, ' has illegal format.')
+      return
+    end
+  end
+
+  return path
+end
+
 function mkdir(dir)
   return os.execute("mkdir -p " .. dir)
 end
@@ -18,6 +43,17 @@ end
 -- Test if a path exists on the file system. Wild cards can be used.
 function match_file_or_dir(fn)
   return os.execute("[ -e  " .. fn .. " ]")
+end
+
+function is_file(path)
+  if is_file_or_dir(path) == nil then
+    return
+  end
+
+  local f = io.open(path, "r")
+  local ok, err, code = f:read(1)
+  f:close()
+  return code == nil
 end
 
 -- Return hostname of the host running this code.
@@ -168,4 +204,18 @@ function dir(obj,level)
     s = s .. '}'
   end
   return s
+end
+
+function array_starts_with(array_full, array_start)
+  if #array_full < #array_start then
+    return
+  end
+
+  for i=1, #array_start do
+    if array_full[i] ~= array_start[i] then
+      return
+    end
+  end
+  
+  return array_start
 end
