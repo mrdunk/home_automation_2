@@ -145,9 +145,8 @@ Raphael.st.setInputs = function(parent_context){
           node.remove();
         }
         var height_offset = 0;
-        for(var data_key in parent_context.data.data.inputs){
-          if(parent_context.data.data.inputs[data_key].port_label !== undefined){
-            var port_label = parent_context.data.data.inputs[data_key].port_label;
+        for(var port_label in parent_context.data.data.inputs){
+          if(!parent_context.data.data.inputs[port_label].hidden){
             var object_id = parent_context.data.unique_id;
             var shape = this.paper.rect(x - PORT_WIDTH, y + PORT_HEIGHT + (i * PORT_HEIGHT), PORT_WIDTH, PORT_HEIGHT, 2);
             shape.data('port_label', port_label);
@@ -190,7 +189,7 @@ Raphael.st.setOutputs = function(parent_context){
 
         var height_offset = 0;
         for(var port_label in parent_context.data.data.outputs){
-          if(port_label !== '_error' && port_label !== '_drop'){
+          if(!parent_context.data.data.outputs[port_label].hidden){
             var object_id = parent_context.data.unique_id;
             var shape = this.paper.rect(x - PORT_WIDTH, y + PORT_HEIGHT + (i * PORT_HEIGHT), PORT_WIDTH, PORT_HEIGHT, 2);
             shape.data('port_label', port_label);
@@ -224,8 +223,11 @@ Raphael.st.setOutputLinks = function(outputs){
   //console.log('Raphael.st.setOutputLinks', this, this_identity, outputs);
 
   for(var output_id in outputs){
-    for(var key_link = 0; key_link < outputs[output_id].length; key_link++){
-      var link_data = outputs[output_id][key_link];
+    if(outputs[output_id].links === undefined){
+      outputs[output_id].links = [];
+    }
+    for(var key_link = 0; key_link < outputs[output_id].links.length; key_link++){
+      var link_data = outputs[output_id].links[key_link];
       //setLink({source_object: this_identity.object_id, source_port: link_data.source_port,
       //         destination_object: link_data.destination_object, destination_port: link_data.destination_port});
       getLink({source_object: this_identity.object_id, source_port: link_data.source_port,

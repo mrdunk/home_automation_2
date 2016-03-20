@@ -3,6 +3,24 @@ html,body {
   overflow: hidden;
   margin: 0;
   padding: 0;
+
+  -webkit-touch-callout: none; /* iOS Safari */
+  -webkit-user-select: none;   /* Chrome/Safari/Opera */
+  -khtml-user-select: none;    /* Konqueror */
+  -moz-user-select: none;      /* Firefox */
+  -ms-user-select: none;       /* IE/Edge */
+  user-select: none;           /* non-prefixed version, currently
+                                  not supported by any browser */
+}
+
+.selectable {
+  -webkit-touch-callout: text; /* iOS Safari */
+  -webkit-user-select: text;   /* Chrome/Safari/Opera */
+  -khtml-user-select: text;    /* Konqueror */
+  -moz-user-select: text;      /* Firefox */
+  -ms-user-select: text;       /* IE/Edge */
+  user-select: text;           /* non-prefixed version, currently
+                                  not supported by any browser */
 }
 
 #ha-control-paper {
@@ -34,10 +52,6 @@ ha-sidebar div.container {
 }
 
 [draggable] {
-  -moz-user-select: none;
-  -khtml-user-select: none;
-  -webkit-user-select: none;
-  user-select: none;
   /* Required to make elements draggable in old WebKit */
   -khtml-user-drag: element;
   -webkit-user-drag: element;
@@ -198,13 +212,10 @@ ha-link-json .null { color: magenta; }
 ha-link-json .key { color: red; }
 
 ha-switch-rules {
-  /*display: block;*/
-	display:table;
 	overflow: auto;
 }
 
-ha-switch-rule {
-	/*display: block;*/
+.ha-switch-rule {
 	display: table-row;
 	white-space: nowrap;
 }
@@ -213,17 +224,18 @@ ha-switch-rule-filter {
 	display:table-cell;
 }
 
-ha-switch-rule > select {
+.ha-switch-rule-selector {
 	display:table-cell;
 }
 
-ha-switch-rule > button {
+.ha-switch-rule-button {
   display:table-cell;
+	width:0.75em;
 }
 
-ha-switch-rule > div {
+.ha-switch-rule-description {
   border: 1px solid red;
-  display: inline;
+  display: table-cell;
   white-space: nowrap;
 }
 

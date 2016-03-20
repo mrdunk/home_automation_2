@@ -90,14 +90,8 @@ Link.prototype.update = function(){
 
 Link.prototype.onDragStart = function(){
   'use strict';
-  console.log('Link.onDragStart', this);
-  var shape;
-  if(this.shape){
-    shape = this.shape;
-  }else{
-    shape = this;
-  }
-  var clicked_shape = shape.getIdentity();
+  console.log('Link.onDragStart', this, this.getIdentity());
+  var clicked_shape = this.getIdentity();
   var link_object = getLink(clicked_shape);
 
   if(typeof(shareBetweenShapes.selected) === 'object' && shareBetweenShapes.selected.type === 'link'){
@@ -115,7 +109,7 @@ Link.prototype.onDragStart = function(){
 
   shareBetweenShapes.selected = clicked_shape;
 
-  shape.setHighlight(true, LINK_THICKNESS);
+  this.setHighlight(true, LINK_THICKNESS);
 }
 
 var getLink = function(link_data, create_link){
@@ -464,7 +458,10 @@ FlowObject.prototype.linkOutToIn = function(link_data){
   for(var port_id in this.data.data.outputs){
     console.log(port_id);
     if(port_id === source_port){
-      var source_port_data = this.data.data.outputs[port_id];
+      if(this.data.data.outputs[port_id].links === undefined){
+        this.data.data.outputs[port_id].links = [];
+      }
+      var source_port_data = this.data.data.outputs[port_id].links;
       var found = false;
       for(var i = 0; i < source_port_data.length; i++){
         if(source_port_data[i].source_port === source_port &&
@@ -476,7 +473,7 @@ FlowObject.prototype.linkOutToIn = function(link_data){
         }
       }
       if(!found){
-        console.log('LINK!');
+        console.log('LINK!', source_port_data);
         source_port_data.push({source_port: source_port, destination_object: destination_object, destination_port: destination_port});
         this.ExportObject();
       }
@@ -574,11 +571,16 @@ function FlowObjectMqttSubscribe(paper, sidebar, shape, backend_data){
                   inputs: {
                     subscription: {
                       description: 'MQTT subscription',
+                      hidden: true,
                       subscribed_topic: {
                         description: 'MQTT topic',
 	                      updater: 'ha-topic-chooser',
   	                    value: '#'
                     	},
+                    }
+                  },
+                  outputs: {
+                    default_out: {
                       ttl: {
                         description: 'Time to live (seconds)',
                         updater: 'ha-general-attribute',
@@ -586,10 +588,8 @@ function FlowObjectMqttSubscribe(paper, sidebar, shape, backend_data){
                         value: 60*60
                       },
                     }
-                  },
-                  outputs: {
-                    default_out: []
-                      } }
+                  }
+								}
               };
 
   if(paper){
@@ -647,10 +647,10 @@ function FlowObjectMqttPublish(paper, sidebar, shape, backend_data){
                       update_on_change: this.setInstanceName,
                       //value: 'Object_' + shareBetweenShapes.unique_id
                       },
-                    publish_topic: {
-                      description: 'MQTT topic to Publish to',
-                      updater: 'ha-general-attribute',
-                      value: 'homeautomation/test' },
+                    //publish_topic: {
+                    //  description: 'MQTT topic to Publish to',
+                    //  updater: 'ha-general-attribute',
+                    //  value: 'homeautomation/test' },
                     payload_passthrough: {
                       description: 'Use Input payload as Output.',
                       updater: 'ha-general-attribute',
@@ -663,15 +663,31 @@ function FlowObjectMqttPublish(paper, sidebar, shape, backend_data){
                   inputs: {
                     default_in: {
                       description: 'Publish',
-                      port_label: 'default_in',
+                      //port_label: 'default_in',
                       value: 'publish'
                     }
                   },
-                  outputs: {}}
+                  outputs: {
+                    publish: {
+                      description: 'MQTT Publish',
+                      hidden: true,
+                      publish_topic: {
+                        description: 'MQTT topic to Publish to',
+                        updater: 'ha-general-attribute',
+                        value: 'homeautomation/test'
+                      },
+                    }
+                  }
+								}
               };
   if(paper){
     this.shape = shape || paper.box(0, 0, this.data.shape.width, this.data.shape.height, this.data.shape.color);
     this.setup(backend_data);
+
+    if(getPath(backend_data, 'data.outputs.publish.publish_topic') !== undefined){
+      this.data.data.outputs.publish.publish_topic.value = backend_data.data.outputs.publish.publish_topic.value || this.data.data.outputs.publish.publish_topic.value;
+      this.setContents();
+    }
   }
 };
 
@@ -703,7 +719,6 @@ function FlowObjectMapValues(paper, sidebar, shape, backend_data){
                   inputs: {
                     default_in: {
                       description: 'Input 1',
-                      port_label: 'default_in',
                       transitions: {
                           description: 'Map Input ranges to desired Output.',
                           updater: 'ha-transitions',
@@ -712,7 +727,7 @@ function FlowObjectMapValues(paper, sidebar, shape, backend_data){
                     },
                   },
                   outputs: {
-                    default_out: []
+                    default_out: {}
                     }}};
   if(paper){
     this.shape = shape || paper.box(0, 0, this.data.shape.width, this.data.shape.height, this.data.shape.color);
@@ -794,7 +809,6 @@ function FlowObjectSwitch(paper, sidebar, shape, backend_data){
                   inputs: {
                     default_in: {
                       description: 'Input 1',
-                      port_label: 'default_in',
                       stop_after_match: {
                         description: 'Stop after first match',
                         updater: 'ha-general-attribute',
@@ -818,9 +832,9 @@ function FlowObjectSwitch(paper, sidebar, shape, backend_data){
                     },
                   },
                   outputs: {
-							      branch_1: [],
-                    _drop: [],
-                    _error: []
+							      branch_1: {},
+                    _drop: {hidden: true},
+                    _error: {hidden: true}
                   }}};
   if(paper){
     this.shape = shape || paper.box(0, 0, this.data.shape.width, this.data.shape.height, this.data.shape.color);
@@ -864,17 +878,31 @@ FlowObjectSwitch.prototype.updateSwitch = function(backend_data){
   console.log('FlowObjectSwitch.updateSwitch(', JSON.stringify(backend_data), ')');
   if(getPath(backend_data, 'data.inputs.default_in.stop_after_match.value') !== undefined){
     addPath(this.data.data, 'inputs.default_in.stop_after_match.value');
-    console.log(1)
     this.data.data.inputs.default_in.stop_after_match.value = backend_data.data.inputs.default_in.stop_after_match.value;
   }
-  console.log(2)
   if(getPath(backend_data, 'data.inputs.default_in.transitions.filter_on_label.value') !== undefined){
     addPath(this.data.data, 'inputs.default_in.transitions.filter_on_label.value');
-    console.log(3)
     this.data.data.inputs.default_in.transitions.filter_on_label.value = backend_data.data.inputs.default_in.transitions.filter_on_label.value;
   }
-  console.log(4)
-  console.log(this);
+  if(getPath(backend_data, 'data.inputs.default_in.transitions.values.rules') !== undefined){
+    addPath(this.data.data, 'inputs.default_in.transitions.values');
+    this.data.data.inputs.default_in.transitions.values.rules = [];
+    // We cannot presume the list of rules is in the correct order so we must look them up by the rule's "rule_number" parameter.
+    var get_rule = function(number){
+      for(i=0; i < backend_data.data.inputs.default_in.transitions.values.rules.length; i++){
+        if(backend_data.data.inputs.default_in.transitions.values.rules[i].rule_number === number){
+          return backend_data.data.inputs.default_in.transitions.values.rules[i];
+        }
+      }
+    }
+    for(j=0; j < backend_data.data.inputs.default_in.transitions.values.rules.length; j++){
+      this.data.data.inputs.default_in.transitions.values.rules.push(get_rule(j));
+    }
+  }
+  if(getPath(backend_data, 'data.inputs.default_in.transitions.values.otherwise.send_to') !== undefined){
+    addPath(this.data.data, 'inputs.default_in.transitions.values');
+    this.data.data.inputs.default_in.transitions.values.otherwise = {send_to: backend_data.data.inputs.default_in.transitions.values.otherwise.send_to};
+  }
 }
 
 
@@ -903,7 +931,6 @@ function FlowObjectMapLabels(paper, sidebar, shape, backend_data){
                   inputs: {
                     default_in: {
                       description: 'Input 1',
-                      port_label: 'default_in',
                         label_in: {
                           description: 'Label to modify.',
                           updater: 'ha-general-attribute',
@@ -915,7 +942,7 @@ function FlowObjectMapLabels(paper, sidebar, shape, backend_data){
                     },
                   },
                   outputs: {
-                    default_out: []
+                    default_out: {}
                     }}};
   if(paper){
     this.shape = shape || paper.box(0, 0, this.data.shape.width, this.data.shape.height, this.data.shape.color);
@@ -1028,7 +1055,6 @@ function FlowObjectCombineData(paper, sidebar, shape, backend_data){
                   inputs: {
                     default_in: {
                       description: 'Default input',
-                      port_label: 'default_in',
                       primary_key: {
                           description: 'Primary key.',
                           //updater: 'ha-select-label',
@@ -1038,7 +1064,7 @@ function FlowObjectCombineData(paper, sidebar, shape, backend_data){
                     // TODO add reset.
                   },
                 outputs: {
-                    default_out: []
+                    default_out: {}
                 }
               }
 	};
@@ -1082,7 +1108,6 @@ function FlowObjectAddData(paper, sidebar, shape, backend_data){
                   inputs: {
                     default_in: {
                       description: 'Default input',
-                      port_label: 'default_in',
                         primary_key: {
                           description: 'Primary key.',
                           updater: 'ha-select-label',
@@ -1091,7 +1116,7 @@ function FlowObjectAddData(paper, sidebar, shape, backend_data){
                     // TODO add reset.
                   },
                 outputs: {
-                    default_out: []
+                    default_out: {}
                 }
               }
 	};
@@ -1137,27 +1162,23 @@ function FlowObjectReadFile(paper, sidebar, shape, backend_data){
                     // TODO add trigger.
                     load_from_file: {
                       description: 'From file',
+                      hidden: true,
                       filename: {
                         description: 'Filename',
                         updater: 'ha-general-attribute',
                         value: ''
                       },
-                      ttl: {
-                        description: 'Time to live (seconds)',
-                        updater: 'ha-general-attribute',
-                        form_type: 'number',
-                        value: 60
-                      },
 										},
                   },
                 outputs: {
+                  default_out: {
                     ttl: {
                       description: 'Time to live (seconds)',
                       updater: 'ha-general-attribute',
                       form_type: 'number',
                       value: 60
                     },
-                    default_out: []
+                  }
                 }
               }
 	};
@@ -1202,7 +1223,7 @@ function FlowObjectAddTime(paper, sidebar, shape, backend_data){
                     },
                   },
                 outputs: {
-                    default_out: []
+                    default_out: {}
                 }
               }
 	};
@@ -1244,7 +1265,7 @@ function FlowObjectFilterByTime(paper, sidebar, shape, backend_data){
                   },
                 },
                 outputs: {
-                    default_out: [],
+                    default_out: {},
                     _error: {}
                 }
               }

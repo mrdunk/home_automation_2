@@ -230,11 +230,11 @@ function component:add_link(destination_component, destination_port_label, sourc
   destination_port_label = destination_port_label or 'default_in'
 
   if self.data.outputs[source_port_label] == nil then
-    self.data.outputs[source_port_label] = {}
+    self.data.outputs[source_port_label] = {links = {}}
   end
 
   local found
-  for index, existing_output in pairs(self.data.outputs[source_port_label]) do
+  for index, existing_output in pairs(self.data.outputs[source_port_label].links) do
     if existing_output.destination_object == destination_component.unique_id and
         existing_output.destination_port == destination_port_label and
         existing_output.source_port == source_port_label then
@@ -242,9 +242,9 @@ function component:add_link(destination_component, destination_port_label, sourc
     end
   end
   if found == nil then
-    self.data.outputs[source_port_label][#self.data.outputs[source_port_label] +1] = {destination_object = destination_component.unique_id,
-                                                                                      destination_port = destination_port_label,
-                                                                                      source_port = source_port_label}
+    self.data.outputs[source_port_label].links[#self.data.outputs[source_port_label] +1] = {destination_object = destination_component.unique_id,
+                                                                                            destination_port = destination_port_label,
+                                                                                            source_port = source_port_label}
   end
 end
 
@@ -253,7 +253,7 @@ function component:delete_link(destination_component, destination_port_label, so
   destination_port_label = destination_port_label or 'default_in'
 
   local found = {}
-	for index, existing_output in pairs(self.data.outputs[source_port_label]) do
+	for index, existing_output in pairs(self.data.outputs[source_port_label].links) do
     if existing_output.destination_object == destination_component.unique_id and
         existing_output.destination_port == destination_port_label and
         existing_output.source_port == source_port_label then
@@ -261,7 +261,7 @@ function component:delete_link(destination_component, destination_port_label, so
     end
   end
   for _, index in pairs(found) do
-    table.remove(self.data.outputs[source_port_label], index)
+    table.remove(self.data.outputs[source_port_label].links, index)
   end
 end
 
@@ -269,6 +269,10 @@ function component:send_output(data, output_label)
   if data == nil then
     return
   end
+
+	if get_path(self.data, 'outputs.default_out.ttl.value') and self.data.outputs.default_out.ttl.value then
+		data.ttl = self.data.outputs.default_out.ttl.value
+	end
 
   if output_label ~= nil then
     self:send_one_output(data, output_label)
@@ -301,8 +305,8 @@ function component:send_one_output(data, label)
     return
   end
 
-  if self.data.outputs[label] then
-    for _, link_data in pairs(self.data.outputs[label]) do
+  if self.data.outputs[label] and self.data.outputs[label].links then
+    for _, link_data in pairs(self.data.outputs[label].links) do
       log('component:send_one_output:', self.unique_id, label, '->', link_data.destination_object, link_data.destination_port)
       if info.components[link_data.destination_object] then
 				local data_copy = info.components[link_data.destination_object]:make_data_copy(data, link_data.destination_port, self.unique_id, label)
@@ -471,13 +475,6 @@ FlowObjectMapLabels = component:new({object_type='FlowObjectMapLabels'})
 
 function FlowObjectMapLabels:receive_input(data, port_label)
   --log(" ==", "FlowObjectMapLabels:receive_input(", data, port_label, ")")
---[[  if(data.__trace == nil) then
-    data.__trace = {{destination_object=self.unique_id, destination_port=port_label}}
-  else
-    data.__trace[#data.__trace].destination_object=self.unique_id
-    data.__trace[#data.__trace].destination_port=port_label
-  end
-]]--
 
   local forward_data = {thread_track = data.thread_track,
                         __trace = data.__trace}
@@ -507,16 +504,9 @@ end
 FlowObjectMqttPublish = component:new({object_type='FlowObjectMqttPublish'})
 
 function FlowObjectMqttPublish:receive_input(data, port_label)
---[[  if(data.__trace == nil) then
-    data.__trace = {{destination_object=self.unique_id, destination_port=port_label}}
-  else
-    data.__trace[#data.__trace].destination_object=self.unique_id
-    data.__trace[#data.__trace].destination_port=port_label
-  end]]--
-
-	local topic = 'homeautomation/0/' .. self.data.general.publish_topic.value
+	local topic = 'homeautomation/0/' .. self.data.outputs.publish.publish_topic.value
 	local payload = flatten_data(data)
-	--log("&&&&& FlowObjectMqttPublish:receive_input:", topic, payload)
+	log("&&&&& FlowObjectMqttPublish:receive_input:", topic, payload)
 	mqtt_instance:publish(topic, payload)
 end
 
@@ -599,14 +589,17 @@ function FlowObjectReadFile:send_output(match_data_label, match_data_value)
   for _, file_data in pairs(self.data_entries) do
     local parsed_file_data = parse_payload(file_data)
     if parsed_file_data then
+      log('"""', match_data_label, parsed_file_data)
       if match_data_label == nil or parsed_file_data[match_data_label] == match_data_value then
         parsed_file_data.thread_track = {}
         parsed_file_data.thread_track[1] = info.thread_counter
         info.thread_counter = info.thread_counter +1
 
-        --log('+++++', match_data_label, match_data_value, flatten_data(parsed_file_data))
+				if self.data.outputs.default_out.ttl.value then
+          parsed_file_data.ttl = self.data.outputs.default_out.ttl.value
+        end
+
         component.send_output(self, parsed_file_data)
-        --self:send_output(parsed_file_data)
       end
     end
   end
@@ -632,31 +625,20 @@ function FlowObjectCombineData:merge(new_data)
 end
 
 function FlowObjectCombineData:receive_input(data, input_label, from_unique_id, from_port_label)
---[[  if(data.__trace == nil) then
-    data.__trace = {{destination_object=self.unique_id, destination_port=input_label}}
-  else
-    data.__trace[#data.__trace].destination_object=self.unique_id
-    data.__trace[#data.__trace].destination_port=input_label
-  end]]--
+  log('=== FlowObjectCombineData:receive_input') 
 
   if self.data.inputs.default_in == nil then
     -- Not yet linked.
     return
   end
 
-  local primary_key_label = self.data.inputs.default_in.primary_key_label
+  local primary_key_label = self.data.inputs.default_in.primary_key.value
 
   if data[primary_key_label] ~= nil then
     local primary_key = data[primary_key_label]
-    if self.data.data[from_unique_id] == nil then
-      self.data.data[from_unique_id] = {}
-    end
-    if self.data.data[from_unique_id][from_port_label] == nil then
-      self.data.data[from_unique_id][from_port_label] = {}
-    end
-    if self.data.data[from_unique_id][from_port_label][primary_key] == nil then
-      self.data.data[from_unique_id][from_port_label][primary_key] = {}
-    end
+
+    populate_object(self.data.data, from_unique_id .. '.' .. from_port_label .. '.' .. primary_key)
+    self.data.data[from_unique_id][from_port_label][primary_key] = {}
 
     -- Store data, indexed by the object and port it came from.
     for label, value in pairs(data) do
@@ -704,7 +686,7 @@ function FlowObjectAddData:receive_input(data, input_label)
     data.__trace[#data.__trace].destination_port=input_label
   end]]--
 
-  local primary_key_label = self.data.inputs.default_in.primary_key_label
+  local primary_key_label = self.data.inputs.default_in.primary_key.value
 
   if data[primary_key_label] == nil then
     return
