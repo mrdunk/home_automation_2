@@ -94,22 +94,43 @@ Link.prototype.onDragStart = function(){
   var clicked_shape = this.getIdentity();
   var link_object = getLink(clicked_shape);
 
-  if(typeof(shareBetweenShapes.selected) === 'object' && shareBetweenShapes.selected.type === 'link'){
-    getLink(shareBetweenShapes.selected).shape.setHighlight('teal', LINK_THICKNESS);
-  }else if(shareBetweenShapes.selected !== undefined){
-    getFlowObjectByUniqueId(shareBetweenShapes.selected).shape.setHighlight(false);
-  }
+	link_object.displaySideBar();
+
+  currentHighlightOff();
+  shareBetweenShapes.selected = clicked_shape;
+  currentHighlightOn();
+}
+
+/* Populate the sidebar with information about this link. */
+Link.prototype.displaySideBar = function(){
+  'use strict';
   var header_content = document.createElement('ha-link-header');
-  header_content.populate(clicked_shape);
-  link_object.sidebar.setHeader(header_content);
+  header_content.populate(this.data);
+  this.sidebar.setHeader(header_content);
 
   var flowobject_data = document.createElement('ha-link-content');
-  flowobject_data.populate(clicked_shape);
-  link_object.sidebar.setContent(flowobject_data);
+  flowobject_data.populate(this.data);
+  this.sidebar.setContent(flowobject_data);
+}
 
-  shareBetweenShapes.selected = clicked_shape;
+/* Highlight which ever shape is currently selected according to the global "shareBetweenShapes.selected". */
+var currentHighlightOn = function(){
+  'use strict';
+  if(typeof(shareBetweenShapes.selected) === 'object' && shareBetweenShapes.selected.type === 'link'){
+    getLink(shareBetweenShapes.selected).shape.setHighlight(true, LINK_THICKNESS);
+  } else if(shareBetweenShapes.selected !== undefined){
+    getFlowObjectByUniqueId(shareBetweenShapes.selected).shape.setHighlight(true);
+  }
+}
 
-  this.setHighlight(true, LINK_THICKNESS);
+/* Switch off highlight on which ever shape is currently selected according to the global "shareBetweenShapes.selected". */
+var currentHighlightOff = function(){
+  'use strict';
+  if(typeof(shareBetweenShapes.selected) === 'object' && shareBetweenShapes.selected.type === 'link'){
+    getLink(shareBetweenShapes.selected).shape.setHighlight('teal', LINK_THICKNESS);
+  } else if(shareBetweenShapes.selected !== undefined){
+    getFlowObjectByUniqueId(shareBetweenShapes.selected).shape.setHighlight(false);
+  }
 }
 
 var getLink = function(link_data, create_link){
@@ -145,11 +166,11 @@ var FlowObject = function(paper, sidebar){
 };
 
 FlowObject.prototype.updateLinks = function(){
+  'use strict';
   //console.log('FlowObject.prototype.updateLinks');
   var links = document.getElementsByTagName('ha-control')[0].links;
   for(var i = 0; i < links.length; i++){
     if(links[i].data.source_object === this.data.unique_id || links[i].data.destination_object === this.data.unique_id){
-      //setLink(links[i].data);
       links[i].update();
     }
   }
@@ -313,13 +334,10 @@ FlowObject.prototype.setBoxPosition = function(x, y){
 FlowObject.prototype.select = function(){
   'use strict';
   //console.log('FlowObject.select:', this);
-  if(typeof(shareBetweenShapes.selected) === 'object' && shareBetweenShapes.selected.type === 'link'){
-    getLink(shareBetweenShapes.selected).shape.setHighlight('teal', LINK_THICKNESS);
-  }else if(shareBetweenShapes.selected !== undefined){
-    getFlowObjectByUniqueId(shareBetweenShapes.selected).shape.setHighlight(false);
-  }
-  this.shape.setHighlight(true);
+
+  currentHighlightOff();
   shareBetweenShapes.selected = this.data.unique_id;
+  currentHighlightOn();
 
   this.displaySideBar();
 };
@@ -456,25 +474,24 @@ FlowObject.prototype.linkOutToIn = function(link_data){
 
   console.log(this.data.data.outputs);
   for(var port_id in this.data.data.outputs){
-    console.log(port_id);
     if(port_id === source_port){
       if(this.data.data.outputs[port_id].links === undefined){
         this.data.data.outputs[port_id].links = [];
       }
-      var source_port_data = this.data.data.outputs[port_id].links;
+      var source_port_links = this.data.data.outputs[port_id].links;
       var found = false;
-      for(var i = 0; i < source_port_data.length; i++){
-        if(source_port_data[i].source_port === source_port &&
-            source_port_data[i].destination_object === destination_object &&
-            source_port_data[i].destination_port === destination_port){
+      for(var i = 0; i < source_port_links.length; i++){
+        if(source_port_links[i].source_port === source_port &&
+            source_port_links[i].destination_object === destination_object &&
+            source_port_links[i].destination_port === destination_port){
           // Already has this link.
           found = true;
           break;
         }
       }
       if(!found){
-        console.log('LINK!', source_port_data);
-        source_port_data.push({source_port: source_port, destination_object: destination_object, destination_port: destination_port});
+        console.log('LINK!');
+        source_port_links.push({type: 'link', source_object: this.data.unique_id, source_port: source_port, destination_object: destination_object, destination_port: destination_port});
         this.ExportObject();
       }
       break;
@@ -524,9 +541,40 @@ FlowObject.prototype.ExportObject = function(send_object){
     return temp;
   }
 
+  // The luci.json used on the backend interprets an empty object as an array.
+  // Here we put a temporary tag into all empty objects.
+  var MakeSafeForJson = function(to_convert){
+    if(typeof to_convert === 'object'){
+      if(Array.isArray(to_convert)){
+        //console.log('array');
+      } else {
+        //console.log('object');
+        var empty_object = true;
+        var found_tag = false;
+        for(var index in to_convert){
+          if(index === '___force_json_object'){
+            found_tag = true;
+          } else {
+            empty_object = false;
+          }
+          MakeSafeForJson(to_convert[index]);
+        }
+        if(found_tag && !empty_object){
+          to_convert.___force_json_object = undefined;
+        }
+        if(empty_object){
+          to_convert.___force_json_object = true;
+        }
+      }
+    }
+  }
+
   var stripped_object = stripedVersion(this.data);
   stripped_object.shape.position = this.shape.getShapePosition();
   console.log('**', stripped_object);
+  console.log(JSON.stringify(stripped_object));
+  MakeSafeForJson(stripped_object);
+  console.log(JSON.stringify(stripped_object));
   Mqtt.send('homeautomation/0/control/_announce', JSON.stringify(stripped_object));
 
 //  return send_object;
@@ -791,6 +839,7 @@ function FlowObjectSwitch(paper, sidebar, shape, backend_data){
                   color: 'crimson',
                 },
                 data: {
+                  test: {},
                   general: {
                     instance_name: {
                       description: 'Name',
@@ -868,7 +917,7 @@ FlowObjectSwitch.prototype.updateOutputCount = function(new_count){
   }
 
   for(var i=max_found; i <= this.data.data.general.output_count.value; i++){
-    this.data.data.outputs['branch_' + i] = []
+    this.data.data.outputs['branch_' + i] = {};
   }
 
   this.setShape(this.shape);

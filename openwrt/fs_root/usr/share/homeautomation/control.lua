@@ -166,7 +166,7 @@ function component:setup(instance_name, unique_id)
 end
 
 function component:merge(new_data)
-  log('component:merge(', json.encode(new_data), ')')
+  log('component:merge')
   if get_path(new_data, 'version') then
     if new_data.version < self.version then
       return
@@ -323,7 +323,7 @@ function component:make_data_copy(data, port_label, from_unique_id, from_port_la
   data = deepcopy(data)
   if(data.__trace == nil) then
     data.__trace = {{destination_object=self.unique_id, destination_port=port_label}}
-    data.error = 'Data was not correclty marked with source object and port.'
+    data.error = 'Data was not correctly marked with source object and port.'
   elseif data.__trace[#data.__trace].destination_object ~= nil or
          data.__trace[#data.__trace].destination_port ~= nil  then
     data.error = 'Unexpected __trace configuration.'

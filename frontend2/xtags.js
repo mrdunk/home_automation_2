@@ -309,14 +309,14 @@ xtag.register('ha-flowobject-data', {
       list_content = this.getElementsByClassName('input')[0];
       for(var input_id in data.inputs){
         var input_attributes = document.createElement('ha-input-attributes');
-        input_attributes.populate(data.inputs[input_id], flow_object);
+        input_attributes.populate(data.inputs[input_id], input_id, flow_object);
         list_content.appendChild(input_attributes);
       }
 
       list_content = this.getElementsByClassName('output')[0];
       for(var output_id in data.outputs){
       	var output_attributes = document.createElement('ha-output-attributes');
-				output_attributes.populate(data.outputs[output_id].links, output_id, flow_object);
+				output_attributes.populate(data.outputs[output_id], output_id, flow_object);
 				list_content.appendChild(output_attributes);
       }
     }
@@ -330,7 +330,7 @@ xtag.register('ha-link-header', {
   },
   methods: {
     populate: function(link_data){
-      console.log('ha-link-header.populate(', link_data, ')');
+      //console.log('ha-link-header.populate(', link_data, ')');
       var source_object = getFlowObjectByUniqueId(link_data.source_object);
       var destination_object = getFlowObjectByUniqueId(link_data.destination_object);
 
@@ -359,7 +359,7 @@ xtag.register('ha-link-header', {
 xtag.register('ha-link-content', {
   lifecycle:{
     created: function(){
-      this.className = 'selectable';
+      //this.className = 'selectable';
     }
   },
   methods: {
@@ -393,6 +393,7 @@ xtag.register('ha-link-json', {
       this.link_data = link_data;
       this.expanded = false;
       var content = document.createElement('pre');
+      content.className = 'selectable';
       content.innerHTML = syntaxHighlight(link_data, this.expanded);
       this.appendChild(content);
       this.glow_intervals = [];
@@ -433,6 +434,7 @@ xtag.register('ha-link-json', {
       this.expanded = !this.expanded;
       this.innerHTML = '';
       var content = document.createElement('pre');
+      content.className = 'selectable';
       content.innerHTML = syntaxHighlight(this.link_data, this.expanded);
       this.appendChild(content);
 			this.highlight_path(false);
@@ -494,15 +496,14 @@ xtag.register('ha-input-attributes', {
     }
   },
   methods: {
-    populate: function(data, flow_object){
+    populate: function(data, input_id, flow_object){
       //console.log(data);
-      this.getElementsByClassName('description')[0].innerHTML = data.description;
+      this.getElementsByClassName('description')[0].innerHTML = data.description || input_id;
       var form = this.getElementsByClassName('form')[0];
 
       // Modifiable attributes.
       for(var label in data){
         if(typeof(data[label]) === 'object'){
-          console.log(label, data[label]);
           var general_attributes = document.createElement(data[label].updater);
           general_attributes.populate(data[label], flow_object);
           form.appendChild(general_attributes);
@@ -511,7 +512,6 @@ xtag.register('ha-input-attributes', {
     }
   }
 });
-
 
 xtag.register('ha-output-attributes', {
   lifecycle:{
@@ -522,26 +522,66 @@ xtag.register('ha-output-attributes', {
   },
   methods: {
     populate: function(data, output_id, flow_object){
-      this.getElementsByClassName('description')[0].innerHTML = output_id;
+      this.getElementsByClassName('description')[0].innerHTML = data.description || output_id;
       var form = this.getElementsByClassName('form')[0];
 
       // Modifiable attributes.
-      for(var index in data){
-        var input = document.createElement('div');
-        //input.innerHTML = JSON.stringify(data[index])  //data[index].source_port
-        var destination_object = getFlowObjectByUniqueId(data[index].destination_object);
-        if(destination_object){
-          input.innerHTML = destination_object.data.data.general.instance_name.value;
-        } else {
-          input.innerHTML = data[index].destination_object;
+      for(var label in data){
+        if(typeof(data[label]) === 'object'){
+          if(label === 'links'){
+            for(var index in data.links){
+              var link = document.createElement('ha-link-info');
+              link.populate(data.links[index]);
+              form.appendChild(link);                
+            }
+          } else {
+						var general_attributes = document.createElement(data[label].updater);
+						general_attributes.populate(data[label], flow_object);
+						form.appendChild(general_attributes);
+          }
         }
-        form.appendChild(input);                
       }
-      //form.innerHTML = JSON.stringify(data)
     }
   }
 });
 
+xtag.register('ha-link-info', {
+  methods: {
+    populate: function(link_data){
+      this.link_data = link_data;
+      xtag.innerHTML(this, '');
+      var destination_object = getFlowObjectByUniqueId(link_data.destination_object);
+      if(destination_object){
+        var header = document.createElement('div');
+        header.innerHTML = 'link: ';
+        var link_destination = document.createElement('div');
+        link_destination.innerHTML = destination_object.data.data.general.instance_name.value + ':' + link_data.destination_port;
+        var info_button = document.createElement('paper-icon-button')
+        info_button.icon = 'subject';
+        this.appendChild(header);
+        this.appendChild(info_button);
+        this.appendChild(link_destination);
+      } else {
+        this.innerHTML = 'link: ' + link_data.destination_object + ':' + link_data.destination_port;
+      }
+    }
+  },
+  events: {
+    'click:delegate(paper-icon-button)': function(mouseEvent){
+      var transition;
+      for (var i = 0; i < mouseEvent.path.length; i++){
+        if(xtag.matchSelector(mouseEvent.path[i], 'ha-link-info')){
+          transition = mouseEvent.path[i];
+          break;
+        }
+      }
+      currentHighlightOff();
+      shareBetweenShapes.selected = transition.link_data;
+      currentHighlightOn();
+      getLink(shareBetweenShapes.selected).displaySideBar();
+    }
+  }
+});
 
 xtag.register('ha-general-attribute', {
   lifecycle:{

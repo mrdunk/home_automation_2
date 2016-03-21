@@ -3,6 +3,8 @@
 /*exported dataReceived*/
 
 var header_button_actions = {'mqtt-solicit': function(){Mqtt.send(Page.topics.all_devices, '_command : solicit');},
+
+														 // TODO Allow us to force server to re-calculate everything. "homeautomation/0/control/_reload"
                              'clear-data': function(){Data.mqtt_data.debug = {};
                                                       Mqtt.send(Page.topics.all_devices, '_command : solicit');},
                              'log-selected': function(){console.log(getFlowObjectByUniqueId(shareBetweenShapes.selected) || getLink(shareBetweenShapes.selected));},
@@ -32,7 +34,6 @@ var dataReceived = function(topic, received_data){
   for(index in flow_objects){
     if(index === received_data.object_type){
       var flow_object = getFlowObjectByUniqueId(received_data.unique_id);
-      console.log('', flow_object);
       if(received_data.data === undefined){
         received_data.data = {};
       }
@@ -51,8 +52,6 @@ var dataReceived = function(topic, received_data){
       }
 
       flow_object.shape.setOutputLinks(flow_object.data.data.outputs);
-
-      console.log(received_data, flow_object.data);
     }
   }
 
@@ -65,7 +64,7 @@ var update_view = function(){
   // TODO Only need to update things if the data affects the currently selected object. 
   if(shareBetweenShapes.selected !== undefined){
     var selected_flow_object;
-    if(typeof(shareBetweenShapes.selected) === 'object' && shareBetweenShapes.selected.type === 'link'){
+    if(typeof(shareBetweenShapes.selected) === 'object' && shareBetweenShapes.selected.type === 'link' && document.getElementsByTagName('ha-link-content')[0]){
       document.getElementsByTagName('ha-link-content')[0].populate(shareBetweenShapes.selected);
     }else if(shareBetweenShapes.selected !== undefined){
       //selected_flow_object = getFlowObjectByUniqueId(shareBetweenShapes.selected);
