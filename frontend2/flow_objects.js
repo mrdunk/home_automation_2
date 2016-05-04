@@ -3,7 +3,7 @@
 /*global PORT_WIDTH*/
 /*global PORT_HEIGHT*/
 
-var SNAP = 20;
+var SNAP = 10;
 
 var shareBetweenShapes = {unique_id: 0};
 
@@ -113,6 +113,41 @@ Link.prototype.displaySideBar = function(){
   this.sidebar.setContent(flowobject_data);
 }
 
+Link.prototype.delete = function(){
+  'use strict';
+  console.log('Link.delete(', this.data, ')');
+  var source_object = getFlowObjectByUniqueId(this.data.source_object);
+  if(source_object.data.data.outputs[this.data.source_port]){
+    var remove_from_outputs = [];
+    for(var output_link_index=0; output_link_index < source_object.data.data.outputs[this.data.source_port].links.length; output_link_index++){
+      if(source_object.data.data.outputs[this.data.source_port].links[output_link_index].destination_object === this.data.destination_object &&
+         source_object.data.data.outputs[this.data.source_port].links[output_link_index].destination_port === this.data.destination_port){
+        remove_from_outputs.push(output_link_index);
+      }
+    }
+    while(remove_from_outputs.length){
+      source_object.data.data.outputs[this.data.source_port].links.splice(remove_from_outputs.pop(), 1);
+    }
+  }
+
+  if(this.shape){
+    this.shape.remove();
+  }
+
+  var all_links = document.getElementsByTagName('ha-control')[0].links;
+  var remove_from_all_links = [];
+  for(var i=0; i < all_links.length; i++){
+    if(this.data.source_object === all_links[i].data.source_object && this.data.source_port === all_links[i].data.source_port &&
+       this.data.destination_object === all_links[i].data.destination_object && this.data.destination_port === all_links[i].data.destination_port){
+      //all_links.slice(i, 1);
+      remove_from_all_links.push(i);
+    }
+  }
+  while(remove_from_all_links.length){
+    all_links.splice(remove_from_all_links, 1);
+  }
+}
+
 /* Highlight which ever shape is currently selected according to the global "shareBetweenShapes.selected". */
 var currentHighlightOn = function(){
   'use strict';
@@ -155,6 +190,21 @@ var getLink = function(link_data, create_link){
   }
 }
 
+var getLinks = function(link_data){
+  'use strict';
+	var links = document.getElementsByTagName('ha-control')[0].links;
+	var return_links = [];
+
+	for(var i = 0; i < links.length; i++){
+    if((link_data.source_object === undefined || links[i].data.source_object === link_data.source_object) &&
+       (link_data.source_port === undefined || links[i].data.source_port === link_data.source_port) &&
+       (link_data.destination_object === undefined || links[i].data.destination_object === link_data.destination_object) &&
+       (link_data.destination_port === undefined || links[i].data.destination_port === link_data.destination_port)){
+      return_links.push(links[i]);
+    }
+  }
+  return return_links;
+}
 
 var FlowObject = function(paper, sidebar){
   'use strict';
@@ -188,6 +238,24 @@ FlowObject.prototype.setShape = function(shape){
   this.shape.setOutputs(this);
 };
 
+/* Return list of links to this object.
+   Args:
+    (string)port: Optional. If specified, only return the links to a specific input port.
+*/
+FlowObject.prototype.getInputLinks = function(port){
+  'use strict';
+  var return_list = [];
+  var all_links = document.getElementsByTagName('ha-control')[0].links;
+  for(var i = 0; i < all_links.length; i++){
+    if(all_links[i].data.destination_object === this.data.unique_id){
+      if(port === undefined || port === all_links[i].data.destination_port){
+        return_list.push(all_links[i].data);
+      }
+    }
+  }
+  return return_list;
+}
+
 FlowObject.prototype.delete = function(removeLinks){
   'use strict';
   console.log('FlowObject.prototype.delete');
@@ -198,41 +266,15 @@ FlowObject.prototype.delete = function(removeLinks){
   this.shape.remove();
   
   if(removeLinks === undefined || removeLinks === true){
-    var links_to_remove = [];
-    var links = document.getElementsByTagName('ha-control')[0].links;
-    for(var i = 0; i < links.length; i++){
-      if(links[i].data.source_object === this.data.unique_id){
-        links_to_remove.push(i);
-        if(links[i].shape){
-          links[i].shape.remove();
-        }
-      }
-      if(links[i].data.destination_object === this.data.unique_id){
-        links_to_remove.push(i);
-        if(links[i].shape){
-          links[i].shape.remove();
-        }
-        // Also need to remove from other end of link.
-        var source_object = getFlowObjectByUniqueId(links[i].data.source_object);
-        for(var j in source_object.data.data.outputs){
-          if(source_object.data.data.outputs[j].port_label === links[i].data.source_port){
-            var outputs_to_remove = [];
-            for(var k = 0; k < source_object.data.data.outputs[j].links.length; k++){
-              if(source_object.data.data.outputs[j].links[k].source_port === links[i].data.source_port &&
-                  source_object.data.data.outputs[j].links[k].destination_port === links[i].data.destination_port){
-                console.log(i, j, k, links[i].data);
-                outputs_to_remove.push(k);
-              }
-            }
-            while(outputs_to_remove.length){
-              source_object.data.data.outputs[j].links.splice(outputs_to_remove.pop(), 1);
-            }
-          }
-        }
+    for(var source_port_label in this.data.data.outputs){
+      for(var link_source_index=0; link_source_index < this.data.data.outputs[source_port_label].links.length; link_source_index++){
+        getLink(this.data.data.outputs[source_port_label].links[link_source_index]).delete();
       }
     }
-    while(links_to_remove.length){
-      document.getElementsByTagName('ha-control')[0].links.splice(links_to_remove.pop(), 1);
+    // Also need to remove from other end of link.
+    var link_to_here = this.getInputLinks();
+    for(var link_dest_index=0; link_dest_index < link_to_here.length; link_dest_index++){
+      getLink(link_to_here[link_dest_index]).delete();
     }
   }
 
@@ -571,13 +613,9 @@ FlowObject.prototype.ExportObject = function(send_object){
 
   var stripped_object = stripedVersion(this.data);
   stripped_object.shape.position = this.shape.getShapePosition();
-  console.log('**', stripped_object);
-  console.log(JSON.stringify(stripped_object));
   MakeSafeForJson(stripped_object);
   console.log(JSON.stringify(stripped_object));
   Mqtt.send('homeautomation/0/control/_announce', JSON.stringify(stripped_object));
-
-//  return send_object;
 };
 
 
@@ -591,7 +629,7 @@ var inheritsFrom = function (child, parent) {
 };
 
 
-flow_object_classes = [FlowObjectMqttSubscribe, FlowObjectMqttPublish, FlowObjectReadFile, FlowObjectMapValues, FlowObjectMapLabels, FlowObjectAddTime, FlowObjectCombineData, FlowObjectAddData, FlowObjectFilterByTime, FlowObjectSwitch];
+flow_object_classes = [FlowObjectMqttSubscribe, FlowObjectMqttPublish, FlowObjectReadFile, FlowObjectAddTime, FlowObjectCombineData, FlowObjectAddData, FlowObjectModifyLabels, FlowObjectSwitch];
 
 
 function FlowObjectMqttSubscribe(paper, sidebar, shape, backend_data){
@@ -742,90 +780,6 @@ function FlowObjectMqttPublish(paper, sidebar, shape, backend_data){
 inheritsFrom(FlowObjectMqttPublish, FlowObject);
 
 
-
-function FlowObjectMapValues(paper, sidebar, shape, backend_data){
-  'use strict';
-  console.log("FlowObjectMapValues(", backend_data, ')');
-
-  FlowObject.prototype.constructor.call(this, paper, sidebar);
-  this.data = { class_label: 'Map values',
-                class_description: 'Filter or modify input variables to different output.',
-                shape: {
-                  width: 75,
-                  height: 50,
-                  color: 'crimson',
-                },
-                data: {
-                  general: {
-                    instance_name: {
-                      description: 'Name',
-                      updater: 'ha-general-attribute',
-                      update_on_change: this.setInstanceName,
-                      //value: 'Object_' + shareBetweenShapes.unique_id
-                      },
-                    },
-                  inputs: {
-                    default_in: {
-                      description: 'Input 1',
-                      transitions: {
-                          description: 'Map Input ranges to desired Output.',
-                          updater: 'ha-transitions',
-                          values: {}
-                      },
-                    },
-                  },
-                  outputs: {
-                    default_out: {}
-                    }}};
-  if(paper){
-    this.shape = shape || paper.box(0, 0, this.data.shape.width, this.data.shape.height, this.data.shape.color);
-    this.setup(backend_data);
-
-    if(getPath(backend_data, 'data.inputs.default_in.label') !== undefined){
-      for(var input_label in this.data.data.inputs){
-        var label = backend_data.data.inputs.default_in.label;
-        this.data.data.inputs[input_label].transitions.values[label] = [];
-        var found_else;
-        for(var key in backend_data.data.inputs.default_in.rules){
-          var input = backend_data.data.inputs.default_in.rules[key].match;
-          if(typeof(input) === 'string' && input.toLowerCase().trim() === 'true'){
-            input = true;
-          }
-          if(typeof(input) === 'string' && input.toLowerCase().trim() === 'false'){
-            input = false;
-          }
-          var output = backend_data.data.inputs.default_in.rules[key].action;
-          if(output === '_string'){
-            output = backend_data.data.inputs.default_in.rules[key].value;
-          }
-          this.data.data.inputs[input_label].transitions.values[label].push({input: input, output: output});
-          if(input === '_else'){
-            found_else = true;
-          }
-        }
-        if(found_else === undefined){
-          this.data.data.inputs[input_label].transitions.values[label].push({input: '_else', output: '_drop'});
-        }
-      }
-    }
-  }
-};
-
-inheritsFrom(FlowObjectMapValues, FlowObject);
-
-var stringToBoolean = function(string){
-  'use strict';
-  switch(String(string).toLowerCase().trim()){
-    case "true": return true;
-    case "false": return false;
-    //case "true": case "yes": case "1": return true;
-    //case "false": case "no": case "0": case null: return false;
-    default: return;
-  }
-};
-
-
-
 function FlowObjectSwitch(paper, sidebar, shape, backend_data){
   'use strict';
   console.log("FlowObjectSwitch(", backend_data, ')');
@@ -839,7 +793,6 @@ function FlowObjectSwitch(paper, sidebar, shape, backend_data){
                   color: 'crimson',
                 },
                 data: {
-                  test: {},
                   general: {
                     instance_name: {
                       description: 'Name',
@@ -912,11 +865,17 @@ FlowObjectSwitch.prototype.updateOutputCount = function(new_count){
   }
   var remove = remove_these.pop();
   while(remove){
+    console.log(this.data.data.outputs[remove]);
+    for(var link_index=0; link_index < this.data.data.outputs[remove].links.length; link_index++){
+      var link = getLink(this.data.data.outputs[remove].links[link_index]);
+      console.log(link);
+      delete link;
+    }
     delete this.data.data.outputs[remove];
     remove = remove_these.pop();
   }
 
-  for(var i=max_found; i <= this.data.data.general.output_count.value; i++){
+  for(var i=max_found +1; i <= this.data.data.general.output_count.value; i++){
     this.data.data.outputs['branch_' + i] = {};
   }
 
@@ -953,131 +912,6 @@ FlowObjectSwitch.prototype.updateSwitch = function(backend_data){
     this.data.data.inputs.default_in.transitions.values.otherwise = {send_to: backend_data.data.inputs.default_in.transitions.values.otherwise.send_to};
   }
 }
-
-
-
-function FlowObjectMapLabels(paper, sidebar, shape, backend_data){
-  'use strict';
-  console.log("FlowObjectMapLabels(", backend_data, ')');
-
-  FlowObject.prototype.constructor.call(this, paper, sidebar);
-  this.data = { class_label: 'Map labels',
-                class_description: 'Modify labels names.',
-                shape: {
-                  width: 75,
-                  height: 50,
-                  color: 'crimson',
-                },
-                data: {
-                  general: {
-                    instance_name: {
-                      description: 'Name',
-                      updater: 'ha-general-attribute',
-                      update_on_change: this.setInstanceName,
-                      //value: 'Object_' + shareBetweenShapes.unique_id
-                      },
-                    },
-                  inputs: {
-                    default_in: {
-                      description: 'Input 1',
-                        label_in: {
-                          description: 'Label to modify.',
-                          updater: 'ha-general-attribute',
-                          value: '' },
-                        label_out: {
-                          description: 'Desired label name.',
-                          updater: 'ha-general-attribute',
-                          value: '' }
-                    },
-                  },
-                  outputs: {
-                    default_out: {}
-                    }}};
-  if(paper){
-    this.shape = shape || paper.box(0, 0, this.data.shape.width, this.data.shape.height, this.data.shape.color);
-    this.setup(backend_data);
-    for(var input_label in this.data.data.inputs){
-      // TODO handle more than one label.
-      this.data.data.inputs[input_label].else = {updater: "ha-general-attribute",
-                                                  description: "When no matching label."};
-      var else_found;
-      if(getPath(backend_data, 'data.inputs.default_in.rules') !== undefined){
-        for(var key in backend_data.data.inputs.default_in.rules){
-          var action = backend_data.data.inputs.default_in.rules[key].action;
-          var match = backend_data.data.inputs.default_in.rules[key].match;
-          var value = backend_data.data.inputs.default_in.rules[key].value;
-          if(match === '_else'){
-            if(action === '_string'){
-              this.data.data.inputs[input_label].else.value = value
-            } else if(action === '_forward'){
-              this.data.data.inputs[input_label].else.value = match;
-            } else if(action === '_drop'){
-              this.data.data.inputs[input_label].else.value = '_drop';
-            }
-          } else {
-            else_found = true;
-            this.data.data.inputs[input_label].label_in.value = match;
-            if(action === '_string'){
-              this.data.data.inputs[input_label].label_out.value = value
-            } else if(action === '_forward'){
-              this.data.data.inputs[input_label].label_out.value = match;
-            } else if(action === '_drop'){
-              this.data.data.inputs[input_label].label_out.value = '_drop';
-            }
-          }
-        }
-        if(else_found === undefined){
-          this.data.data.inputs[input_label].else.value = '_drop';
-        }
-      }
-    }
-  }  
-};
-
-inheritsFrom(FlowObjectMapLabels, FlowObject);
-
-
-/*function FlowObjectTestData(paper, sidebar, shape, backend_data){
-  'use strict';
-  console.log("FlowObjectTestData");
-
-  FlowObject.prototype.constructor.call(this, paper, sidebar);
-  this.data = { class_label: 'Test data',
-                class_description: 'Generate some fake data for testing this UI.',
-                shape: {
-                  width: 100,
-                  height: 50,
-                  color: 'gold',
-                },
-                data: {
-                  general: {
-                    instance_name: { 
-                      description: 'Name',
-                      updater: 'ha-general-attribute',
-                      update_on_change: this.setInstanceName,
-                      //value: 'Object_' + shareBetweenShapes.unique_id
-                      },
-                    test_data: {
-                      description: 'Test data',
-                      updater: 'ha-general-attribute',
-                      form_type: 'textarea',
-                      update_on_change: true,
-                      value: '[{"_subject":"dhcp/84_3a_4b_0c_11_6c","_google_id":"test_gid"}]'
-                    }
-                  },
-                  inputs: {},
-                  outputs: {
-                    default_out: []
-                      } }
-              };
-  if(paper){
-    this.shape = shape || paper.box(0, 0, this.data.shape.width, this.data.shape.height, this.data.shape.color);
-    this.setup(backend_data);
-  }
-};
-
-inheritsFrom(FlowObjectTestData, FlowObject);*/
-
 
 
 function FlowObjectCombineData(paper, sidebar, shape, backend_data){
@@ -1185,7 +1019,6 @@ inheritsFrom(FlowObjectAddData, FlowObject);
 
 
 
-
 function FlowObjectReadFile(paper, sidebar, shape, backend_data){
   'use strict';
   console.log('FlowObjectReadFile(', paper, sidebar, shape, backend_data, ')');
@@ -1286,17 +1119,17 @@ inheritsFrom(FlowObjectAddTime, FlowObject);
 
 
 
-function FlowObjectFilterByTime(paper, sidebar, shape, backend_data){
+function FlowObjectModifyLabels(paper, sidebar, shape, backend_data){
   'use strict';
-  console.log('FlowObjectFilterByTime(', paper, sidebar, shape, backend_data, ')');
+  console.log('FlowObjectModifyLabels(', paper, sidebar, shape, backend_data, ')');
 
   FlowObject.prototype.constructor.call(this, paper, sidebar);
-  this.data = { class_label: 'Filter by time',
-                class_description: 'Modify data depending on time.',
+  this.data = { class_label: 'Modify labels',
+                class_description: 'Modify label names in data.',
                 shape: {
-                  width: 75,
+                  width: 60,
                   height: 50,
-                  color: 'lightcoral',
+                  color: 'crimson',
                 },
                 data: {
                   general: {
@@ -1311,11 +1144,19 @@ function FlowObjectFilterByTime(paper, sidebar, shape, backend_data){
                   default_in: {
                     description: 'Default input',
                     port_label: 'default_in',
+
+                    transitions: {
+                          description: 'Rename labels.',
+                          updater: 'ha-modify-labels-rules',
+                          values: {
+                            rules: []
+                          }
+                    },                    
                   },
                 },
                 outputs: {
                     default_out: {},
-                    _error: {}
+                    _error: {hidden: true}
                 }
               }
   };
@@ -1325,5 +1166,5 @@ function FlowObjectFilterByTime(paper, sidebar, shape, backend_data){
   }
 };
 
-inheritsFrom(FlowObjectFilterByTime, FlowObject);
+inheritsFrom(FlowObjectModifyLabels, FlowObject);
 

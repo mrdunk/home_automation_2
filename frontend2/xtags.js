@@ -296,6 +296,8 @@ xtag.register('ha-flowobject-data', {
   },
   methods: {
     populate: function(data, flow_object){
+      //this.data = data;
+      //this.flow_object = flow_object;
 
       var list_content = this.getElementsByClassName('general')[0];
 			for(var general_id in data.general){
@@ -670,343 +672,6 @@ xtag.register('ha-select-label', {
       }
       this.appendChild(value_tag);
       this.appendChild(datalist);
-    }
-  }
-});
-
-xtag.register('ha-transitions', {
-  lifecycle:{
-    created: function(){
-      var template = document.getElementById('ha-transitions').innerHTML;
-      xtag.innerHTML(this, template);
-    },
-  },
-  events: {
-    'click:delegate(button)': function(mouseEvent){
-      console.log(mouseEvent.srcElement.value);
-      var transition; 
-      for (var i = 0; i < mouseEvent.path.length; i++){
-        if(xtag.matchSelector(mouseEvent.path[i], 'ha-transitions')){
-          transition = mouseEvent.path[i];
-          break;
-        }
-      }
-      if(transition === 'undefined'){ return; }
-
-      var button_values = mouseEvent.srcElement.value.split('|');
-      if(button_values[0] === 'add'){
-        transition.newRange(button_values[1]);
-        transition.populate();
-      } else {
-        transition.data.values[button_values[1]].splice(parseInt(button_values[0]), 1);
-        transition.populate();
-      }
-    },
-    change: function(event){
-      if(event.target.name.split('|',1)[0] === 'label'){
-        this.changeLabel(event.target.name.split('|')[1], event.target.value);
-      }
-    }
-  },
-  methods: {
-    populate: function(data, flow_object){
-      this.data = data || this.data;
-      this.flow_object = flow_object || this.flow_object;
-
-			//console.log(this.data);
-
-      if(Object.keys(this.data.values).length === 0){
-        this.prePopulateRange();
-      }
-
-			this.getElementsByClassName('description')[0].innerHTML = this.data.description;
-
-      var form = this.getElementsByClassName('transition-form')[0];
-      while(form.firstChild){
-        form.removeChild(form.firstChild);
-      }
-
-      for(var label in this.data.values){
-        var table = document.createElement('div');
-        table.className = 'table-transition';
-        form.appendChild(table);
-        var header = document.createElement('div');
-        var content = document.createElement('div');
-        var control = document.createElement('div');
-        var left = document.createElement('div');
-        var right = document.createElement('div');
-        content.className = 'content-transition';
-        control.className = 'control-transition';
-        left.className = 'input-transition';
-        right.className = 'output-transition';
-        table.appendChild(header);
-        table.appendChild(content);
-        content.appendChild(control);
-        content.appendChild(left);
-        content.appendChild(right);
-
-        var label_tag = document.createElement('div');
-        label_tag.innerHTML = 'Label:';
-        var datalist = document.createElement('ha-select-label');
-				datalist.populate({value: label}, this.flow_object);
-
-        header.appendChild(label_tag);
-        header.appendChild(datalist);
-
-        var div;
-        var button;
-				var i;
-        for(i = 0; i < this.data.values[label].length -1; i++){
-          // ".length -1" because the last item in the list is a special case which we handle separately.
-          div = document.createElement('div');
-          button = document.createElement('button');
-          button.textContent = '-';
-          button.value = i + '|' + label;
-          div.appendChild(button);
-          control.appendChild(div);
-          left.appendChild(this.chooser(this.data.values[label][i], 'input'));
-          right.appendChild(this.chooser(this.data.values[label][i], 'output'));
-        }
-        div = document.createElement('div');
-        button = document.createElement('button');
-        button.textContent = '+';
-        button.value = 'add|' + label;
-        div.appendChild(button);
-        control.appendChild(div);
-				var button_spacer = document.createElement('div');
-				button_spacer.className = 'button-spacer';
-        left.appendChild(button_spacer);
-        right.appendChild(button_spacer.cloneNode(false));
-
-        // Now the last item in the list...
-        i = this.data.values[label].length -1;
-				control.appendChild(button_spacer.cloneNode(false));
-				left.appendChild(this.chooser(this.data.values[label][i], 'input'));
-				right.appendChild(this.chooser(this.data.values[label][i], 'output'));
-      }
-    },
-    changeLabel: function(from, to){
-      console.log('changeLabel(', from, to, ')');
-      if(from === to){
-        return;
-      }
-      if(this.data.values[from] === undefined){
-        return;
-      }
-
-      this.data.values[to] = this.data.values[from];
-      delete this.data.values[from];
- 
-      this.update_sidebar();
-    },
-    newRange: function(label){
-      var range = {input: true, output: true};
-      this.data.values[label].splice(this.data.values[label].length -1, 0, range);
-    },
-    prePopulateRange: function(){
-      this.data.values._subject = [];
-      this.data.values._subject.push( {input: 'yes', output: true} );
-			this.data.values._subject.push( {input: '_missing', output: false} );
-      this.data.values._subject.push( {input: '_else', output: '_drop'} );
-    },
-    chooser: function(range, io){
-      // Create a widget that allows a choice of input or output data. (string, number, boolean, etc.)
-
-      var container = document.createElement('div');
-
-			if(io === 'input' && range[io] === '_else'){
-        // This is a special case filter that is always last on the list.
-        // It decides what to do if none of the other filters match.
-        container.innerHTML = 'If none of the above match:';
-        return container;
-      }
-
-      var select = document.createElement('select');
-
-			// Add 'boolean' to select.
-      var option = document.createElement('option');
-      option.text = 'boolean';
-      if(typeof(range[io]) === 'boolean'){
-        option.setAttribute('selected', 'selected');
-      }
-      select.appendChild(option);
-
-			// Add 'string' to select.
-      option = document.createElement('option');
-      option.text = 'string';
-      if(typeof(range[io]) === 'string' && (range[io] !== '_forward' || range[io] !== '_drop' || range[io] !== '_missing')){
-        option.setAttribute('selected', 'selected');
-      }
-      select.appendChild(option);
-
-			// Add 'number' to select.
-      option = document.createElement('option');
-      option.text = 'number';
-      if(typeof(range[io]) === 'object'){
-        option.setAttribute('selected', 'selected');
-      }
-      select.appendChild(option);
-
-			if(io === 'input'){
-				// Add 'missing' to select.
-				option = document.createElement('option');
-				option.text = 'missing';
-				if(range[io] === '_missing'){
-					option.setAttribute('selected', 'selected');
-				}
-				select.appendChild(option);
-			}
-
-			// Add output only options.
-      if(io === 'output'){
-				option = document.createElement('option');
-				option.text = 'forward';
-				if(typeof(range[io]) === 'string' && range[io] === '_forward'){
-					option.setAttribute('selected', 'selected');
-				}
-				select.appendChild(option);
-
-				option = document.createElement('option');
-				option.text = 'drop';
-				if(typeof(range[io]) === 'string' && range[io] === '_drop'){
-					option.setAttribute('selected', 'selected');
-				}
-				select.appendChild(option);
-			}
-
-
-			var input_bool = document.createElement('select');
-			option = document.createElement('option');
-			option.text = 'true';
-			option.value = true;
-      if(typeof(range[io]) === 'boolean'){
-        if(range[io]){
-          option.setAttribute('selected', 'selected');
-        }
-      }
-      input_bool.appendChild(option);
-      option = document.createElement('option');
-      option.text = 'false';
-      option.value = false;
-      if(typeof(range[io]) === 'boolean'){
-        if(range[io] === false){
-          option.setAttribute('selected', 'selected');
-        }
-      }
-      input_bool.appendChild(option);
-
-      var input_string = document.createElement('input');
-      input_string.type = 'text';
-      input_string.value = range[io];
-
-      var input_number = document.createElement('div');
-      var input_number_low = document.createElement('input');
-      input_number_low.type = 'number';
-      if(typeof range[io].low !== 'undefined'){
-        input_number_low.value = range[io].low;
-      } else {
-        input_number_low.value = 0;
-      }
-      input_number_low.style.width = '4em';
-      var input_number_high = document.createElement('input');
-      input_number_high.type = 'number';
-      if(typeof range[io].high !== 'undefined'){
-        input_number_high.value = range[io].high;
-      } else {
-        input_number_high.value = 100;
-      }
-      input_number_high.style.width = '4em';
-      input_number.appendChild(input_number_low);
-      input_number.appendChild(document.createTextNode('to'));
-      input_number.appendChild(input_number_high);
-
-      if(select.value !== 'boolean'){
-        input_bool.style.display = 'none';
-      }
-      if(select.value !== 'string'){
-        input_string.style.display = 'none';
-      }
-      if(select.value !== 'number'){
-        input_number.style.display = 'none';
-      }
-
-      container.appendChild(select);
-      container.appendChild(input_bool);
-      container.appendChild(input_string);
-      container.appendChild(input_number);
-
-      container.addEventListener('change', this.chooser_change.bind({
-          data: range, io: io, select: select, input_bool: input_bool, input_string: input_string, input_number: input_number}));
-      container.addEventListener('change', this.update_sidebar.bind({ flow_object: this.flow_object }));
-      container.addEventListener('mousedown', this.chooser_change.bind({
-          data: range, io: io, select: select, input_bool: input_bool, input_string: input_string, input_number: input_number}));
-      return container;
-    },
-    update_sidebar: function(){
-      //this.flow_object.FilterInputToOutput(0);
-      this.flow_object.displaySideBar();
-    },
-    chooser_change: function(){
-			// This gets called when widgets on the form get adjusted.
-
-      console.log('chooser_change', this);
-
-      // TODO: fix this so it only allows number ranges for the output if there are number ranges for the input.
-      if(this.io === 'output'){
-        if(typeof(this.data.input) !== 'object'){
-          if(this.select.value === 'number'){
-            this.select.children[2].removeAttribute('selected');
-            this.select.children[1].setAttribute('selected', 'selected');
-          }
-          this.select.children[2].style.display = 'none';
-        } else{
-          this.select.children[2].style.display = 'initial';
-        }
-      }
-
-      if(this.select.value === 'boolean'){
-        this.input_bool.style.display = 'inline';
-        this.input_string.style.display = 'none';
-        this.input_number.style.display = 'none';
-        this.data[this.io] = this.input_bool.value === 'true';
-      } else if(this.select.value === 'string'){
-        this.input_bool.style.display = 'none';
-        this.input_string.style.display = 'inline';
-        this.input_number.style.display = 'none';
-				// The special cases '_drop' and '_forward' are just strings.
-        // If someone actually wants to change from a '_drop' to a 'string' we need to make sure
-        // '_drop' is not still in the data field of the widget will think it's actually a drop.
-				if(this.input_string.value !== '_drop' && this.input_string.value !== '_forward' && this.input_string.value !== '_missing'){
-        	this.data[this.io] = this.input_string.value;
-				} else {
-					this.data[this.io] = '';
-				}
-      } else if(this.select.value === 'number'){
-        this.input_bool.style.display = 'none';
-        this.input_string.style.display = 'none';
-        this.input_number.style.display = 'inline';
-        this.data[this.io] = {low: this.input_number.children[0].value, high: this.input_number.children[1].value};
-      } else if(this.select.value === 'drop'){
-        this.input_bool.style.display = 'none';
-        this.input_string.style.display = 'none';
-        this.input_number.style.display = 'none';
-        this.data[this.io] = '_drop';
-      } else if(this.select.value === 'forward'){
-        this.input_bool.style.display = 'none';
-        this.input_string.style.display = 'none';
-        this.input_number.style.display = 'none';
-        this.data[this.io] = '_forward';
-      } else if(this.select.value === 'missing'){
-        this.input_bool.style.display = 'none';
-        this.input_string.style.display = 'none';
-        this.input_number.style.display = 'none';
-        this.data[this.io] = '_missing';
-      }
-
-      // Make sure left number is lower than the right one.
-      if(Number(this.input_number.children[0].value) > Number(this.input_number.children[1].value)){
-        this.input_number.children[1].value = this.input_number.children[0].value;
-      }
     }
   }
 });
@@ -1554,6 +1219,160 @@ xtag.register('ha-switch-rule-filter-string', {
         parent.data.values.rules[rule_index].if_value = {opperand: opperand,
                                                          value: rule_value};
       }
+    }
+  }
+});
+
+xtag.register('ha-modify-labels-rules', {
+  methods: {
+    populate: function(data, flow_object){
+      console.log('ha-modify-labels-rules(', data, flow_object, ')');
+
+      this.data = data;
+      this.flow_object = flow_object;
+
+      this.innerHTML = '';
+
+      this.add_button_container = document.createElement('div');
+      this.add_button_container.className = 'ha-switch-rule';
+      this.add_button_container.id = 'ha-add-rule';
+      this.appendChild(this.add_button_container);
+
+			for(var i=0; i < data.values.rules.length; i++){
+        var new_rule = document.createElement('ha-modify-labels-rule');
+        new_rule.populate(data.values.rules[i], this.data);
+        this.add_button_container.appendChild(new_rule);
+			}
+
+      var add_button = document.createElement('button');
+      add_button.className = 'ha-switch-rule-button';
+      add_button.textContent = '+';
+      add_button.value = 'add_rule';
+      this.appendChild(add_button);
+
+    },
+  },
+  events: {
+    'click:delegate(button)': function(mouseEvent){
+      console.log(mouseEvent.srcElement.value, this);
+      var parent = mouseEvent.currentTarget;
+
+      if(mouseEvent.srcElement.value === 'add_rule'){
+        var new_rule = document.createElement('ha-modify-labels-rule');
+        new_rule.populate({rule_number: parent.data.values.rules.length}, parent.data);
+        parent.add_button_container.appendChild(new_rule);
+      }
+    }
+  }
+});
+
+var actions = {rename: {text: 'rename',
+                        description: 'Rename the label.'},
+               drop: {text: 'drop',
+                      description: 'Remove this label from data.'},
+              }
+
+xtag.register('ha-modify-labels-rule', {
+  methods: {
+    populate: function(rule_data, data){
+      this.data = data;
+
+      if(this.data.values.rules.length <= rule_data.rule_number){
+        this.data.values.rules.push(rule_data);
+      }
+      console.log(this.data.values.rules, rule_data.rule_number);
+
+      var remove_button = document.createElement('button');
+      //remove_button.className = 'ha-switch-rule-button';
+      remove_button.textContent = '-';
+      remove_button.value = 'remove_rule|' + rule_data.rule_number;
+      this.appendChild(remove_button);
+
+      var source_label = document.createElement('ha-label-chooser');
+      this.appendChild(source_label);
+
+      var action = document.createElement('select');
+      for(var action_opt_str in actions){
+        var action_option = document.createElement("option");
+        action_option.text = actions[action_opt_str].text;
+        action_option.value = 'action|' + action_opt_str + '|' + data.rule_number;
+        if(action_opt_str === data.action){
+          action_option.selected = true;
+        }
+        action.add(action_option);
+      }
+      this.appendChild(action);
+
+      this.appendChild(document.createElement('br'));
+    }
+  }
+});
+
+xtag.register('ha-label-chooser', {
+  lifecycle:{
+    inserted: function(){
+      this.populate();
+    }
+  },
+  methods: {
+    populate: function(destination_port_name, destination_object_name){
+
+      if(!destination_object_name){
+        // Search upwards through parent HTML components looking for the flow_object to get the destination_object_name from.
+        var _parent = this.parentElement;
+        var i = 0;
+        while(_parent){
+          _parent = _parent.parentElement;
+          if(_parent.flow_object){
+            flow_object = _parent.flow_object;
+            break;
+          }
+        }
+        var flow_object = _parent.flow_object;
+        destination_object_name = flow_object.data.unique_id;
+      }
+
+      // Find all flow_objects that link to this one.
+      var sources = {};
+      var links = getLinks({destination_object: destination_object_name, destination_port: destination_port_name});
+      for(var i = 0; i < links.length; i++){
+        sources[links[i].data.source_object] = links[i].data.source_port;
+      }
+
+      // Search all debug data for entries that come from a port linking to the flow_object and build a list of labels in that data.
+      var all_labels = {};
+      for(var thread in Data.mqtt_data.debug){
+        for(var topic in Data.mqtt_data.debug[thread]){
+          var debug_source_uid = topic.split('/')[0];
+          var debug_source_port = topic.split('/')[2];
+          if(sources[debug_source_uid] === debug_source_port){
+            for(var label in Data.mqtt_data.debug[thread][topic]){
+              if(label.substring(0,2) !== '__'){
+                all_labels[label] = true;
+              }
+            }
+          }
+        }
+      }
+
+			this.innerHTML = '';
+
+      var input = document.createElement('input');
+      input.setAttribute('list', 'label');
+      input.setAttribute('name', 'label');
+      //input.setAttribute('value', data.value);
+      this.appendChild(input);
+
+      var label_name = document.createElement('DATALIST');
+      label_name.id = 'label';
+      var output;
+      for(label in all_labels){
+        output = document.createElement("OPTION");
+        //output.text = index;
+        output.setAttribute('value', label);
+        label_name.appendChild(output);
+      }
+      this.appendChild(label_name);
     }
   }
 });

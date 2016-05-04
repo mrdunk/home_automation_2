@@ -374,8 +374,8 @@ end
 
 function FlowObjectMqttSubscribe:callback(path, data)
   --log(" ", "FlowObjectMqttSubscribe:callback(" .. tostring(path) .. ", " .. flatten_data(data) .. ")")
-  data.thread_track = {}
-  data.thread_track[1] = info.thread_counter
+  data.__thread_track = {}
+  data.__thread_track[1] = info.thread_counter
   info.thread_counter = info.thread_counter +1
   self:send_output(data)
 end
@@ -417,88 +417,6 @@ function FlowObjectMqttSubscribe:merge(new_data)
   end
 end
 
-
-
-FlowObjectMapValues = component:new({object_type='FlowObjectMapValues'})
-
-function FlowObjectMapValues:receive_input(data, port_label)
-  --log(" ~~", "FlowObjectMapValues:receive_input(", flatten_data(data), l, ")")
---[[
-  if(data.__trace == nil) then
-    data.__trace = {{destination_object=self.unique_id, destination_port=port_label}}
-  else
-    data.__trace[#data.__trace].destination_object=self.unique_id
-    data.__trace[#data.__trace].destination_port=port_label
-  end
-]]--
-
-  local label = self.data.inputs.default_in.label
-  local rules = self.data.inputs.default_in.rules
-
-  local found_label, found_value
-
-  for data_label, data_value in pairs(data) do
-    if label == data_label then
-      found_label = label
-      found_value = data_value
-      --log(" ~~", found_label, found_value)
-    end
-  end
-
-  for _, rule in pairs(rules) do
-    -- TODO: We force everything to be a string here to handle booleans... Think about the implications of this.
-    -- TODO: Handle numbers.
-    if tostring(rule.match) == tostring(found_value) or rule.match == '_else' or (rule.match == '_missing' and found_label == nil) then
-      if rule.action == '_forward' then
-        --log("~~~~~", rule.match, '_forward', found_label, found_value)
-        --log("~~~~~", flatten_data(data))
-        self:send_output(data)
-        break
-      elseif rule.action == '_string' or rule.action == '_boolean' then
-        --log("~~~~~", 'modify', found_label, found_value, rule.value)
-        data[found_label] = rule.value
-        --log("~~~~~", flatten_data(data))
-        self:send_output(data)
-        break
-      elseif rule.action == '_drop' then
-        --log("~~~~~", rule.match, '_drop')
-        --control_instance:update_log('(' .. self.object_type .. ')' .. self:get_general('instance_name') .. ' -> ' .. flatten_data(data) .. ' -> DROP\n')
-        self:send_output(data, '_drop')
-        break
-      end
-    end
-  end
-end
-
-
-FlowObjectMapLabels = component:new({object_type='FlowObjectMapLabels'})
-
-function FlowObjectMapLabels:receive_input(data, port_label)
-  --log(" ==", "FlowObjectMapLabels:receive_input(", data, port_label, ")")
-
-  local forward_data = {thread_track = data.thread_track,
-                        __trace = data.__trace}
-
-  local rules = self.data.inputs.default_in.rules
-
-  for data_label, data_value in pairs(data) do
-    for _, rule in pairs(rules) do
-      if rule.match == data_label or rule.match == '_else' then
-        if rule.action == '_forward' then
-          forward_data[data_label] = data_value
-          break
-        elseif rule.action == '_string' then
-          forward_data[rule.value] = data_value
-          break
-        elseif rule.action == '_drop' then
-          break
-        end
-      end
-    end
-  end
-  --log("=====", flatten_data(forward_data))
-  self:send_output(forward_data)
-end
 
 
 FlowObjectMqttPublish = component:new({object_type='FlowObjectMqttPublish'})
@@ -591,8 +509,8 @@ function FlowObjectReadFile:send_output(match_data_label, match_data_value)
     if parsed_file_data then
       log('"""', match_data_label, parsed_file_data)
       if match_data_label == nil or parsed_file_data[match_data_label] == match_data_value then
-        parsed_file_data.thread_track = {}
-        parsed_file_data.thread_track[1] = info.thread_counter
+        parsed_file_data.__thread_track = {}
+        parsed_file_data.__thread_track[1] = info.thread_counter
         info.thread_counter = info.thread_counter +1
 
 				if self.data.outputs.default_out.ttl.value then
@@ -640,10 +558,21 @@ function FlowObjectCombineData:receive_input(data, input_label, from_unique_id, 
     populate_object(self.data.data, from_unique_id .. '.' .. from_port_label .. '.' .. primary_key)
     self.data.data[from_unique_id][from_port_label][primary_key] = {}
 
+    -- Set data expiry time according to ttl in incoming data.
+    local ttl = data.ttl
+    local now = os.time(os.date('*t'))
+    if data.ttl ~= nil and (0 + data.ttl) > 0 then
+      self.data.data[from_unique_id][from_port_label][primary_key].__expiry = now + ttl
+    else
+      self.data.data[from_unique_id][from_port_label][primary_key].__expiry = nil
+    end
+
     -- Store data, indexed by the object and port it came from.
     for label, value in pairs(data) do
       self.data.data[from_unique_id][from_port_label][primary_key][label] = value
     end
+
+    self:removeExpired()
 
     -- Combine data from different sources.
     local output = {}
@@ -652,10 +581,12 @@ function FlowObjectCombineData:receive_input(data, input_label, from_unique_id, 
       for _from_port_label, data2  in pairs(data1) do
         if data2[primary_key] ~= nil then
           for label, value in pairs(data2[primary_key]) do
-            if label == 'thread_track' then
-              output.thread_track = TableConcat(output.thread_track, value)
-            elseif(label == '__trace') then
+            if label == '__thread_track' then
+              output.__thread_track = TableConcat(output.__thread_track, value)
+            elseif label == '__trace' then
               output.__trace = TableConcat(output.__trace, value)
+            elseif label == '__expiry' or label == 'ttl' then
+              -- pass
             else
               output[label] = value
             end
@@ -663,10 +594,32 @@ function FlowObjectCombineData:receive_input(data, input_label, from_unique_id, 
         end
       end
     end
-
 		self:send_output(output)
   end
 end
+
+function FlowObjectCombineData:removeExpired()
+  local now = os.time(os.date('*t'))
+  local primary_key_label = self.data.inputs.default_in.primary_key.value
+
+  local remove_these = {}
+
+  for _from_unique_id, data1 in pairs(self.data.data) do
+    for _from_port_label, data2  in pairs(data1) do
+      for primary_key, data3  in pairs(data2) do
+        -- data3.__expiry should never be greater than (now + data3.ttl). If it is, something strange has happened to the system clock.
+        if data3.__expiry ~= 0 and data3.__expiry ~= nil and (data3.__expiry < now or data3.__expiry > now + data3.ttl) then
+          remove_these[#remove_these +1] = {_from_unique_id, _from_port_label, primary_key}
+        end
+      end
+    end
+  end
+
+  for index = 1, #remove_these do
+    self.data.data[remove_these[index][1]][remove_these[index][2]][remove_these[index][3]] = nil
+  end
+end
+
 
 
 FlowObjectAddData = component:new({object_type='FlowObjectAddData'})
@@ -706,7 +659,7 @@ function FlowObjectAddData:receive_input(data, input_label)
 		for label, value in pairs(entry) do
 			if label ~= primary_key_label then
         --log("'''''", "", label, value)
-        if label == 'thread_track' or label == '__trace' then
+        if label == '__thread_track' or label == '__trace' then
           combined_entry[label] = TableConcat(combined_entry[label], value)
         elseif combined_entry[label] == nil then
           if tonumber(value) ~= nil then
@@ -729,7 +682,7 @@ function FlowObjectAddData:receive_input(data, input_label)
           if tonumber(value) ~= nil then
             combined_entry[label] = combined_entry[label] + tonumber(value)
           elseif toBoolean(value) ~= nil then
-            -- We want a logical OR so   number||bool = number .
+            -- We want a logical OR so number||bool = number .
           elseif type(value) == 'string' then
             -- A string will take precedence over a number or a boolean.
             combined_entry[label] = value

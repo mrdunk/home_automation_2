@@ -14,12 +14,10 @@ var header_button_actions = {'mqtt-solicit': function(){Mqtt.send(Page.topics.al
 var flow_objects = {FlowObjectMqttSubscribe: FlowObjectMqttSubscribe,
                     FlowObjectMqttPublish: FlowObjectMqttPublish,
                     FlowObjectReadFile: FlowObjectReadFile,
-                    FlowObjectMapValues: FlowObjectMapValues,
-                    FlowObjectMapLabels: FlowObjectMapLabels,
                     FlowObjectAddTime: FlowObjectAddTime,
                     FlowObjectCombineData: FlowObjectCombineData,
                     FlowObjectAddData: FlowObjectAddData,
-                    FlowObjectFilterByTime: FlowObjectFilterByTime,
+                    FlowObjectModifyLabels: FlowObjectModifyLabels,
                     FlowObjectSwitch: FlowObjectSwitch,
                     };
 

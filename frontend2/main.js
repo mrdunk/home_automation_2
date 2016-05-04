@@ -35,6 +35,7 @@ var Data = { mqtt_data: {announcments: {}, debug: {}} };
 
 Data.storeIncomingMqtt = function(topic, data) {
   'use strict';
+  console.log(topic, data);
   if(topic === undefined || data === undefined) {
     return;
   }
@@ -43,8 +44,8 @@ Data.storeIncomingMqtt = function(topic, data) {
   topic = component + '/' + topic_identifier;
 
   if(component === 'debug'){
-    for(var i=0; i< data.thread_track.length; i++){
-      var track = data.thread_track[i];
+    for(var i=0; i < data.__thread_track.length; i++){
+      var track = data.__thread_track[i];
       if(Data.mqtt_data.debug[track] === undefined){
         Data.mqtt_data.debug[track] = {};
       }

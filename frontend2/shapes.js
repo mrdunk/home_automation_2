@@ -228,8 +228,6 @@ Raphael.st.setOutputLinks = function(outputs){
     }
     for(var key_link = 0; key_link < outputs[output_id].links.length; key_link++){
       var link_data = outputs[output_id].links[key_link];
-      //setLink({source_object: this_identity.object_id, source_port: link_data.source_port,
-      //         destination_object: link_data.destination_object, destination_port: link_data.destination_port});
       getLink({source_object: this_identity.object_id, source_port: link_data.source_port,
                destination_object: link_data.destination_object, destination_port: link_data.destination_port});
     }
