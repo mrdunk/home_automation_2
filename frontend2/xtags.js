@@ -1121,7 +1121,7 @@ xtag.register('ha-switch-rule-filter-number', {
       if(rule_value === '_na'){
         rule_value = mouseEvent.srcElement.value;
       }
-      console.log('ha-switch-rule-filter-number', click_type, rule_value, rule_index)
+      console.log('ha-switch-rule-filter-number', click_type, rule_value, rule_index, parent)
       if(click_type === 'if_value_opperand') {
         var value = parent.rules.getElementsByTagName('ha-switch-rule')[rule_index].getElementsByTagName('input')[0].value;
         parent.data.values.rules[rule_index].if_value = {opperand: rule_value,
@@ -1181,13 +1181,13 @@ xtag.register('ha-switch-rule-filter-string', {
       if(rule_value === '_na'){
         rule_value = mouseEvent.srcElement.value;
       }
-      console.log('ha-switch-rule-filter-number', click_type, rule_value, rule_index)
+      console.log('ha-switch-rule-filter-number', click_type, rule_value, rule_index, parent)
       if(click_type === 'if_value_opperand') {
-        var value = parent.rules.getElementsByTagName('ha-switch-rule')[rule_index].getElementsByTagName('input')[0].value;
+        var value = parent.getElementsByTagName('ha-switch-rule')[rule_index].getElementsByTagName('input')[0].value;
         parent.data.values.rules[rule_index].if_value = {opperand: rule_value,
                                                          value: value};
       } else if(click_type === 'if_value_value') {
-        var opperand = parent.rules.getElementsByTagName('ha-switch-rule')[rule_index].getElementsByTagName('select')[1].value.split('|')[1];
+        var opperand = parent.getElementsByTagName('ha-switch-rule')[rule_index].getElementsByTagName('select')[1].value.split('|')[1];
         parent.data.values.rules[rule_index].if_value = {opperand: opperand,
                                                          value: rule_value};
       }
@@ -1215,7 +1215,7 @@ xtag.register('ha-switch-rule-filter-string', {
       }
       console.log('ha-switch-rule-filter-number', click_type, rule_value, rule_index)
 			if(click_type === 'if_value_value') {
-        var opperand = parent.rules.getElementsByTagName('ha-switch-rule')[rule_index].getElementsByTagName('select')[1].value.split('|')[1];
+        var opperand = parent.getElementsByTagName('ha-switch-rule')[rule_index].getElementsByTagName('select')[1].value.split('|')[1];
         parent.data.values.rules[rule_index].if_value = {opperand: opperand,
                                                          value: rule_value};
       }

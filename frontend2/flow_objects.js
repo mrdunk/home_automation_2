@@ -1,7 +1,15 @@
-/*global Data*/
+/*global Mqtt*/
+/*global paper*/
+/*global session_uid*/
+
+/*global getPortShape*/
 
 /*global PORT_WIDTH*/
 /*global PORT_HEIGHT*/
+/*global LINK_THICKNESS*/
+
+/*exported flow_object_classes*/
+/*exported getLinks*/
 
 var SNAP = 10;
 
@@ -20,7 +28,7 @@ var getPath = function(object, path) {
     object = object[p];
   }
   return object;
-}
+};
 
 /* Descend into object, returning child if it exists and creating it if not */
 var addPath = function(object, path) { 
@@ -34,7 +42,7 @@ var addPath = function(object, path) {
     object = object[p];
   }
   return object;
-}
+};
 
 
 var getFlowObjectByUniqueId = function(unique_id){
@@ -59,7 +67,7 @@ var Link = function(link_data){
   this.data = link_data;
   this.paper = document.getElementsByTagName('ha-control')[0].paper;
 	this.sidebar = document.getElementsByTagName('ha-sidebar')[1];
-}
+};
 
 Link.prototype.update = function(){
   'use strict';
@@ -86,7 +94,7 @@ Link.prototype.update = function(){
                     this.onDragStart,
                     function(){console.log('shape.drag.end');});
   }
-}
+};
 
 Link.prototype.onDragStart = function(){
   'use strict';
@@ -99,7 +107,7 @@ Link.prototype.onDragStart = function(){
   currentHighlightOff();
   shareBetweenShapes.selected = clicked_shape;
   currentHighlightOn();
-}
+};
 
 /* Populate the sidebar with information about this link. */
 Link.prototype.displaySideBar = function(){
@@ -111,7 +119,7 @@ Link.prototype.displaySideBar = function(){
   var flowobject_data = document.createElement('ha-link-content');
   flowobject_data.populate(this.data);
   this.sidebar.setContent(flowobject_data);
-}
+};
 
 Link.prototype.delete = function(){
   'use strict';
@@ -146,10 +154,10 @@ Link.prototype.delete = function(){
   while(remove_from_all_links.length){
     all_links.splice(remove_from_all_links, 1);
   }
-}
+};
 
 /* Highlight which ever shape is currently selected according to the global "shareBetweenShapes.selected". */
-var currentHighlightOn = function(){
+function currentHighlightOn(){
   'use strict';
   if(typeof(shareBetweenShapes.selected) === 'object' && shareBetweenShapes.selected.type === 'link'){
     getLink(shareBetweenShapes.selected).shape.setHighlight(true, LINK_THICKNESS);
@@ -159,7 +167,7 @@ var currentHighlightOn = function(){
 }
 
 /* Switch off highlight on which ever shape is currently selected according to the global "shareBetweenShapes.selected". */
-var currentHighlightOff = function(){
+function currentHighlightOff(){
   'use strict';
   if(typeof(shareBetweenShapes.selected) === 'object' && shareBetweenShapes.selected.type === 'link'){
     getLink(shareBetweenShapes.selected).shape.setHighlight('teal', LINK_THICKNESS);
@@ -168,7 +176,7 @@ var currentHighlightOff = function(){
   }
 }
 
-var getLink = function(link_data, create_link){
+function getLink(link_data, create_link){
   'use strict';
   //console.log('getLink(', link_data, ')');
   var links = document.getElementsByTagName('ha-control')[0].links;
@@ -204,7 +212,7 @@ var getLinks = function(link_data){
     }
   }
   return return_links;
-}
+};
 
 var FlowObject = function(paper, sidebar){
   'use strict';
@@ -224,7 +232,7 @@ FlowObject.prototype.updateLinks = function(){
       links[i].update();
     }
   }
-}
+};
 
 FlowObject.prototype.setShape = function(shape){
   'use strict';
@@ -254,7 +262,7 @@ FlowObject.prototype.getInputLinks = function(port){
     }
   }
   return return_list;
-}
+};
 
 FlowObject.prototype.delete = function(removeLinks){
   'use strict';
@@ -279,7 +287,7 @@ FlowObject.prototype.delete = function(removeLinks){
   }
 
   delete document.getElementsByTagName('ha-control')[0].flowObjects[this.data.unique_id];
-}
+};
 
 FlowObject.prototype.setInstanceName = function(instance_name){
   'use strict';
@@ -430,19 +438,23 @@ FlowObject.prototype.onmove = function(dx, dy){
   //console.log('FlowObject.onmove(', dx, dy, ')');
 
   if(!this.timer){
-    this.timer = setTimeout(do_periodically.bind(this), 40);
+    var type = this.data('type');
+    var shape = this;
+    var startx = this.start_move_x;
+    var starty = this.start_move_y;
+    this.timer = setTimeout(function(){do_periodically(type, startx, starty, dx, dy, shape);}, 40);
   }
 
-  function do_periodically(){
-    if(this.data('type') === 'parent' || this.data('type') === 'body'){
-      //console.log('do_periodically');
-      this.setBoxPosition(dx + this.start_move_x, dy + this.start_move_y);
-    } else if(shareBetweenShapes.dragging){
+  function do_periodically(type, startx, starty, dx, dy, shape){
+    //console.log('do_periodically(', type, startx, starty, dx, dy, shape, ')');
+    if(type=== 'parent' || type === 'body'){
+      shape.setBoxPosition(startx + dx, starty + dy);
+    } else if(shareBetweenShapes.dragging) {
       var path = shareBetweenShapes.dragging.arrow.attr('path');
       var pos2 = {x: path[0][1] + dx, y: path[0][2] + dy};
       shareBetweenShapes.dragging.arrow.dragArrow(pos2);
     }
-    this.timer = null;
+    shape.timer = undefined;
   }
 };
 
@@ -560,7 +572,7 @@ FlowObject.prototype.getColor = function(){
   return this.shape[0].attr("fill");
 };
 
-FlowObject.prototype.ExportObject = function(send_object){
+FlowObject.prototype.ExportObject = function(){
   'use strict';
   this.data.version += 1;
 
@@ -581,7 +593,7 @@ FlowObject.prototype.ExportObject = function(send_object){
       }
     }
     return temp;
-  }
+  };
 
   // The luci.json used on the backend interprets an empty object as an array.
   // Here we put a temporary tag into all empty objects.
@@ -609,7 +621,7 @@ FlowObject.prototype.ExportObject = function(send_object){
         }
       }
     }
-  }
+  };
 
   var stripped_object = stripedVersion(this.data);
   stripped_object.shape.position = this.shape.getShapePosition();
@@ -629,7 +641,7 @@ var inheritsFrom = function (child, parent) {
 };
 
 
-flow_object_classes = [FlowObjectMqttSubscribe, FlowObjectMqttPublish, FlowObjectReadFile, FlowObjectAddTime, FlowObjectCombineData, FlowObjectAddData, FlowObjectModifyLabels, FlowObjectSwitch];
+var flow_object_classes = [FlowObjectMqttSubscribe, FlowObjectMqttPublish, FlowObjectReadFile, FlowObjectAddTime, FlowObjectCombineData, FlowObjectAddData, FlowObjectModifyLabels, FlowObjectSwitch];
 
 
 function FlowObjectMqttSubscribe(paper, sidebar, shape, backend_data){
@@ -687,13 +699,13 @@ function FlowObjectMqttSubscribe(paper, sidebar, shape, backend_data){
       this.setContents();
     }
   }
-};
+}
 
 inheritsFrom(FlowObjectMqttSubscribe, FlowObject);
 
 FlowObjectMqttSubscribe.prototype.setContents = function(contents){
   'use strict';
-  console.log('FlowObjectMqttSubscribe.setContents(', contents, ')')
+  console.log('FlowObjectMqttSubscribe.setContents(', contents, ')');
 	
   //this.$super.setContents.call(this, contents);
   FlowObject.prototype.setContents.call(this, contents);
@@ -709,7 +721,7 @@ FlowObjectMqttSubscribe.prototype.ExportObject = function(){
 
   //send_object.data.general.subscribed_topic = this.data.data.general.subscribed_topic.value;
   //send_object.data.general.subscribed_topic.replace('homeautomation/+/', '');
-}
+};
 
 
 
@@ -775,7 +787,7 @@ function FlowObjectMqttPublish(paper, sidebar, shape, backend_data){
       this.setContents();
     }
   }
-};
+}
 
 inheritsFrom(FlowObjectMqttPublish, FlowObject);
 
@@ -843,11 +855,12 @@ function FlowObjectSwitch(paper, sidebar, shape, backend_data){
     this.setup(backend_data);
     this.updateSwitch(backend_data);
   }
-};
+}
 
 inheritsFrom(FlowObjectSwitch, FlowObject);
 
 FlowObjectSwitch.prototype.updateOutputCount = function(new_count){
+  "use strict";
   if(new_count < 1){
     new_count = 1;
   }
@@ -869,7 +882,7 @@ FlowObjectSwitch.prototype.updateOutputCount = function(new_count){
     for(var link_index=0; link_index < this.data.data.outputs[remove].links.length; link_index++){
       var link = getLink(this.data.data.outputs[remove].links[link_index]);
       console.log(link);
-      delete link;
+      // TODO: delete link from list.
     }
     delete this.data.data.outputs[remove];
     remove = remove_these.pop();
@@ -880,9 +893,10 @@ FlowObjectSwitch.prototype.updateOutputCount = function(new_count){
   }
 
   this.setShape(this.shape);
-}
+};
 
 FlowObjectSwitch.prototype.updateSwitch = function(backend_data){
+  "use strict";
   console.log('FlowObjectSwitch.updateSwitch(', JSON.stringify(backend_data), ')');
   if(getPath(backend_data, 'data.inputs.default_in.stop_after_match.value') !== undefined){
     addPath(this.data.data, 'inputs.default_in.stop_after_match.value');
@@ -897,13 +911,13 @@ FlowObjectSwitch.prototype.updateSwitch = function(backend_data){
     this.data.data.inputs.default_in.transitions.values.rules = [];
     // We cannot presume the list of rules is in the correct order so we must look them up by the rule's "rule_number" parameter.
     var get_rule = function(number){
-      for(i=0; i < backend_data.data.inputs.default_in.transitions.values.rules.length; i++){
+      for(var i=0; i < backend_data.data.inputs.default_in.transitions.values.rules.length; i++){
         if(backend_data.data.inputs.default_in.transitions.values.rules[i].rule_number === number){
           return backend_data.data.inputs.default_in.transitions.values.rules[i];
         }
       }
-    }
-    for(j=0; j < backend_data.data.inputs.default_in.transitions.values.rules.length; j++){
+    };
+    for(var j=0; j < backend_data.data.inputs.default_in.transitions.values.rules.length; j++){
       this.data.data.inputs.default_in.transitions.values.rules.push(get_rule(j));
     }
   }
@@ -911,7 +925,7 @@ FlowObjectSwitch.prototype.updateSwitch = function(backend_data){
     addPath(this.data.data, 'inputs.default_in.transitions.values');
     this.data.data.inputs.default_in.transitions.values.otherwise = {send_to: backend_data.data.inputs.default_in.transitions.values.otherwise.send_to};
   }
-}
+};
 
 
 function FlowObjectCombineData(paper, sidebar, shape, backend_data){
@@ -957,11 +971,11 @@ function FlowObjectCombineData(paper, sidebar, shape, backend_data){
 
     if(getPath(backend_data, 'data.inputs.default_in.primary_key') !== undefined){
       for(var input_label in this.data.data.inputs){
-        this.data.data.inputs[input_label].primary_key.value = backend_data.data.inputs.default_in.primary_key.value
+        this.data.data.inputs[input_label].primary_key.value = backend_data.data.inputs.default_in.primary_key.value;
       }
     }
   }
-};
+}
 
 inheritsFrom(FlowObjectCombineData, FlowObject);
 
@@ -1008,12 +1022,12 @@ function FlowObjectAddData(paper, sidebar, shape, backend_data){
     this.setup(backend_data);
 
     if(getPath(backend_data, 'data.inputs.default_in.primary_key_label') !== undefined){
-      for(var input_label in this.data.data.inputs){
-//        this.data.data.inputs[input_label].primary_key.value = backend_data.data.inputs.default_in.primary_key_label
-      }
+      //for(var input_label in this.data.data.inputs){
+        //this.data.data.inputs[input_label].primary_key.value = backend_data.data.inputs.default_in.primary_key_label
+      //}
     }
   }
-};
+}
 
 inheritsFrom(FlowObjectAddData, FlowObject);
 
@@ -1072,7 +1086,7 @@ function FlowObjectReadFile(paper, sidebar, shape, backend_data){
       this.data.data.inputs.load_from_file.filename.value = backend_data.data.inputs.load_from_file.filename.value;
 		}
   }
-};
+}
 
 inheritsFrom(FlowObjectReadFile, FlowObject);
 
@@ -1113,7 +1127,7 @@ function FlowObjectAddTime(paper, sidebar, shape, backend_data){
     this.shape = shape || paper.box(0, 0, this.data.shape.width, this.data.shape.height, this.data.shape.color);
     this.setup(backend_data);
   }
-};
+}
 
 inheritsFrom(FlowObjectAddTime, FlowObject);
 
@@ -1164,7 +1178,7 @@ function FlowObjectModifyLabels(paper, sidebar, shape, backend_data){
     this.shape = shape || paper.box(0, 0, this.data.shape.width, this.data.shape.height, this.data.shape.color);
     this.setup(backend_data);
   }
-};
+}
 
 inheritsFrom(FlowObjectModifyLabels, FlowObject);
 

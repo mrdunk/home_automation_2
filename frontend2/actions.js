@@ -1,6 +1,22 @@
 /*global FlowObjectMqttSubscribe*/
 /*global FlowObjectMqttPublish*/
+/*global FlowObjectReadFile*/
+/*global FlowObjectAddTime*/
+/*global FlowObjectCombineData*/
+/*global FlowObjectAddData*/
+/*global FlowObjectModifyLabels*/
+/*global FlowObjectSwitch*/
+
+/*global shareBetweenShapes*/
+/*global getFlowObjectByUniqueId*/
+/*global getLink*/
+
+/*global Mqtt*/
+/*global Page*/
+/*global Data*/
+
 /*exported dataReceived*/
+/*exported header_button_actions*/
 
 var header_button_actions = {'mqtt-solicit': function(){Mqtt.send(Page.topics.all_devices, '_command : solicit');},
 
@@ -21,6 +37,19 @@ var flow_objects = {FlowObjectMqttSubscribe: FlowObjectMqttSubscribe,
                     FlowObjectSwitch: FlowObjectSwitch,
                     };
 
+
+var update_view = function(){
+  'use strict';
+  // TODO Only need to update things if the data affects the currently selected object. 
+  if(shareBetweenShapes.selected !== undefined){
+    if(typeof(shareBetweenShapes.selected) === 'object' && shareBetweenShapes.selected.type === 'link' && document.getElementsByTagName('ha-link-content')[0]){
+      document.getElementsByTagName('ha-link-content')[0].populate(shareBetweenShapes.selected);
+    }else if(shareBetweenShapes.selected !== undefined){
+      //selected_flow_object = getFlowObjectByUniqueId(shareBetweenShapes.selected);
+      // TODO Update other objects when data comes in.
+    }
+  }
+};
 
 var dataReceived = function(topic, received_data){
   'use strict';
@@ -57,17 +86,4 @@ var dataReceived = function(topic, received_data){
  
   //console.log('dataReceived -');
 };
-
-var update_view = function(){
-  // TODO Only need to update things if the data affects the currently selected object. 
-  if(shareBetweenShapes.selected !== undefined){
-    var selected_flow_object;
-    if(typeof(shareBetweenShapes.selected) === 'object' && shareBetweenShapes.selected.type === 'link' && document.getElementsByTagName('ha-link-content')[0]){
-      document.getElementsByTagName('ha-link-content')[0].populate(shareBetweenShapes.selected);
-    }else if(shareBetweenShapes.selected !== undefined){
-      //selected_flow_object = getFlowObjectByUniqueId(shareBetweenShapes.selected);
-      // TODO Update other objects when data comes in.
-    }
-  }
-}
 
