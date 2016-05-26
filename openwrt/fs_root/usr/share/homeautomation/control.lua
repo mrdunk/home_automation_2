@@ -622,82 +622,6 @@ end
 
 
 
-FlowObjectAddData = component:new({object_type='FlowObjectAddData'})
-
-function FlowObjectAddData:setup(instance_name, unique_id)
-  log('FlowObjectAddData:setup(', instance_name, unique_id, ')')
-  component.setup(self, instance_name, unique_id)
-  self.data.data = {}
-end
-
-function FlowObjectAddData:receive_input(data, input_label)
-  --log("'''''", flatten_data(data))
---[[  if(data.__trace == nil) then
-    data.__trace = {{destination_object=self.unique_id, destination_port=input_label}}
-  else
-    data.__trace[#data.__trace].destination_object=self.unique_id
-    data.__trace[#data.__trace].destination_port=input_label
-  end]]--
-
-  local primary_key_label = self.data.inputs.default_in.primary_key.value
-
-  if data[primary_key_label] == nil then
-    return
-  end
-
-  local primary_key = data[primary_key_label]
-
-  for label, value in pairs(data) do
-    if self.data.data[primary_key] == nil then
-      self.data.data[primary_key] = {}
-    end
-    self.data.data[primary_key][label] = value
-  end
-
-	local combined_entry = {}
-	for _, entry in pairs(self.data.data) do
-		for label, value in pairs(entry) do
-			if label ~= primary_key_label then
-        --log("'''''", "", label, value)
-        if label == '__thread_track' or label == '__trace' then
-          combined_entry[label] = TableConcat(combined_entry[label], value)
-        elseif combined_entry[label] == nil then
-          if tonumber(value) ~= nil then
-            --log("'''''", "", 'number')
-            combined_entry[label] = tonumber(value)
-          elseif toBoolean(value) ~= nil then
-            --log("'''''", "", 'bool')
-            combined_entry[label] = toBoolean(value)
-          elseif type(value) == 'string' then
-            --log("'''''", "", 'string')
-            combined_entry[label] = value
-          end
-        elseif type(combined_entry[label]) == 'string' then
-          if tonumber(value) ~= nil or toBoolean(value) ~= nil then
-            -- A string will take precedence over a number or a boolean.
-          elseif type(value) == 'string' then
-            combined_entry[label] = combined_entry[label] .. ' | ' .. value
-          end            
-        elseif type(combined_entry[label]) == 'number' then
-          if tonumber(value) ~= nil then
-            combined_entry[label] = combined_entry[label] + tonumber(value)
-          elseif toBoolean(value) ~= nil then
-            -- We want a logical OR so number||bool = number .
-          elseif type(value) == 'string' then
-            -- A string will take precedence over a number or a boolean.
-            combined_entry[label] = value
-          end
-        elseif type(combined_entry[label]) == 'boolean' then
-          combined_entry[label] = combined_entry[label] or value
-        end
-      end
-    end
-	end
-	--log("'''''", flatten_data(combined_entry))
-	self:send_output(combined_entry)
-end
-
-
 function toBoolean(value)
   if type(value) == 'boolean' then
     return value
@@ -760,10 +684,10 @@ function FlowObjectSwitch:receive_input(data, out_port_label)
   local stop_after_match = self.data.inputs.default_in.stop_after_match
   local label = self.data.inputs.default_in.transitions.filter_on_label.value
   for rule_index, rule in pairs(self.data.inputs.default_in.transitions.values.rules) do
-		log('  ^^^', rule.if_type, rule.if_value)
+		log('  ^^^', rule.if_type, toBoolean(rule.if_value))
     if rule.if_type == 'bool' then
 			log('  ^^^^')
-      if rule.if_value == toBoolean(data[label]) then
+      if toBoolean(rule.if_value) == toBoolean(data[label]) then
 				log('  ^^^^')
         self:send_one_output(data, rule.send_to)
         if stop_after_match then

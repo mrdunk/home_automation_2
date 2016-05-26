@@ -641,7 +641,7 @@ var inheritsFrom = function (child, parent) {
 };
 
 
-var flow_object_classes = [FlowObjectMqttSubscribe, FlowObjectMqttPublish, FlowObjectReadFile, FlowObjectAddTime, FlowObjectCombineData, FlowObjectAddData, FlowObjectModifyLabels, FlowObjectSwitch];
+var flow_object_classes = [FlowObjectMqttSubscribe, FlowObjectMqttPublish, FlowObjectReadFile, FlowObjectAddTime, FlowObjectCombineData, FlowObjectModifyLabels, FlowObjectSwitch];
 
 
 function FlowObjectMqttSubscribe(paper, sidebar, shape, backend_data){
@@ -978,58 +978,6 @@ function FlowObjectCombineData(paper, sidebar, shape, backend_data){
 }
 
 inheritsFrom(FlowObjectCombineData, FlowObject);
-
-
-
-function FlowObjectAddData(paper, sidebar, shape, backend_data){
-  'use strict';
-  console.log('FlowObjectAddData(', paper, sidebar, shape, backend_data, ')');
-
-  FlowObject.prototype.constructor.call(this, paper, sidebar);
-  this.data = { class_label: 'Add data',
-                class_description: 'Add data from multiple data payloads.',
-                shape: {
-                  width: 100,
-                  height: 50,
-                  color: 'cornflowerblue',
-                },
-                data: {
-                  general: {
-                    instance_name: {
-                      description: 'Name',
-                      updater: 'ha-general-attribute',
-                      update_on_change: this.setInstanceName,
-                      //value: 'Object_' + shareBetweenShapes.unique_id
-                      }
-                  },
-                  inputs: {
-                    default_in: {
-                      description: 'Default input',
-                        primary_key: {
-                          description: 'Primary key.',
-                          updater: 'ha-select-label',
-                          value: '' }
-                        },
-                    // TODO add reset.
-                  },
-                outputs: {
-                    default_out: {}
-                }
-              }
-	};
-  if(paper){
-    this.shape = shape || paper.box(0, 0, this.data.shape.width, this.data.shape.height, this.data.shape.color);
-    this.setup(backend_data);
-
-    if(getPath(backend_data, 'data.inputs.default_in.primary_key_label') !== undefined){
-      //for(var input_label in this.data.data.inputs){
-        //this.data.data.inputs[input_label].primary_key.value = backend_data.data.inputs.default_in.primary_key_label
-      //}
-    }
-  }
-}
-
-inheritsFrom(FlowObjectAddData, FlowObject);
 
 
 

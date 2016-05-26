@@ -1313,6 +1313,7 @@ xtag.register('ha-modify-labels-rule', {
   methods: {
     populate: function(rule_data, data){
       this.data = data;
+      this.rule_number = rule_data.rule_number;
 
       if(this.data.values.rules.length <= rule_data.rule_number){
         this.data.values.rules.push(rule_data);
@@ -1326,14 +1327,15 @@ xtag.register('ha-modify-labels-rule', {
       this.appendChild(remove_button);
 
       var source_label = document.createElement('ha-label-chooser');
+      source_label.populate(rule_data);
       this.appendChild(source_label);
 
       var action = document.createElement('select');
       for(var action_opt_str in actions){
         var action_option = document.createElement("option");
         action_option.text = actions[action_opt_str].text;
-        action_option.value = 'action|' + action_opt_str + '|' + data.rule_number;
-        if(action_opt_str === data.action){
+        action_option.value = action_opt_str;
+        if(action_opt_str === rule_data.action){
           action_option.selected = true;
         }
         action.add(action_option);
@@ -1342,17 +1344,51 @@ xtag.register('ha-modify-labels-rule', {
 
       this.appendChild(document.createElement('br'));
     }
+  },
+  events: {
+    'click:delegate(select)': function(mouseEvent){
+      console.log(mouseEvent.srcElement.value);
+      var _parent;
+      var rule;
+      for (var i = 0; i < mouseEvent.path.length; i++){
+        if(xtag.matchSelector(mouseEvent.path[i], 'ha-modify-labels-rule')){
+          rule = mouseEvent.path[i];
+        }
+        if(xtag.matchSelector(mouseEvent.path[i], 'ha-modify-labels-rules')){
+          _parent = mouseEvent.path[i];
+          break;
+        }
+      }
+      if(_parent === undefined || rule === undefined){
+        return;
+      }
+			_parent.data.values.rules[rule.rule_number].action = mouseEvent.srcElement.value;
+    },
+    'change:delegate(input)': function(mouseEvent){
+      console.log(mouseEvent.srcElement, mouseEvent.srcElement.value);
+      var _parent;
+      var rule;
+      for (var i = 0; i < mouseEvent.path.length; i++){
+        if(xtag.matchSelector(mouseEvent.path[i], 'ha-modify-labels-rule')){
+          rule = mouseEvent.path[i];
+        }
+        if(xtag.matchSelector(mouseEvent.path[i], 'ha-modify-labels-rules')){
+          _parent = mouseEvent.path[i];
+          break;
+        }
+      }
+      if(_parent === undefined || rule === undefined){
+        return;
+      }
+      _parent.data.values.rules[rule.rule_number].label = mouseEvent.srcElement.value;
+    }
   }
+
 });
 
 xtag.register('ha-label-chooser', {
-  lifecycle:{
-    inserted: function(){
-      this.populate();
-    }
-  },
   methods: {
-    populate: function(destination_port_name, destination_object_name){
+    populate: function(data, destination_port_name, destination_object_name){
       if(!destination_object_name){
         // Search upwards through parent HTML components looking for the flow_object to get the destination_object_name from.
         var _parent = this.parentElement;
@@ -1363,8 +1399,10 @@ xtag.register('ha-label-chooser', {
             break;
           }
         }
-        var flow_object = _parent.flow_object;
-        destination_object_name = flow_object.data.unique_id;
+        if(_parent){
+          var flow_object = _parent.flow_object;
+          destination_object_name = flow_object.data.unique_id;
+        }
       }
 
       // Find all flow_objects that link to this one.
@@ -1396,7 +1434,9 @@ xtag.register('ha-label-chooser', {
       var input = document.createElement('input');
       input.setAttribute('list', 'label');
       input.setAttribute('name', 'label');
-      //input.setAttribute('value', data.value);
+      if(data.label){
+        input.setAttribute('value', data.label);
+      }
       this.appendChild(input);
 
       var label_name = document.createElement('DATALIST');

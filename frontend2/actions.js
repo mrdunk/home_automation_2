@@ -3,7 +3,6 @@
 /*global FlowObjectReadFile*/
 /*global FlowObjectAddTime*/
 /*global FlowObjectCombineData*/
-/*global FlowObjectAddData*/
 /*global FlowObjectModifyLabels*/
 /*global FlowObjectSwitch*/
 
@@ -32,7 +31,6 @@ var flow_objects = {FlowObjectMqttSubscribe: FlowObjectMqttSubscribe,
                     FlowObjectReadFile: FlowObjectReadFile,
                     FlowObjectAddTime: FlowObjectAddTime,
                     FlowObjectCombineData: FlowObjectCombineData,
-                    FlowObjectAddData: FlowObjectAddData,
                     FlowObjectModifyLabels: FlowObjectModifyLabels,
                     FlowObjectSwitch: FlowObjectSwitch,
                     };
