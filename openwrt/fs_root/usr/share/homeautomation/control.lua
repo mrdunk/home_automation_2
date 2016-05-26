@@ -368,8 +368,8 @@ function FlowObjectMqttSubscribe:setup(instance_name, unique_id)
 
   component.setup(self, instance_name, unique_id)
   
-  populate_object(info, 'mqtt.callbacks')
-  info.mqtt.callbacks[instance_name] = self
+  --populate_object(info, 'mqtt.callbacks')
+  --info.mqtt.callbacks[instance_name] = self
 end
 
 function FlowObjectMqttSubscribe:callback(path, data)

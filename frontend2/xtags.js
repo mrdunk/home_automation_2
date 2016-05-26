@@ -10,6 +10,30 @@
 /*global FlowObjectTestData*/
 /*global FlowObjectCombineData*/
 
+/*global getLink*/
+/*global getLinks*/
+/*global shareBetweenShapes*/
+/*global currentHighlightOn*/
+/*global currentHighlightOff*/
+/*global getFlowObjectByUniqueId*/
+
+/*global header_button_actions*/
+/*global flow_object_classes*/
+
+/*global LINK_THICKNESS*/
+/*global LINK_HIGHLIGHT_THICKNESS*/
+/*global SNAP*/
+
+/*global SUBJECTS_ARE_TARGETS*/
+
+/*exported FlowObjectCombineData*/
+/*exported FlowObjectTestData*/
+/*exported FlowObjectMapValues*/
+/*exported FlowObjectMqttPublish*/
+/*exported FlowObjectMqttSubscribe*/
+/*exported FlowObjectTimer*/
+
+
 (function() {
 'use strict';
 
@@ -86,7 +110,7 @@ xtag.register('ha-control-heading', {
     }
   },
   events: {
-    'click:delegate(paper-icon-button)': function(mouseEvent){
+    'click:delegate(paper-icon-button)': function(){  //(mouseEvent){
       //console.log(mouseEvent, this);
       for(var button_id in header_button_actions){
         if(this.id === button_id){
@@ -183,8 +207,8 @@ xtag.register('ha-sidebar', {
       }
 
       if(sidebar.mousedown){
-	      var sidebar = mouse_event.target;
-  	    var counter = 0; 
+	      sidebar = mouse_event.target;
+  	    counter = 0; 
     	  while(counter < 10 && sidebar.tagName.toLowerCase() !== 'ha-sidebar'){
       	  counter++;
         	sidebar = sidebar.parentElement;
@@ -369,8 +393,8 @@ xtag.register('ha-link-content', {
       console.log('ha-link-content.populate(', link_data, ')');
       this.innerHTML = '';
 
-			var source_object = getFlowObjectByUniqueId(link_data.source_object);
-      var destination_object = getFlowObjectByUniqueId(link_data.destination_object);
+			//var source_object = getFlowObjectByUniqueId(link_data.source_object);
+      //var destination_object = getFlowObjectByUniqueId(link_data.destination_object);
 
       var content = document.createElement('div');
       for(var thread in Data.mqtt_data.debug){
@@ -408,19 +432,30 @@ xtag.register('ha-link-json', {
       if(state){
         color = 'darkorange';
       }
+
+      function setHighlight(){
+        var thickness = LINK_HIGHLIGHT_THICKNESS;
+        if(this.track_glow){
+          thickness = LINK_THICKNESS;
+        }
+        this.track_glow = !this.track_glow;
+        this.link.shape.setHighlight(this.color, thickness);
+      }
+
       for(var link_index in this.link_data.__trace){
         var link = getLink(this.link_data.__trace[link_index], false);
         if(link){
           if(state){
             link.shape.setHighlight(color, LINK_THICKNESS);
             var track_glow = true;
-            this.glow_intervals.push(setInterval(function(){ var thickness = LINK_HIGHLIGHT_THICKNESS;
+            this.glow_intervals.push(setInterval(setHighlight.bind({link:link, track_glow:track_glow, color:color}), 1000));
+/*            this.glow_intervals.push(setInterval(function(){ var thickness = LINK_HIGHLIGHT_THICKNESS;
                                                              if(this.track_glow){
                                                                thickness = LINK_THICKNESS;
                                                              }
                                                              this.track_glow = !this.track_glow;
                                                              this.link.shape.setHighlight(this.color, thickness);
-                                                           }.bind({link:link, track_glow:track_glow, color:color}), 1000));
+                                                           }.bind({link:link, track_glow:track_glow, color:color}), 1000));*/
           } else {
             while(this.glow_intervals.length){
               clearInterval(this.glow_intervals.pop());
@@ -458,7 +493,7 @@ xtag.register('ha-link-json', {
 // Json pretty print:
 //   http://stackoverflow.com/questions/4810841/how-can-i-pretty-print-json-using-javascript
 function syntaxHighlight(json, expand) {
-    if (typeof json != 'string') {
+    if (typeof json !== 'string') {
       if(!expand){
 			  json = JSON.stringify(json, replacer);
       } else {
@@ -558,7 +593,7 @@ xtag.register('ha-link-info', {
         header.innerHTML = 'link: ';
         var link_destination = document.createElement('div');
         link_destination.innerHTML = destination_object.data.data.general.instance_name.value + ':' + link_data.destination_port;
-        var info_button = document.createElement('paper-icon-button')
+        var info_button = document.createElement('paper-icon-button');
         info_button.icon = 'subject';
         this.appendChild(header);
         this.appendChild(info_button);
@@ -769,7 +804,7 @@ xtag.register('draggable-button', {
       event.dataTransfer.setData('offset_x', event.offsetX / this.getBoundingClientRect().width);
       event.dataTransfer.setData('offset_y', event.offsetY / this.getBoundingClientRect().height);
     },
-    dragend: function(event){
+    dragend: function(){
       //console.log('dragend:', event);
       this.style.opacity = '1';
     },
@@ -902,7 +937,7 @@ var if_types = {bool: {text: 'boolean',
                          description: 'Label found in data. Don\'t care about the contents.'},
                 _else: {text: 'else',
                          description: 'If none of the above match, do this.'}
-}
+};
 
 xtag.register('ha-switch-rule', {
   methods: {
@@ -985,7 +1020,8 @@ xtag.register('ha-switch-rule-else', {
 
       var description = document.createElement('div');
       description.className = 'ha-switch-rule-description';
-      description.innerHTML = if_types['_else'].description;
+      //description.innerHTML = if_types['_else'].description;
+      description.innerHTML = if_types._else.description;
       this.appendChild(description);
 		}
   }
@@ -995,19 +1031,20 @@ xtag.register('ha-switch-rule-filter', {
   methods: {
     populate: function(data, flow_object){
       this.innerHTML = '';
+      var ret_val;
       switch(data.if_type){
         case 'bool':
-          var ret_val = document.createElement('ha-switch-rule-filter-bool');
+          ret_val = document.createElement('ha-switch-rule-filter-bool');
           ret_val.populate(data, flow_object);
           this.appendChild(ret_val);
           break;
         case 'number':
-          var ret_val = document.createElement('ha-switch-rule-filter-number');
+          ret_val = document.createElement('ha-switch-rule-filter-number');
           ret_val.populate(data, flow_object);
           this.appendChild(ret_val);
           break;
         case 'string':
-          var ret_val = document.createElement('ha-switch-rule-filter-string');
+          ret_val = document.createElement('ha-switch-rule-filter-string');
           ret_val.populate(data, flow_object);
           this.appendChild(ret_val);
           break;
@@ -1016,7 +1053,7 @@ xtag.register('ha-switch-rule-filter', {
         case 'exists':
           break;
         default:
-          var ret_val = document.createElement('input');
+          ret_val = document.createElement('input');
           ret_val.value = data.if_value;
           this.appendChild(ret_val);
       }
@@ -1027,7 +1064,7 @@ xtag.register('ha-switch-rule-filter', {
 
 xtag.register('ha-switch-rule-filter-bool', {
   methods: {
-    populate: function(data, flow_object){
+    populate: function(data){
       var selector = document.createElement('select');
       var output_true = document.createElement("option");
       output_true.text = '= True';
@@ -1065,7 +1102,7 @@ xtag.register('ha-switch-rule-filter-bool', {
 			var rule_value = click_value.split('|')[1];
 			var rule_index = parseInt(click_value.split('|')[2]);
 			if(click_type === 'if_value') {
-				console.log('ha-switch-rule-filter-bool', click_type, rule_value, rule_index)
+				console.log('ha-switch-rule-filter-bool', click_type, rule_value, rule_index);
 				parent.data.values.rules[rule_index].if_value = rule_value;
       }
 		}
@@ -1074,14 +1111,14 @@ xtag.register('ha-switch-rule-filter-bool', {
 
 xtag.register('ha-switch-rule-filter-number', {
   methods: {
-    populate: function(data, flow_object){
+    populate: function(data) {
       var selector = document.createElement('select');
       var selector_options = {lt: '<',
                               lteq: '<=',
                               eq: '=',
                               gteq: '>=',
                               gt: '>',
-                              noteq: '!='}
+                              noteq: '!='};
       for(var val in selector_options){
         var option = document.createElement("option");
         option.text = selector_options[val];
@@ -1121,7 +1158,7 @@ xtag.register('ha-switch-rule-filter-number', {
       if(rule_value === '_na'){
         rule_value = mouseEvent.srcElement.value;
       }
-      console.log('ha-switch-rule-filter-number', click_type, rule_value, rule_index, parent)
+      console.log('ha-switch-rule-filter-number', click_type, rule_value, rule_index, parent);
       if(click_type === 'if_value_opperand') {
         var value = parent.rules.getElementsByTagName('ha-switch-rule')[rule_index].getElementsByTagName('input')[0].value;
         parent.data.values.rules[rule_index].if_value = {opperand: rule_value,
@@ -1137,12 +1174,12 @@ xtag.register('ha-switch-rule-filter-number', {
 
 xtag.register('ha-switch-rule-filter-string', {
   methods: {
-    populate: function(data, flow_object){
+    populate: function(data){
       var selector = document.createElement('select');
       var selector_options = {matches: 'matches',
                               nomatch: 'doesn\'t match',
                               contains: 'contains',
-                              nocontain: 'doesn\'t contain'}
+                              nocontain: 'doesn\'t contain'};
       for(var val in selector_options){
         var option = document.createElement("option");
         option.text = selector_options[val];
@@ -1181,7 +1218,7 @@ xtag.register('ha-switch-rule-filter-string', {
       if(rule_value === '_na'){
         rule_value = mouseEvent.srcElement.value;
       }
-      console.log('ha-switch-rule-filter-number', click_type, rule_value, rule_index, parent)
+      console.log('ha-switch-rule-filter-number', click_type, rule_value, rule_index, parent);
       if(click_type === 'if_value_opperand') {
         var value = parent.getElementsByTagName('ha-switch-rule')[rule_index].getElementsByTagName('input')[0].value;
         parent.data.values.rules[rule_index].if_value = {opperand: rule_value,
@@ -1213,7 +1250,7 @@ xtag.register('ha-switch-rule-filter-string', {
       if(rule_value === '_na'){
         rule_value = mouseEvent.srcElement.value;
       }
-      console.log('ha-switch-rule-filter-number', click_type, rule_value, rule_index)
+      console.log('ha-switch-rule-filter-number', click_type, rule_value, rule_index);
 			if(click_type === 'if_value_value') {
         var opperand = parent.getElementsByTagName('ha-switch-rule')[rule_index].getElementsByTagName('select')[1].value.split('|')[1];
         parent.data.values.rules[rule_index].if_value = {opperand: opperand,
@@ -1270,7 +1307,7 @@ var actions = {rename: {text: 'rename',
                         description: 'Rename the label.'},
                drop: {text: 'drop',
                       description: 'Remove this label from data.'},
-              }
+              };
 
 xtag.register('ha-modify-labels-rule', {
   methods: {
@@ -1316,15 +1353,13 @@ xtag.register('ha-label-chooser', {
   },
   methods: {
     populate: function(destination_port_name, destination_object_name){
-
       if(!destination_object_name){
         // Search upwards through parent HTML components looking for the flow_object to get the destination_object_name from.
         var _parent = this.parentElement;
-        var i = 0;
         while(_parent){
           _parent = _parent.parentElement;
           if(_parent.flow_object){
-            flow_object = _parent.flow_object;
+            //flow_object = _parent.flow_object;
             break;
           }
         }
@@ -1341,12 +1376,13 @@ xtag.register('ha-label-chooser', {
 
       // Search all debug data for entries that come from a port linking to the flow_object and build a list of labels in that data.
       var all_labels = {};
+      var label;
       for(var thread in Data.mqtt_data.debug){
         for(var topic in Data.mqtt_data.debug[thread]){
           var debug_source_uid = topic.split('/')[0];
           var debug_source_port = topic.split('/')[2];
           if(sources[debug_source_uid] === debug_source_port){
-            for(var label in Data.mqtt_data.debug[thread][topic]){
+            for(label in Data.mqtt_data.debug[thread][topic]){
               if(label.substring(0,2) !== '__'){
                 all_labels[label] = true;
               }

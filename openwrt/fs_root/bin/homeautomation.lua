@@ -156,20 +156,27 @@ function subscribe_to(class_instance, subscription)
   end
   if info.mqtt.subscriptions[path_to_var(subscription)][class_instance] == nil then
     log('Subscribing to: homeautomation/+/' .. var_to_path(subscription))
-    info.mqtt.subscriptions[path_to_var(subscription)][class_instance] = true
+    if(class_instance.data and class_instance.data.general and class_instance.data.general.instance_name) then
+      info.mqtt.subscriptions[path_to_var(subscription)][class_instance] = class_instance.data.general.instance_name.value
+    else
+      info.mqtt.subscriptions[path_to_var(subscription)][class_instance] = 'unknown'
+    end
   end
 end
 
 function unsubscribe_all(class_instance)
+  log('unsubscribe_all(' .. class_instance .. ')')
   local cleanup = {}
   for subscription, instances in pairs(info.mqtt.subscriptions) do
     local others_interested = false
     for instance, _ in pairs(instances) do
-      if instance ~= class_instance then
+      if instances[instance] == class_instance then
+        instances[instance] = nil
+      else
         others_interested = true
       end
     end
-    info.mqtt.subscriptions[subscription][class_instance] = nil
+
     if not others_interested then
       cleanup[#cleanup +1] = subscription
     end

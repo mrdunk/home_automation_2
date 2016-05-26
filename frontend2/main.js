@@ -7,10 +7,10 @@
 /*global username*/ 
 /*global password*/ 
 /*global MQTT_CACHE_TIME*/
-
 /*global Messaging*/
-
 /*global dataReceived*/
+
+/*exported session_uid*/
 
 var Page = {};
 
@@ -73,7 +73,7 @@ Data.storeIncomingMqtt = function(topic, data) {
     dataReceived(topic, data);
     Data.cleanOutOfDateMqtt(MQTT_CACHE_TIME);
   }
-  console.log(Data.mqtt_data)
+  console.log(Data.mqtt_data);
 };
 
 Data.cleanOutOfDateMqtt = function(max_age){
@@ -366,6 +366,7 @@ Data.GetMatchingTopics = function(topic){
 
 
 var increment_session_uid = function(){
+  'use strict';
   var counter = 0;
   if(localStorage.getItem('session_counter')){
     counter = localStorage.getItem('session_counter');
@@ -373,9 +374,10 @@ var increment_session_uid = function(){
   counter++;
   localStorage.setItem('session_counter', counter);
   return counter;
-}
+};
 
 var session_uid = function(){
+  'use strict';
   var counter = localStorage.getItem('session_counter');
   if(localStorage.getItem('session_uid')){
     return localStorage.getItem('session_uid') + '_' + counter;
@@ -383,7 +385,7 @@ var session_uid = function(){
   var uid = '_' + Math.random().toString(36).substr(2, 9);
   localStorage.setItem('session_uid', uid);
   return uid + '_' + counter;
-}
+};
 
 
 window.onload = function() {

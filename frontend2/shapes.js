@@ -1,10 +1,19 @@
 /*global Raphael*/
+/*global getFlowObjectByUniqueId*/
+/*global getLink*/
+/*global getFlowObjectByUniqueId*/
+/*global SHAPE_HIGHLIGHT_THICKNESS*/
+/*global SHAPE_THICKNESS*/
+/*global LINK_THICKNESS*/
+
+/*exported  getPortShape*/
 
 var PORT_HEIGHT = 15;
 var PORT_WIDTH = 15;
 var MIN_ARROW_LEN = 10;
 
 var getPortShape = function(object_id, port_label){
+  'use strict';
   var object = getFlowObjectByUniqueId(object_id);
   if(object === undefined){ return; }
 
@@ -17,7 +26,7 @@ var getPortShape = function(object_id, port_label){
       }
     }
   }
-}
+};
 
 var setBoxPosition = function(component, x, y){
   'use strict';
@@ -50,6 +59,7 @@ Raphael.fn.arrow = function (pos1, pos2, color) {
 };
 
 Raphael.el.dragArrow = function(pos2) {
+  'use strict';
   var path = this.attr('path');
   var pos1 = {x: path[0][1], y: path[0][2]};
   if(path[1][0] === 'C'){
@@ -62,7 +72,7 @@ Raphael.el.dragArrow = function(pos2) {
     }
   }
   this.attr('path', path);
-}
+};
 
 
 Raphael.fn.box = function(x, y, width, height, color){
@@ -250,12 +260,13 @@ Raphael.st.getPort = function(type, index){
 
 Raphael.st.setHighlight = function(color, thickness){
   'use strict';
-  for(var key_types in this.data('whole_shape').items){
+  var key_types;
+  for(key_types in this.data('whole_shape').items){
     if(this.data('whole_shape').items[key_types].label === 'container'){
       this.data('whole_shape').items[key_types].setHighlight(color, thickness);
     }
   }
-  for(var key_types in this.items){
+  for(key_types in this.items){
     if(this.items[key_types].label === 'container'){
       this.items[key_types].setHighlight(color, thickness);
     }
