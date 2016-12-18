@@ -43,7 +43,7 @@ function mqtt_instance_ON_PUBLISH()
 end
 
 function mqtt_instance_ON_MESSAGE(mid, topic, payload)
-  --log("mqtt_instance_ON_MESSAGE", mid, topic, payload)
+  log("mqtt_instance_ON_MESSAGE", mid, topic, payload)
 
   if topic == nil or payload == nil then
     return

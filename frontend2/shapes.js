@@ -30,7 +30,7 @@ var getPortShape = function(object_id, port_label){
 
 var setBoxPosition = function(component, x, y){
   'use strict';
-  console.log('setBoxPosition(', component, x, y, ')');
+  //console.log('setBoxPosition(', component, x, y, ')');
   if(component.type === "set"){
     for(var i = 0; i < component.items.length; i++){
       setBoxPosition(component.items[i], x, y);

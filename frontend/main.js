@@ -32,7 +32,7 @@ var Mqtt = {}
 Mqtt.reconnectTimeout = 2000;
 
 Mqtt.MQTTconnect = function() {
-  Mqtt.broker = new Messaging.Client( BROKER_ADDRESS, BROKER_PORT, "web_" + parseInt(Math.random() * 100, 10));
+  Mqtt.broker = new Paho.MQTT.Client( BROKER_ADDRESS, BROKER_PORT, "web_" + parseInt(Math.random() * 100, 10));
   var options = {
       timeout: 3,
       useSSL: USE_TLS,
@@ -177,7 +177,7 @@ Mqtt.ParsePayload = function(payload) {
 }
 
 Mqtt.send = function(send_topic, data) {
-  message = new Messaging.Message(data);
+  message = new Paho.MQTT.Message(data);
   message.destinationName = send_topic;
   message.qos = 1;
   Mqtt.broker.send(message);

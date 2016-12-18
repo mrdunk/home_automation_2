@@ -63,10 +63,10 @@ function control:callback(path, incoming_data)
     role = 'control'
   end
 
-	local incoming_command = incoming_data._command
-	if incoming_command == 'solicit' then
+  local incoming_command = incoming_data._command
+  if incoming_command == 'solicit' then
     -- TODO Only one needs to respond if there is more than one of these on the network.
-		self:announce()
+    self:announce()
   elseif incoming_data.unique_id then
     local object = self:object_from_uid(incoming_data.unique_id)
     
@@ -81,8 +81,10 @@ function control:callback(path, incoming_data)
       end
     end
 		if(object ~= nil) then
-      object:merge(incoming_data)
-      object:update()
+      if(object:merge(incoming_data) == true) then
+        -- Only do object:update() if object wasn't marked as deleted during object:merge().
+        object:update()
+      end
     end
     log('Final object: ', json.encode(object))
 	end
@@ -166,7 +168,7 @@ function component:setup(instance_name, unique_id)
 end
 
 function component:merge(new_data)
-  log('component:merge')
+  log('component:merge', new_data)
   if get_path(new_data, 'version') then
     if new_data.version < self.version then
       return
@@ -188,13 +190,26 @@ function component:merge(new_data)
     end
   end
 
+  if get_path(new_data, 'object_type') then
+    if new_data.object_type == 'deleted' then
+      log('Deleting:', new_data.unique_id)
+      self.object_type = 'deleted'
+      info.components[self.unique_id]  = nil
+      self.origin = 'backend'
+      self.data = nil
+      self.shape = nil
+      self.was_setup = nil
+      return false
+    end
+  end
+
   if get_path(new_data, 'shape') then
     -- TODO Make sure position is in visible range.
     self.shape = new_data.shape
   end
 
   -- TODO Sanitize input data.
-  -- But not here or it will over-ride santization done in the objects.
+  -- But not here or it will over-ride sanitization done in the objects.
 
   -- TODO Sanitize output data.
 	if get_path(new_data, 'data.outputs') then
@@ -285,7 +300,7 @@ end
 
 -- Send data to only one of the targets.
 function component:send_one_output(data, label)
-  log("component:send_one_output(", data, label, ")")
+  log("component:send_one_output(", json.encode(data), label, ")")
   label = label or 'default_out'
 
   if(data.__trace == nil) then
@@ -424,25 +439,41 @@ FlowObjectMqttPublish = component:new({object_type='FlowObjectMqttPublish'})
 function FlowObjectMqttPublish:receive_input(data, port_label)
 	local topic = 'homeautomation/0/' .. self.data.outputs.publish.publish_topic.value
 	local payload = flatten_data(data)
+
+  log('')
 	log("&&&&& FlowObjectMqttPublish:receive_input:", topic, payload)
-	mqtt_instance:publish(topic, payload)
+  log('')
+
+  if self.data.general.payload_passthrough.value == true then
+    mqtt_instance:publish(topic, payload)
+  else
+    mqtt_instance:publish(topic, self.data.general.payload_custom.value)
+  end
 end
 
+function FlowObjectMqttPublish:merge(new_data)
+  log('FlowObjectMqttPublish:merge')
+  if component.merge(self, new_data) then
+      self:add_general('payload_passthrough', new_data.data.general.payload_passthrough.value)
+      self:add_general('payload_custom', new_data.data.general.payload_custom.value)
+      return true
+  end
+end
 
 
 FlowObjectReadFile = component:new({object_type='FlowObjectReadFile'})
 
 function FlowObjectReadFile:merge(new_data)
   populate_object(self.data, 'inputs.load_from_file.filename')
-  if component.merge(self, new_data) then
+  if (component.merge(self, new_data) == true) then
     if get_path(new_data, 'data.inputs.load_from_file.filename.value') and new_data.data.inputs.load_from_file.filename.value then
       if if_path_alowed(new_data.data.inputs.load_from_file.filename.value) and
            is_file(new_data.data.inputs.load_from_file.filename.value)  then
         self.data.inputs.load_from_file.filename.value = new_data.data.inputs.load_from_file.filename.value
       end
     end
+    return true
   end
-  return true
 end
 
 function FlowObjectReadFile:update()
@@ -644,7 +675,9 @@ function flatten_data(data_in)
   if data_in then
     local data_out = ''
     for key, value in pairs(data_in) do
-      data_out = data_out .. key .. ' : ' .. tostring(value) .. ' , '
+      if string.sub(key, 1, 2) ~= '__' then
+        data_out = data_out .. key .. ' : ' .. tostring(value) .. ' , '
+      end
     end
 
     return data_out:sub(0, -3)
@@ -668,7 +701,7 @@ FlowObjectSwitch = component:new({object_type='FlowObjectSwitch'})
 
 function FlowObjectSwitch:receive_input(data, out_port_label)
 
-	log(" ^^", "FlowObjectSwitch:receive_input(", json.encode(data), out_port_label, ")")
+	log(" ^^", self.unique_id, "FlowObjectSwitch:receive_input(", json.encode(data), out_port_label, ")")
 
 	if data.error ~= nil then
 		self:send_one_output(data, '_error')
@@ -684,111 +717,139 @@ function FlowObjectSwitch:receive_input(data, out_port_label)
   local stop_after_match = self.data.inputs.default_in.stop_after_match
   local label = self.data.inputs.default_in.transitions.filter_on_label.value
   for rule_index, rule in pairs(self.data.inputs.default_in.transitions.values.rules) do
-		log('  ^^^', rule.if_type, toBoolean(rule.if_value))
     if rule.if_type == 'bool' then
-			log('  ^^^^')
+      log('~~~', toBoolean(data[label]), 'is', toBoolean(rule.if_value))
       if toBoolean(rule.if_value) == toBoolean(data[label]) then
-				log('  ^^^^')
+        log('~')
         self:send_one_output(data, rule.send_to)
         if stop_after_match then
-          break
+          log('~!')
+          return
         end
       end
     elseif rule.if_type == 'number' and tonumber(data[label]) ~= nil then
+      log('~~~', data[label], rule.if_value.opperand, rule.if_value.value)
       local number = tonumber(data[label])
       if rule.if_value.opperand == 'lt' then
-        if rule.if_value.value < number then
+        if number < tonumber(rule.if_value.value) then
+          log('~')
           self:send_one_output(data, rule.send_to)
           if stop_after_match then
-            break
+            log('~!')
+            return
           end
         end
       elseif rule.if_value.opperand == 'lteq' then
-        if rule.if_value.value <= number then
+        if number <= tonumber(rule.if_value.value) then
+          log('~')
           self:send_one_output(data, rule.send_to)
           if stop_after_match then
-            break
+            log('~!')
+            return
           end
         end
       elseif rule.if_value.opperand == 'eq' then
-        if rule.if_value.value == number then
+        if number == tonumber(rule.if_value.value) then
+          log('~')
           self:send_one_output(data, rule.send_to)
           if stop_after_match then
-            break
+            log('~!')
+            return
           end
         end
       elseif rule.if_value.opperand == 'gteq' then
-        if rule.if_value.value >= number then
+        if number >= tonumber(rule.if_value.value) then
+          log('~')
           self:send_one_output(data, rule.send_to)
           if stop_after_match then
-            break
+            log('~!')
+            return
           end
         end
       elseif rule.if_value.opperand == 'gt' then
-        if rule.if_value.value > number then
+        if number > tonumber(rule.if_value.value) then
+          log('~')
           self:send_one_output(data, rule.send_to)
           if stop_after_match then
-            break
+            log('~!')
+            return
           end
         end
       elseif rule.if_value.opperand == 'noteq' then
-        if rule.if_value.value ~= number then
+        if number ~= tonumber(rule.if_value.value) then
+          log('~')
           self:send_one_output(data, rule.send_to)
           if stop_after_match then
-            break
+            log('~!')
+            return
           end
         end
       end
     elseif rule.if_type == 'string' then
       local string_1 = tostring(data[label]):match "^%s*(.-)%s*$"
       local string_2 = tostring(rule.if_value.value):match "^%s*(.-)%s*$"
+      log('~~~', string_1, rule.if_value.opperand, string_2)
       if rule.if_value.opperand == 'matches' then
         if string_1 == string_2 then
+          log('~')
           self:send_one_output(data, rule.send_to)
           if stop_after_match then
-            break
+            log('~!')
+            return
           end
         end
       elseif rule.if_value.opperand == 'nomatch' then
         if string_1 ~= string_2 then
+          log('~')
           self:send_one_output(data, rule.send_to)
           if stop_after_match then
-            break
+            log('~!')
+            return
           end
         end
       elseif rule.if_value.opperand == 'contains' then
         if string.match(string_1, string_2) then
+          log('~')
           self:send_one_output(data, rule.send_to)
           if stop_after_match then
-            break
+            log('~!')
+            return
           end
         end
       elseif rule.if_value.opperand == 'nocontain' then
         if not string.match(string_1, string_2) then
+          log('~')
           self:send_one_output(data, rule.send_to)
           if stop_after_match then
-            break
+            log('~!')
+            return
           end
         end
       end
     elseif rule.if_type == 'missing' then
+      log('~~~', data[label], rule.if_type)
 			if data[label] == nil then
+        log('~')
         self:send_one_output(data, rule.send_to)
         if stop_after_match then
-          break
+          log('~!')
+          return
         end
       end
     elseif rule.if_type == 'exists' then
+      log('~~~', data[label], rule.if_type)
       if data[label] ~= nil then
+        log('~')
         self:send_one_output(data, rule.send_to)
         if stop_after_match then
-          break
+          log('~!')
+          return
         end
       end
 		end
   end
-
-  --self:send_one_output(data, label)
+  log('~~~ no match')
+  self:send_one_output(data, self.data.inputs.default_in.transitions.values.otherwise.send_to)
 end
 
 function FlowObjectSwitch:merge(new_data)

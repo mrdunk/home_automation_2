@@ -7,7 +7,6 @@
 /*global username*/ 
 /*global password*/ 
 /*global MQTT_CACHE_TIME*/
-/*global Messaging*/
 /*global dataReceived*/
 
 /*exported session_uid*/
@@ -52,9 +51,7 @@ Data.storeIncomingMqtt = function(topic, data) {
       Data.mqtt_data.debug[track][topic_identifier] = data;
     }
   } else {
-    if(Data.mqtt_data.announcments[topic] === undefined){
-      Data.mqtt_data.announcments[topic] = [];
-    }
+    Data.mqtt_data.announcments[topic] = Data.mqtt_data.announcments[topic] || [];
     Data.mqtt_data.announcments[topic].updated = Date.now();
 
     var found;
@@ -130,7 +127,8 @@ Mqtt.regex_topic = /^(\w+\/?)+$/ ;
 
 Mqtt.MQTTconnect = function() {
   'use strict';
-  Mqtt.broker = new Messaging.Client( BROKER_ADDRESS, BROKER_PORT, "web_" + parseInt(Math.random() * 100, 10));
+  console.log(BROKER_ADDRESS, BROKER_PORT);
+  Mqtt.broker = new Paho.MQTT.Client( BROKER_ADDRESS, BROKER_PORT, "web_" + parseInt(Math.random() * 100, 10));
   var options = {
       timeout: 3,
       useSSL: USE_TLS,
@@ -256,7 +254,7 @@ Mqtt.data_to_object = function(data) {
 
 Mqtt.send = function(send_topic, data) {
   'use strict';
-  var message = new Messaging.Message(data);
+  var message = new Paho.MQTT.Message(data);
   message.destinationName = send_topic;
   message.qos = 0;
   Mqtt.broker.send(message);

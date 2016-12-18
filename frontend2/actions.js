@@ -17,14 +17,25 @@
 /*exported dataReceived*/
 /*exported header_button_actions*/
 
-var header_button_actions = {'mqtt-solicit': function(){Mqtt.send(Page.topics.all_devices, '_command : solicit');},
+var solicit_data = function(){
+  console.log('solicit_data');
+  Mqtt.send(Page.topics.all_devices, '_command : solicit'); 
+}
 
-														 // TODO Allow us to force server to re-calculate everything. "homeautomation/0/control/_reload"
-                             'clear-data': function(){Data.mqtt_data.debug = {};
-                                                      Mqtt.send(Page.topics.all_devices, '_command : solicit');},
+var reset_data = function(){
+  console.log('reset_data');
+  Data.mqtt_data.announcments = {};
+  Data.mqtt_data.debug = {};
+}
+
+var header_button_actions = {'mqtt-solicit': solicit_data,
+														 // TODO Allow us to force server to re-calculate everything.
+                             //   "homeautomation/0/control/_reload"
+                             'clear-data': reset_data,
                              'log-selected': function(){console.log(getFlowObjectByUniqueId(shareBetweenShapes.selected) || getLink(shareBetweenShapes.selected));},
                              'log-links': function(){console.log(document.getElementsByTagName('ha-control')[0].links);}
                             };
+
 
 var flow_objects = {FlowObjectMqttSubscribe: FlowObjectMqttSubscribe,
                     FlowObjectMqttPublish: FlowObjectMqttPublish,
@@ -55,29 +66,30 @@ var dataReceived = function(topic, received_data){
 
   var ha_control = document.getElementsByTagName('ha-control')[0];
 
-  var index;
-  for(index in flow_objects){
-    if(index === received_data.object_type){
-      var flow_object = getFlowObjectByUniqueId(received_data.unique_id);
-      if(received_data.data === undefined){
-        received_data.data = {};
-      }
-      if(received_data.version === undefined){
-        received_data.version = 0;
-      }
-        
-      if(flow_object && flow_object.data.version < received_data.version){
-        console.log('Removing:', flow_object.data.unique_id, flow_object.data.version, received_data.version);
-        flow_object.delete(false);
-      }
-      if(flow_object === undefined || flow_object.data.version < received_data.version){
-        console.log('Adding...', received_data);
-        flow_object = new flow_objects[index](ha_control.paper, ha_control.sidebar, undefined, received_data);
-        console.log('Added');
-      }
+  var flow_object = getFlowObjectByUniqueId(received_data.unique_id);
 
-      flow_object.shape.setOutputLinks(flow_object.data.data.outputs);
-    }
+  received_data.data = received_data.data || {};
+  received_data.version = received_data.version || 0;
+
+  if(flow_object && received_data.object_type === 'deleted'){
+    console.log('Deleteing:', flow_object.data.unique_id);
+    flow_object.delete();
+    flow_object.deleteFromBackend();
+  } else if(flow_object && flow_object.data.version < received_data.version){
+    console.log('Replacing:', flow_object.data.unique_id, flow_object.data.version,
+        received_data.version);
+    flow_object.delete(false);
+    flow_object = new flow_objects[received_data.object_type](ha_control.paper, ha_control.sidebar,
+        undefined, received_data);
+    flow_object.shape.setOutputLinks(flow_object.data.data.outputs);
+  } else if(flow_object){
+    console.log('Updating links:', flow_object.data.unique_id);
+    flow_object.shape.setOutputLinks(flow_object.data.data.outputs);
+  } else if(flow_object === undefined && received_data.shape){
+    console.log('Adding:', received_data);
+    flow_object = new flow_objects[received_data.object_type](ha_control.paper, ha_control.sidebar,
+        undefined, received_data);
+    flow_object.shape.setOutputLinks(flow_object.data.data.outputs);
   }
 
 	update_view();

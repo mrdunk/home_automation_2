@@ -127,14 +127,20 @@ Link.prototype.delete = function(){
   var source_object = getFlowObjectByUniqueId(this.data.source_object);
   if(source_object.data.data.outputs[this.data.source_port]){
     var remove_from_outputs = [];
-    for(var output_link_index=0; output_link_index < source_object.data.data.outputs[this.data.source_port].links.length; output_link_index++){
-      if(source_object.data.data.outputs[this.data.source_port].links[output_link_index].destination_object === this.data.destination_object &&
-         source_object.data.data.outputs[this.data.source_port].links[output_link_index].destination_port === this.data.destination_port){
+    for(var output_link_index=0; 
+        output_link_index < source_object.data.data.outputs[this.data.source_port].links.length;
+        output_link_index++){
+      if(source_object.data.data.outputs[this.data.source_port]
+          .links[output_link_index].destination_object === 
+          this.data.destination_object &&
+         source_object.data.data.outputs[this.data.source_port]
+         .links[output_link_index].destination_port === this.data.destination_port){
         remove_from_outputs.push(output_link_index);
       }
     }
     while(remove_from_outputs.length){
-      source_object.data.data.outputs[this.data.source_port].links.splice(remove_from_outputs.pop(), 1);
+      source_object.data.data.outputs[this.data.source_port]
+        .links.splice(remove_from_outputs.pop(), 1);
     }
   }
 
@@ -145,14 +151,16 @@ Link.prototype.delete = function(){
   var all_links = document.getElementsByTagName('ha-control')[0].links;
   var remove_from_all_links = [];
   for(var i=0; i < all_links.length; i++){
-    if(this.data.source_object === all_links[i].data.source_object && this.data.source_port === all_links[i].data.source_port &&
-       this.data.destination_object === all_links[i].data.destination_object && this.data.destination_port === all_links[i].data.destination_port){
+    if(this.data.source_object === all_links[i].data.source_object && 
+        this.data.source_port === all_links[i].data.source_port &&
+       this.data.destination_object === all_links[i].data.destination_object && 
+       this.data.destination_port === all_links[i].data.destination_port){
       //all_links.slice(i, 1);
       remove_from_all_links.push(i);
     }
   }
   while(remove_from_all_links.length){
-    all_links.splice(remove_from_all_links, 1);
+    all_links.splice(remove_from_all_links.pop(), 1);
   }
 };
 
@@ -228,7 +236,8 @@ FlowObject.prototype.updateLinks = function(){
   //console.log('FlowObject.prototype.updateLinks');
   var links = document.getElementsByTagName('ha-control')[0].links;
   for(var i = 0; i < links.length; i++){
-    if(links[i].data.source_object === this.data.unique_id || links[i].data.destination_object === this.data.unique_id){
+    if(links[i].data.source_object === 
+        this.data.unique_id || links[i].data.destination_object === this.data.unique_id){
       links[i].update();
     }
   }
@@ -271,11 +280,15 @@ FlowObject.prototype.delete = function(removeLinks){
   if(shareBetweenShapes.selected === this.data.unique_id){
     shareBetweenShapes.selected = undefined;
   }
-  this.shape.remove();
+  if(this.shape){
+    this.shape.remove();
+  }
   
   if(removeLinks === undefined || removeLinks === true){
     for(var source_port_label in this.data.data.outputs){
-      for(var link_source_index=0; link_source_index < this.data.data.outputs[source_port_label].links.length; link_source_index++){
+      for(var link_source_index=0; 
+          link_source_index < this.data.data.outputs[source_port_label].links.length;
+          link_source_index++){
         getLink(this.data.data.outputs[source_port_label].links[link_source_index]).delete();
       }
     }
@@ -287,6 +300,18 @@ FlowObject.prototype.delete = function(removeLinks){
   }
 
   delete document.getElementsByTagName('ha-control')[0].flowObjects[this.data.unique_id];
+};
+
+FlowObject.prototype.deleteFromBackend = function(){
+  delete this.paper;
+  delete this.shape;
+  delete this.sidebar;
+  delete this.data.data;
+  delete this.data.shape;
+  this.data.object_type = 'deleted';
+  this.ExportObject();
+  delete this;
+  console.log(Data);
 };
 
 FlowObject.prototype.setInstanceName = function(instance_name){
@@ -461,7 +486,7 @@ FlowObject.prototype.onmove = function(dx, dy){
 // TODO: move out of FlowObject name-space.
 FlowObject.prototype.onstart = function(){
   'use strict';
-  console.log('FlowObject.onstart()', this);
+  //console.log('FlowObject.onstart()', this);
   
   var clicked_shape = this.getIdentity();
   var object = getFlowObjectByUniqueId(clicked_shape.object_id);
@@ -582,7 +607,8 @@ FlowObject.prototype.ExportObject = function(){
     }
     var temp = {};
     for (var attr in obj) {
-      if(attr === 'value' || attr === 'values' || attr === 'shape' || attr === 'unique_id' || attr === 'version' ||
+      if(attr === 'value' || attr === 'values' || attr === 'shape' || 
+          attr === 'unique_id' || attr === 'version' ||
           attr === 'links' || attr === 'object_type' || attr === 'outputs'){
         temp[attr] = obj[attr];
       } else {
@@ -624,12 +650,13 @@ FlowObject.prototype.ExportObject = function(){
   };
 
   var stripped_object = stripedVersion(this.data);
-  stripped_object.shape.position = this.shape.getShapePosition();
+  if(this.shape){
+    stripped_object.shape.position = this.shape.getShapePosition();
+  }
   MakeSafeForJson(stripped_object);
-  console.log(JSON.stringify(stripped_object));
+  //console.log(JSON.stringify(stripped_object));
   Mqtt.send('homeautomation/0/control/_announce', JSON.stringify(stripped_object));
 };
-
 
 
 // Must be used *before* re-defining any class methods.
@@ -727,7 +754,7 @@ FlowObjectMqttSubscribe.prototype.ExportObject = function(){
 
 function FlowObjectMqttPublish(paper, sidebar, shape, backend_data){
   'use strict';
-  console.log("FlowObjectMqttPublish");
+  console.log("FlowObjectMqttPublish", backend_data);
 
   FlowObject.prototype.constructor.call(this, paper, sidebar);
   this.data = { class_label: 'MQTT Publish',
@@ -745,10 +772,6 @@ function FlowObjectMqttPublish(paper, sidebar, shape, backend_data){
                       update_on_change: this.setInstanceName,
                       //value: 'Object_' + shareBetweenShapes.unique_id
                       },
-                    //publish_topic: {
-                    //  description: 'MQTT topic to Publish to',
-                    //  updater: 'ha-general-attribute',
-                    //  value: 'homeautomation/test' },
                     payload_passthrough: {
                       description: 'Use Input payload as Output.',
                       updater: 'ha-general-attribute',
@@ -783,9 +806,23 @@ function FlowObjectMqttPublish(paper, sidebar, shape, backend_data){
     this.setup(backend_data);
 
     if(getPath(backend_data, 'data.outputs.publish.publish_topic') !== undefined){
-      this.data.data.outputs.publish.publish_topic.value = backend_data.data.outputs.publish.publish_topic.value || this.data.data.outputs.publish.publish_topic.value;
+      this.data.data.outputs.publish.publish_topic.value =
+          (backend_data.data.outputs.publish.publish_topic.value ||
+           this.data.data.outputs.publish.publish_topic.value);
       this.setContents();
     }
+    if(getPath(backend_data, 'data.general.payload_passthrough.value') !== undefined){
+      var value = backend_data.data.general.payload_passthrough.value;
+      value = (String(value).toLowerCase().trim() === 'true');
+      this.data.data.general.payload_passthrough.value = value;
+      this.setContents();
+    }
+    if(getPath(backend_data, 'data.general.payload_custom.value') !== undefined){
+      this.data.data.general.payload_custom.value = 
+          backend_data.data.general.payload_custom.value;
+      this.setContents();
+    }
+
   }
 }
 
