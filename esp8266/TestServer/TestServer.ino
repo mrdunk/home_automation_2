@@ -49,8 +49,8 @@ struct Config {
 };
 
 String mac_address;
-const int led = 2;
-
+const int led = 12;
+const int led2 = 13;
 
 
 // Configuration
@@ -77,33 +77,50 @@ mdns::MDns my_mdns(NULL, NULL, answerCallback);
 
 
 // MQTT
-IPAddress mqtt_broker_address(0, 0, 0, 0);
-PubSubClient mqtt_client(mqtt_broker_address);
 
-void mqtt_callback(const MQTT::Publish& pub) {
-  Serial.print("MQTT callback");
-  Serial.print(pub.topic());
-  Serial.print(" => ");
-  Serial.println(pub.payload_string());
+WiFiClient espClient;
+PubSubClient mqtt_client(espClient);
+
+
+void mqtt_callback(char* topic, byte* payload, unsigned int length) {
+  Serial.print("Message arrived [");
+  Serial.print(topic);
+  Serial.print("] ");
+  for (int i = 0; i < length; i++) {
+    Serial.print((char)payload[i]);
+  }
+  Serial.println();
+
+  // Switch on the LED if an 1 was received as first character
+  if ((char)payload[0] == '1') {
+    digitalWrite(led2, LOW);   // Turn the LED on (Note that LOW is the voltage level
+    // but actually the LED is on; this is because
+    // it is acive low on the ESP-01)
+  } else {
+    digitalWrite(led2, HIGH);  // Turn the LED off by making the voltage HIGH
+  }
 }
 
 void mqtt_connect() {
   Broker broker = brokers.GetBroker();
-  mqtt_client = PubSubClient(broker.address);
-  mqtt_client.set_callback(mqtt_callback);
+  mqtt_client.setServer(broker.address, 1883);
+  mqtt_client.setCallback(mqtt_callback);
   if (mqtt_client.connect(config.hostname)) {
-    String lamp = "unconfigured/";
-    lamp += config.hostname;
-    lamp += "/off";
-    mqtt_client.publish("homeautomation/lighting/advertise", lamp);
-    mqtt_client.subscribe("homeautomation/lighting/all/all/set");
-    mqtt_client.subscribe("homeautomation/lighting/unconfigured/all/set");
-    //mqtt_client.subscribe("homeautomation/lighting/unconfigured/" + config.hostname + "/set");
-    mqtt_client.subscribe("homeautomation/lighting/all/all/solicit");
+    char lamp[255];
+    strncpy(lamp, "_subject : lighting/unconfigured/", 254);
+    strncat(lamp, config.hostname, 254 - strlen(lamp));
+    strncat(lamp, " , _state : off", 254 - strlen(lamp));
+
+    mqtt_client.publish("homeautomation/0/lighting/_announce", lamp);
+    //mqtt_client.subscribe("homeautomation/+/lighting/unconfigured/" + config.hostname);
+    mqtt_client.subscribe("homeautomation/+/lighting/unconfigured/_all");
+    mqtt_client.subscribe("homeautomation/+/lighting/_all");
+    mqtt_client.subscribe("homeautomation/+/_all/_all");
   }
   brokers.RateBroker(mqtt_client.connected());
   if (mqtt_client.connected()) {
-    Serial.println("MQTT connected.");
+    Serial.print("MQTT connected. Server: ");
+    Serial.println(broker.address);
   }
 }
 
@@ -306,7 +323,7 @@ void setup(void) {
   Persist_Data::Persistent<Config> persist_config(CONFIG_VERSION, &config);
   persist_config.readConfig();
 
-  WiFi.begin(ssid, password);
+  WiFi.begin(ssid, pass);
   Serial.println("");
 
   uint8_t mac[6];

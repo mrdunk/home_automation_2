@@ -109,11 +109,11 @@ void Brokers::ParseMDnsAnswer(const mdns::Answer* answer) {
       }
     }
     if (i == MAX_BROKERS) {
-      Serial.print(" SRV.  Did not find ");
+      /*Serial.print(" SRV.  Did not find ");
       Serial.print('"');
       Serial.print(answer->name_buffer);
       Serial.print('"');
-      Serial.println(" in brokers buffer.");
+      Serial.println(" in brokers buffer.");*/
     }
   }
 
@@ -174,16 +174,16 @@ void Brokers::ParseMDnsAnswer(const mdns::Answer* answer) {
       }
     }
     if (i == MAX_BROKERS) {
-      Serial.print(" A.    Did not find ");
+      /*Serial.print(" A.    Did not find ");
       Serial.print('"');
       Serial.print(answer->name_buffer);
       Serial.print('"');
-      Serial.println(" in brokers buffer.");
+      Serial.println(" in brokers buffer.");*/
     }
   }
 
   if (updated) {
-    Serial.println(Summary());
+    //Serial.println(Summary());
   }
 }
 

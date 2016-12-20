@@ -16,7 +16,6 @@
 package.path = package.path .. ';/usr/share/homeautomation/?.lua'
 require 'os'
 require 'file_utils'
-json = require 'luci.json'
 require 'helper_functions'
 
 -- Globals
@@ -125,7 +124,9 @@ function parse_payload(data)
     return return_table
   end
 
-  return json.decode(data)
+  if json ~= nil then
+    return json.decode(data)
+  end
 end
 
 function subscribe_to_all(class_instance, role, address)
@@ -269,20 +270,25 @@ function initilize()
     info.config.component.mosquitto_update = require 'mosquitto_update'
   end
 
-  -- Load lua-mosquitto module if possible.
-  local found = false
+  -- Load lua-mosquitto and luci.json modules if possible.
+  mqtt_class = nil
+  json = nil
   for _, searcher in ipairs(package.searchers or package.loaders) do
     local loader = searcher('mosquitto')
     if type(loader) == 'function' then
       log('Using lua-mosquitto')
-      found = true
       package.preload['mosquitto'] = loader
       mqtt_class = require "mosquitto"
-      break
+    end
+    loader = searcher('luci.json')
+    if type(loader) == 'function' then
+      log('Using luci.json')
+      package.preload['luci.json'] = loader
+      json = require 'luci.json'
     end
   end
-  -- Otherwise use our bash wrapper.
-  if found == false then
+  -- Otherwise use our bash wrapper for mosquitto.
+  if mqtt_class == nil then
     log('Using homeautomation_mqtt')
     mqtt_class = require 'homeautomation_mqtt'
   end
@@ -302,60 +308,6 @@ function initilize()
 
     
       log('----------')
-
-      --[[
-      local dhcp_watcher = FlowObjectMqttSubscribe:new{instance_name='dhcp_watcher', unique_id='_uid_1'}
-      dhcp_watcher:add_general('subscribed_topic', 'dhcp/_announce')
-      dhcp_watcher:add_input('subscription', {subscribed_topic = {value = 'dhcp/_announce'}})
-
-      local registered_users = FlowObjectReadFile:new({instance_name='registered_users', unique_id='_uid_2'})
-      registered_users:add_input('load_from_file', {filename = {value = '/etc/homeautomation/registered_users.conf'}})
-
-      local consolidate = FlowObjectCombineData:new({instance_name='consolidate', unique_id='_uid_3'})
-      consolidate:add_input('default_in', {primary_key_label = '_subject'})
-
-      local someone_home = FlowObjectMapValues:new({instance_name='someone_home', unique_id='_uid_4'})
-      someone_home:add_input('default_in', {label = '_user_name',
-                                           rules = { _a = {match = '_missing',
-                                                           action = '_drop'},
-                                                       _b = {match = '_else',
-                                                         action = '_forward'} } })
-
-      local combine_users = FlowObjectAddData:new({instance_name='combine_users', unique_id='_uid_5'})
-      combine_users:add_input('default_in', {primary_key_label = '_subject'})
-
-      local modify_label = FlowObjectMapLabels:new({instance_name='modify_label', unique_id='_uid_6'})
-      modify_label:add_input('default_in', {rules = { _a = {match = '_reachable',
-                                                         action = '_string',
-                                                         value = '_command'},
-                                                   _b = {match = '_else',
-                                                         action = '_drop'} } } )
-
-      local modify_value = FlowObjectMapValues:new({instance_name='modify_value', unique_id='_uid_7'})
-      modify_value:add_input('default_in', {label = '_command',
-                                         rules = { _a = {match = 'true',
-                                                         action = '_string',
-                                                         value = 'on'},
-                                                   _b = {match = 'false',
-                                                         action = '_string',
-                                                         value = 'off'} } })
-
-      local tag_time = FlowObjectAddTime:new({instance_name='tag_time', unique_id='_uid_10'})
- 
-      local set_jess_warning_lamp = FlowObjectMqttPublish:new({instance_name='set_jess_warning_lamp', unique_id='_uid_9'})
-      set_jess_warning_lamp:add_general('publish_topic', 'lighting/extension/jess_warning_lamp')
-
-      registered_users:add_link(consolidate, 'default_in', 'default_out')
-      dhcp_watcher:add_link(tag_time, 'default_in', 'default_out')
-      tag_time:add_link(consolidate, 'default_in', 'default_out')
-      consolidate:add_link(someone_home, 'default_in', 'default_out')
-      someone_home:add_link(combine_users, 'default_in', 'default_out')
-      combine_users:add_link(modify_label, 'default_in', 'default_out')
-
-      modify_label:add_link(modify_value, 'default_in', 'default_out')
-      modify_value:add_link(set_jess_warning_lamp, 'default_in', 'default_out')
-      ]]--
-
     end
 	end
 
@@ -651,7 +603,7 @@ function main()
     broker_list()
 
     if info.config.component.outlets ~= nil then
-      outlets_instance:read_config()
+      outlets_instance:update()
     end
 
     if info.config.component.mosquitto_update then

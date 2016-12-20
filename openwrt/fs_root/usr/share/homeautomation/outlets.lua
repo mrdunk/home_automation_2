@@ -20,7 +20,8 @@ function outlets:new(o)
     info.io.lighting = {}
   end
 
-  -- Keep a copy of everything entered into info.io by this class so future iterations know what they should be updating.
+  -- Keep a copy of everything entered into info.io by this class so future iterations
+  -- know what they should be updating.
   self.io_local_copy = {}
 
   return o
@@ -33,6 +34,31 @@ function outlets:_is_local(role, address)
       for address_local in next, self.io_local_copy[role_local] do
         if address == address_local then
           return true
+        end
+      end
+    end
+  end
+end
+
+-- Called periodically.
+function outlets:update()
+  self:read_config()
+  self:delayed_actions()
+end
+
+function outlets:delayed_actions()
+  for role in next, info.io do
+    for address in next, info.io[role] do
+      if info.io[role][address].command ~= nil and
+           info.io[role][address].timer_trigger ~= nil and
+           info.io[role][address].timer_action ~= nil and
+           info.io[role][address].timer_duration ~= nil and
+           tonumber(info.io[role][address].timer_countdown) > 0 then
+        info.io[role][address].timer_countdown = tonumber(info.io[role][address].timer_countdown) - tonumber(info.config.update_delay)
+        if info.io[role][address].timer_countdown <= 0 then
+          log('Auto switch off after timeout:', role, address)
+          info.io[role][address].timer_countdown  = 0
+          self:operate_one(role, address, info.io[role][address].timer_action)
         end
       end
     end
@@ -56,11 +82,11 @@ function outlets:read_config()
   end
 
   log("Reading: " .. CONFIG_FILE)
-
   local file_handle = io.open(CONFIG_FILE, "r")
   if file_handle then
 
-    -- Mark all nodes with a role in self.valid_io as potentially_invalid so they will get deleted later if not updated.
+    -- Mark all nodes with a role in self.valid_io as potentially_invalid so they will
+    -- get deleted later if not updated.
     for role in next, info.io do
       for address in next, info.io[role] do
         if self:_is_local(role, address) then
@@ -71,7 +97,7 @@ function outlets:read_config()
 
     info.io.lighting.file_update_time = file_mod_time_string
 
-    local key, value, address, role, command
+    local key, value, address, role, command, timer_trigger, timer_duration, timer_action
 
     for line in file_handle:lines() do
       key, value = string.match(line, "^%s*client\.device\.(.+)%s*:%s*(.+)%s*$")
@@ -81,20 +107,32 @@ function outlets:read_config()
         role = sanitize_topic_atom(value)
       elseif key == "command" and command == nil then
         command = sanitize_filename(value)
+      elseif key == "timer_trigger" and timer_trigger == nil then
+        timer_trigger = sanitize_text(value)
+      elseif key == "timer_duration" and timer_duration == nil then
+        timer_duration = sanitize_digits(value)
+      elseif key == "timer_action" and timer_action == nil then
+        timer_action = sanitize_text(value)
       elseif key == nil then
         -- pass
       else
-        log("Error in " .. client_config .. " at \"" .. key .. " : " .. value .. "\"")
+        log("Error in " .. CONFIG_FILE .. " at \"" .. key .. " : " .. value .. "\"")
         file_handle:close()
         return
       end
 
-      if address and role and command then
-        --log("Storing: ", address, role, command)
+      if (address ~= nil) and (role ~= nil) and (command ~= nil) and 
+          (timer_trigger ~= nil) and (timer_duration ~= nil) and (timer_action ~= nil) then
+        log("Storing: ", address, role, command, timer_trigger, timer_duration, timer_action)
         if info.io[role] == nil then
           info.io[role] = {}
         end
-        info.io[role][address] = {command = command, potentially_invalid = nil}
+        info.io[role][address] = {command = command,
+                                  timer_trigger = timer_trigger,
+                                  timer_duration = timer_duration,
+                                  timer_action = timer_action,
+                                  timer_countdown = 0;
+                                  potentially_invalid = nil}
         
         if self.io_local_copy[role] == nil then
           self.io_local_copy[role] = {}
@@ -104,6 +142,9 @@ function outlets:read_config()
         address = nil
         role = nil
         command = nil
+        timer_trigger = nil
+        timer_duration = nil
+        timer_action = nil
       end
     end
     file_handle:close()
@@ -155,28 +196,34 @@ function outlets:callback(path, incoming_data)
     role = 'lighting'
   end
 
-  -- "address" might contain "_all" keyword rather than full path so we need to compare against every known device.
+  -- "address" might contain "_all" keyword rather than full path so we need to compare 
+  -- against every known device.
   for light_address, _ in pairs(info.io.lighting) do
     if light_address ~= 'file_update_time' then
       if match_paths(role .. '/' .. address, role .. '/' .. light_address, true) then
-        self:operate_one(role, light_address, incoming_data)
+        self:operate_one(role, light_address, incoming_data._command)
       end
     end
   end
 end
 
-function outlets:operate_one(role, address, incoming_data)
+function outlets:operate_one(role, address, command)
   log("   outlets:operate_one(", role, address, incoming_data, ")")
   if self.io_local_copy[role] and self.io_local_copy[role][address] then
-    local incoming_command = incoming_data._command
-    local command = info.io[role][address].command
+    local power_script = info.io[role][address].command
     
-    if incoming_command == "on" then
-      device_set_on(role, address, command)
-    elseif incoming_command == "off" then
-      device_set_off(role, address, command)
-    elseif incoming_command == "solicit" then
-      device_announce(role, address, command)
+    if command == "on" then
+      device_set_on(role, address, power_script)
+    elseif command == "off" then
+      device_set_off(role, address, power_script)
+    elseif command == "solicit" then
+      device_announce(role, address, power_script)
+    end
+
+    -- Set future action if it was configured.
+    -- eg. switch a light off again after a delay.
+    if info.io[role][address].timer_trigger == command then
+      info.io[role][address].timer_countdown = tonumber(info.io[role][address].timer_duration)
     end
   end
 end
