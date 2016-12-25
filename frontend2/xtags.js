@@ -607,10 +607,14 @@ xtag.register('ha-link-info', {
   },
   events: {
     'click:delegate(paper-icon-button)': function(mouseEvent){
+      var target_path = mouseEvent.path || mouseEvent.target.path;
+      console.log(target_path);
+      console.log(mouseEvent);
+      console.log(mouseEvent.target);
       var transition;
-      for (var i = 0; i < mouseEvent.path.length; i++){
-        if(xtag.matchSelector(mouseEvent.path[i], 'ha-link-info')){
-          transition = mouseEvent.path[i];
+      for (var i = 0; i < target_path.length; i++){
+        if(xtag.matchSelector(target_path[i], 'ha-link-info')){
+          transition = target_path[i];
           break;
         }
       }
@@ -870,11 +874,12 @@ xtag.register('ha-switch-rules', {
   },
   events: {
     'click:delegate(button)': function(mouseEvent){
-      console.log(mouseEvent.srcElement.value);
+      var clicked = mouseEvent.srcElement || mouseEvent.target;
+      console.log(clicked.value);
 
       var parent = mouseEvent.currentTarget;
 
-			var click_value = mouseEvent.srcElement.value;
+			var click_value = clicked.value;
 			if(click_value === 'add_rule'){
         var rule = document.createElement('ha-switch-rule');
         var data = {rule_number: parent.data.values.rules.length,
@@ -883,7 +888,6 @@ xtag.register('ha-switch-rules', {
                     send_to: 'branch_1'};
         parent.data.values.rules.push(data);
         rule.populate(data, parent.flow_object);
-        //parent.appendChild(rule);
         parent.insertBefore(rule, document.getElementById('ha-add-rule'));
       } else if(click_value.split('|')[0] === 'remove_rule') {
         // Remove from data.
@@ -901,7 +905,7 @@ xtag.register('ha-switch-rules', {
     'click:delegate(select)': function(mouseEvent){
       var parent = mouseEvent.currentTarget;
 
-      var click_value = mouseEvent.srcElement.value;
+      var click_value = (mouseEvent.srcElement || mouseEvent.target).value;
 			
 			var click_type = click_value.split('|')[0];
       var rule_value = click_value.split('|')[1];
@@ -1098,7 +1102,7 @@ xtag.register('ha-switch-rule-filter-bool', {
         return;
       }
 
-      var click_value = mouseEvent.srcElement.value;
+      var click_value = (mouseEvent.srcElement || mouseEvent.target).value;
 
 			var click_type = click_value.split('|')[0];
 			var rule_value = click_value.split('|')[1];
@@ -1152,13 +1156,14 @@ xtag.register('ha-switch-rule-filter-number', {
         return;
       }
 
-      var click_value = mouseEvent.srcElement.id || mouseEvent.srcElement.value;
+      var clicked = mouseEvent.srcElement || mouseEvent.target;
+      var click_value = clicked.id || clicked.value;
 
       var click_type = click_value.split('|')[0];
       var rule_value = click_value.split('|')[1];
       var rule_index = parseInt(click_value.split('|')[2]);
       if(rule_value === '_na'){
-        rule_value = mouseEvent.srcElement.value;
+        rule_value = clicked.value;
       }
       console.log('ha-switch-rule-filter-number', click_type, rule_value, rule_index, parent);
       if(click_type === 'if_value_opperand') {
@@ -1212,13 +1217,14 @@ xtag.register('ha-switch-rule-filter-string', {
         return;
       }
 
-      var click_value = mouseEvent.srcElement.id || mouseEvent.srcElement.value;
+      var clicked = mouseEvent.srcElement || mouseEvent.target;
+      var click_value = clicked.id || clicked.value;
 
       var click_type = click_value.split('|')[0];
       var rule_value = click_value.split('|')[1];
       var rule_index = parseInt(click_value.split('|')[2]);
       if(rule_value === '_na'){
-        rule_value = mouseEvent.srcElement.value;
+        rule_value = clicked.value;
       }
       console.log('ha-switch-rule-filter-number', click_type, rule_value, rule_index, parent);
       if(click_type === 'if_value_opperand') {
@@ -1244,13 +1250,14 @@ xtag.register('ha-switch-rule-filter-string', {
         return;
       }
 
-      var click_value = mouseEvent.srcElement.id || mouseEvent.srcElement.value;
+      var clicked = mouseEvent.srcElement || mouseEvent.target;
+      var click_value = clicked.id || clicked.value;
 
       var click_type = click_value.split('|')[0];
       var rule_value = click_value.split('|')[1];
       var rule_index = parseInt(click_value.split('|')[2]);
       if(rule_value === '_na'){
-        rule_value = mouseEvent.srcElement.value;
+        rule_value = clicked.value;
       }
       console.log('ha-switch-rule-filter-number', click_type, rule_value, rule_index);
 			if(click_type === 'if_value_value') {
@@ -1293,10 +1300,11 @@ xtag.register('ha-modify-labels-rules', {
   },
   events: {
     'click:delegate(button)': function(mouseEvent){
-      console.log(mouseEvent.srcElement.value, this);
+      var clicked = mouseEvent.srcElement || mouseEvent.target;
+      console.log(clicked.value, this);
       var parent = mouseEvent.currentTarget;
 
-      if(mouseEvent.srcElement.value === 'add_rule'){
+      if(clicked.value === 'add_rule'){
         var new_rule = document.createElement('ha-modify-labels-rule');
         new_rule.populate({rule_number: parent.data.values.rules.length}, parent.data);
         parent.add_button_container.appendChild(new_rule);
@@ -1349,7 +1357,8 @@ xtag.register('ha-modify-labels-rule', {
   },
   events: {
     'click:delegate(select)': function(mouseEvent){
-      console.log(mouseEvent.srcElement.value);
+      var click_value = (mouseEvent.srcElement || mouseEvent.target).value;
+      console.log(click_value);
       var _parent;
       var rule;
       for (var i = 0; i < mouseEvent.path.length; i++){
@@ -1364,10 +1373,11 @@ xtag.register('ha-modify-labels-rule', {
       if(_parent === undefined || rule === undefined){
         return;
       }
-			_parent.data.values.rules[rule.rule_number].action = mouseEvent.srcElement.value;
+			_parent.data.values.rules[rule.rule_number].action = click_value;
     },
     'change:delegate(input)': function(mouseEvent){
-      console.log(mouseEvent.srcElement, mouseEvent.srcElement.value);
+      var click_value = (mouseEvent.srcElement || mouseEvent.target).value;
+      console.log(click_value);
       var _parent;
       var rule;
       for (var i = 0; i < mouseEvent.path.length; i++){
@@ -1382,7 +1392,7 @@ xtag.register('ha-modify-labels-rule', {
       if(_parent === undefined || rule === undefined){
         return;
       }
-      _parent.data.values.rules[rule.rule_number].label = mouseEvent.srcElement.value;
+      _parent.data.values.rules[rule.rule_number].label = click_value;
     }
   }
 

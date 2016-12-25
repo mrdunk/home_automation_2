@@ -203,8 +203,8 @@ void handleRoot() {
   message += "\n";
 
   for (int i = 0; i < MAX_DEVICES; ++i) {
-    message += i;
     if (strlen(config.devices[i].address_segment[0].segment) > 0) {
+      message += i;
       message += "  ";
       message += DeviceAddress(config.devices[i]);
       message += "  ";
@@ -227,8 +227,8 @@ void handleRoot() {
           message += config.devices[i].io_pins[0];
         }
       }
+      message += "\n";
     }
-    message += "\n";
   }
 
   message += brokers.Summary();

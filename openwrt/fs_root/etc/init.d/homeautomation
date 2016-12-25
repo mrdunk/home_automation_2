@@ -2,18 +2,34 @@
 START=99
 
 BIN=homeautomation.lua
-RUN_D=/var/run/$BIN
+PID_FILE=/var/run/$BIN.pid
+LOG=/var/log/$BIN.log
 
 
 start() {
-        mkdir -p $RUN_D
         echo "start $0"
-        start-stop-daemon -S -b -x $BIN
+        if ps |grep $BIN |grep -v grep &> /dev/null; then
+          echo "Already running."
+        else
+          start-stop-daemon -S -x $BIN -p $PID_FILE -m -b
+        fi
 }
 
 stop() {
         echo "stop $0"
-        start-stop-daemon -K -n $BIN
+        if ps |grep $BIN | grep -v grep &> /dev/null; then
+          if [ -f $PID_FILE ] ; then 
+            kill $(cat $PID_FILE)
+            rm -rf $PID_FILE
+          else
+            echo "PID file $PID_FILE missing"
+          fi
+        else
+          echo "$BIN not running."
+          if [ -f $PID_FILE ] ; then
+            echo "PID file $PID_FILE does exist so maybe it crashed."
+          fi
+        fi
 }
 
 restart() {

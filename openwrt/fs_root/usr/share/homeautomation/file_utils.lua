@@ -106,6 +106,7 @@ function sanitize_url(url)
 end
 
 function sanitize_digits(digits)
+  digits = digits:gsub('%s', '')
   if digits:gsub('%d', '') == '' then
     return digits
   end

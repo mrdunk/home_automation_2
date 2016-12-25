@@ -18,6 +18,7 @@ function dhcp_parser.new()
   end
   if info.io.dhcp == nil then
     info.io.dhcp = {}
+    info.io.dhcp._updated = os.date("*t")
   end
   if info.mqtt == nil then
     info.mqtt = {}
@@ -39,8 +40,8 @@ function dhcp_parser:read_dhcp()
   local update
 
   local file_mod_time_string = file_mod_time(DHCP_FILE)
-  if file_mod_time_string ~= info.io.dhcp.file_update_time then
-    info.io.dhcp.file_update_time = file_mod_time_string
+  if file_mod_time_string ~= info.io.dhcp._file_update_time then
+    info.io.dhcp._file_update_time = file_mod_time_string
     log('dhcp_parser:read_dhcp():  reading:', DHCP_FILE)
 
     -- Read dhcp leases file to see what's actually been on the network recently.
@@ -74,22 +75,26 @@ function dhcp_parser:read_dhcp()
 
   -- Check devices are actually reachable on the network.
   for stored_mac, device in pairs(info.io.dhcp) do
-    if stored_mac ~= 'file_update_time' then
+    if string.sub(stored_mac, 1, 1) ~= '_' then
       local reachable = false
-      if device.address and os.execute('ping -c1 -W1 ' .. device.address .. ' 1> /dev/null') == 0 then
+      -- Android devices (and presumably others) running on battery will not reply
+      -- to ICMP requests (eg, ping) but an arping will still elicit a response.
+      if device.address and os.execute('arping -c5 -f ' .. device.address .. ' 1> /dev/null') == 0 then
         -- Is reachable.
         reachable = true
       end
       if info.io.dhcp[stored_mac].reachable ~= reachable then
-        log('dhcp_parser:read_dhcp():  updated reachable:', reachable)
+        log('dhcp_parser:read_dhcp():  updated reachable:', stored_mac, device.address, reachable)
         info.io.dhcp[stored_mac].reachable = reachable
         update = true
       end
     end
   end
 
-  if update then
+  -- Publish data if changes have occurred or more than 1 minute has passed.
+  if update or info.io.dhcp._updated.min ~= os.date("*t").min then
     log("update")
+    info.io.dhcp._updated = os.date("*t")
     self:publish_dhcp()
   end
 
@@ -97,6 +102,9 @@ function dhcp_parser:read_dhcp()
 end
 
 function dhcp_parser:publish_one_record(mac_address)
+  if string.sub(mac_address, 1, 1) == '_' then
+    return
+  end
   if type(info.io.dhcp[mac_address]) ~= 'table' then
     return
   end
