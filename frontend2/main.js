@@ -34,10 +34,12 @@ var Data = { mqtt_data: {announcments: {}, debug: {}} };
 
 Data.storeIncomingMqtt = function(topic, data) {
   'use strict';
-  console.log(topic, data);
   if(topic === undefined || data === undefined) {
     return;
   }
+  //if(!topic.startsWith('homeautomation/0/debug')){
+    console.log(topic, data);
+  //}
   var component = topic.split('/')[2];
   var topic_identifier = topic.split('/').slice(3).join('/');
   topic = component + '/' + topic_identifier;
@@ -70,12 +72,12 @@ Data.storeIncomingMqtt = function(topic, data) {
     dataReceived(topic, data);
     Data.cleanOutOfDateMqtt(MQTT_CACHE_TIME);
   }
-  console.log(Data.mqtt_data);
+  //console.log(Data.mqtt_data);
 };
 
 Data.cleanOutOfDateMqtt = function(max_age){
   'use strict';
-  max_age = max_age * 1000;  // ms to seconds.
+  max_age = max_age * 1000;  // seconds to ms.
   var pointer = Data.mqtt_data.announcments;
   var f = function(pointer, max_age){
     var loop_complete;
@@ -128,7 +130,8 @@ Mqtt.regex_topic = /^(\w+\/?)+$/ ;
 Mqtt.MQTTconnect = function() {
   'use strict';
   console.log(BROKER_ADDRESS, BROKER_PORT);
-  Mqtt.broker = new Paho.MQTT.Client( BROKER_ADDRESS, BROKER_PORT, "web_" + parseInt(Math.random() * 100, 10));
+  Mqtt.broker = new Paho.MQTT.Client(BROKER_ADDRESS, BROKER_PORT,
+                                     "web_" + parseInt(Math.random() * 100, 10));
   var options = {
       timeout: 3,
       useSSL: USE_TLS,

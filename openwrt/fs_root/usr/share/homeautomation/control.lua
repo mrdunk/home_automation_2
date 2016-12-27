@@ -28,13 +28,35 @@ function control.new()
     os.execute('ln -s ' .. TEMP_DIR .. 'control.txt ' .. WEB_DIR .. 'control.txt')
   end
 
+  info.logging = {mqtt_debug = 0,
+                  logfile_debug = 0}
+
   return self
+end
+
+function control:update()
+  if info.logging.mqtt_debug > 0 then
+    info.logging.mqtt_debug = info.logging.mqtt_debug - info.config.update_delay;
+    if info.logging.mqtt_debug <= 0 then
+      log('Disabling logging over MQTT.')
+      info.logging.mqtt_debug = 0;
+    end
+  end
+  if info.logging.logfile_debug > 0 then
+    info.logging.logfile_debug = info.logging.logfile_debug - info.config.update_delay;
+    if info.logging.logfile_debug <= 0 then
+      log('Disabling logging to file.')
+      info.logging.logfile_debug = 0;
+    end
+  end
 end
 
 function control:subscribe()
 	local subscriptions = {}
 
   subscriptions[#subscriptions +1] = {role = 'control', address = '_announce'}
+  subscriptions[#subscriptions +1] = {role = 'control', address = 'mqtt_debug'}
+  subscriptions[#subscriptions +1] = {role = 'control', address = 'logfile_debug'}
 
 	return subscriptions
 end
@@ -64,19 +86,38 @@ function control:callback(path, incoming_data)
   end
 
   local incoming_command = incoming_data._command
-  if incoming_command == 'solicit' then
-    -- TODO Only one needs to respond if there is more than one of these on the network.
+  if address == 'mqtt_debug' then
+    if incoming_command == 'on' or incoming_command == 'true' then
+      info.logging.mqtt_debug = 60 * 10
+    elseif incoming_command == 'off' or incoming_command == 'false' then
+      info.logging.mqtt_debug = 0
+    elseif sanitize_digits(incoming_command) == incoming_command and
+        tonumber(incoming_command) ~= nil then
+      info.logging.mqtt_debug = tonumber(incoming_command)
+    end
+  elseif address == 'logfile_debug' then
+    if incoming_command == 'on' or incoming_command == 'true' then
+      info.logging.logfile_debug = 60 * 10
+    elseif incoming_command == 'off' or incoming_command == 'false' then
+      info.logging.logfile_debug = 0
+    elseif sanitize_digits(incoming_command) == incoming_command and
+        tonumber(incoming_command) ~= nil then
+      info.logging.logfile_debug = tonumber(incoming_command)
+    end
+  elseif incoming_command == 'solicit' then
     self:announce()
   elseif incoming_data.unique_id then
     local object = self:object_from_uid(incoming_data.unique_id)
     
     if(object == nil) then
       -- New object needed.
-      if get_path(incoming_data, 'data.general.instance_name') and incoming_data.unique_id and incoming_data.object_type then
+      if get_path(incoming_data, 'data.general.instance_name') and
+          incoming_data.unique_id and incoming_data.object_type then
 			  local instance_name = incoming_data.data.general.instance_name.value
 				print('New object:', incoming_data.object_type, instance_name, incoming_data.unique_id)
         if(_G[incoming_data.object_type] ~= nil) then
-				  object = _G[incoming_data.object_type]:new{instance_name=instance_name, unique_id=incoming_data.unique_id}
+				  object = _G[incoming_data.object_type]:new{instance_name=instance_name,
+                                                     unique_id=incoming_data.unique_id}
         end
       end
     end
@@ -97,17 +138,20 @@ function control:open_log()
   end
 end
 
-function control:update_log(data)
-  --if info.host.processes.uhttpd.enabled == true then
+function control:update_log(topic, payload)
+  if info.logging.mqtt_debug > 0 then
+    mqtt_instance:publish(topic, payload)
+  end
+  if info.logging.logfile_debug > 0 then
     if(control.line_count > 1000) then
       control.filehandle:close()
       control.filehandle = nil
       control.line_count = 0
     end
     self:open_log()
-    control.filehandle:write(tostring(control.line_count) .. ' ' .. os.date("%Y/%b/%d %I:%M:%S") .. '\t' .. data)
+    control.filehandle:write(tostring(control.line_count) .. ' ' .. os.date("%Y/%b/%d %I:%M:%S") .. '\t' .. topic .. '\t' .. payload .. '\n')
     control.line_count = control.line_count +1
-  --end
+  end
 end
 
 function control:object_from_uid(unique_id)
@@ -311,10 +355,8 @@ function component:send_one_output(data, label)
   -- Send debug data.
   -- TODO. Allow this to be turned on/off.
   local topic = 'homeautomation/0/debug/' .. self.unique_id .. '/out/' .. label
-  --local payload = flatten_data(data)
   local payload = json.encode(data)
-  mqtt_instance:publish(topic, payload)
-  control_instance:update_log(topic .. '\t' .. payload .. '\n')
+  control_instance:update_log(topic, payload)
 
   if label == '_drop' then
     return

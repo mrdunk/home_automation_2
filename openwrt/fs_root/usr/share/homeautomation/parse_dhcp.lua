@@ -56,17 +56,17 @@ function dhcp_parser:read_dhcp()
         if info.io.dhcp[mac] == nil then
           log('dhcp_parser:read_dhcp():  new record:', mac)
           info.io.dhcp[mac] = {}
-          update = true
+          info.io.dhcp[mac].__update = true
         end
         if info.io.dhcp[mac].address ~= address then
           log('dhcp_parser:read_dhcp():  updated network address:', address)
           info.io.dhcp[mac].address = address
-          update = true
+          info.io.dhcp[mac].__update = true
         end
         if info.io.dhcp[mac].dhcp_name ~= name then
           log('dhcp_parser:read_dhcp():  updated dhcp_name:', name)
           info.io.dhcp[mac].dhcp_name = name
-          update = true
+          info.io.dhcp[mac].__update = true
         end
       end
       file_handle:close()
@@ -79,35 +79,41 @@ function dhcp_parser:read_dhcp()
       local reachable = false
       -- Android devices (and presumably others) running on battery will not reply
       -- to ICMP requests (eg, ping) but an arping will still elicit a response.
-      if device.address and os.execute('arping -c5 -f ' .. device.address .. ' 1> /dev/null') == 0 then
+      if device.address and
+          os.execute('arping -c5 -f ' .. device.address .. ' 1> /dev/null') == 0 then
         -- Is reachable.
         reachable = true
       end
       if info.io.dhcp[stored_mac].reachable ~= reachable then
         log('dhcp_parser:read_dhcp():  updated reachable:', stored_mac, device.address, reachable)
         info.io.dhcp[stored_mac].reachable = reachable
-        update = true
+        info.io.dhcp[stored_mac].__update = true
       end
     end
   end
 
-  -- Publish data if changes have occurred or more than 1 minute has passed.
-  if update or info.io.dhcp._updated.min ~= os.date("*t").min then
-    log("update")
+  local since_force_update = math.abs(os.date("*t").min - info.io.dhcp._updated.min)
+  if (since_force_update >= 5) then
+    -- A force update is happening this round so reset timer.
+    -- TODO Make the "5" delay configurable.
     info.io.dhcp._updated = os.date("*t")
-    self:publish_dhcp()
   end
+  self:publish_dhcp(since_force_update < 5)
 
   return
 end
 
-function dhcp_parser:publish_one_record(mac_address)
+function dhcp_parser:publish_one_record(mac_address, check_if_updated)
   if string.sub(mac_address, 1, 1) == '_' then
     return
   end
   if type(info.io.dhcp[mac_address]) ~= 'table' then
     return
   end
+  if (check_if_updated == true and info.io.dhcp[mac_address].__update ~= true) then
+    return
+  end
+  info.io.dhcp[mac_address].__update = nil
 
   local topic = "homeautomation/0/dhcp/_announce"
   local payload = "_subject : dhcp/" .. mac_address
@@ -124,9 +130,9 @@ function dhcp_parser:publish_one_record(mac_address)
   subscribe_to_all(self, 'dhcp', mac_address)
 end
 
-function dhcp_parser:publish_dhcp()
+function dhcp_parser:publish_dhcp(check_if_updated)
   for mac_address, data in pairs(info.io.dhcp) do
-    self:publish_one_record(mac_address)
+    self:publish_one_record(mac_address, check_if_updated)
   end
 end
 
@@ -166,11 +172,11 @@ function dhcp_parser:callback(path, incoming_data)
     if identifier == '_all' then
       for mac_address, _ in pairs(info.io[role]) do
         if is_sanitized_mac_address(mac_address) then
-          self:publish_one_record(mac_address)
+          self:publish_one_record(mac_address, false)
         end
       end
     elseif info.io[role][identifier] then
-      self:publish_one_record(identifier)
+      self:publish_one_record(identifier, false)
     end
   end
 end

@@ -305,9 +305,6 @@ function initilize()
       info.config.component.control = true
       control_instance = control_class:new()
       info.mqtt.callbacks['control'] = control_instance
-
-    
-      log('----------')
     end
 	end
 
@@ -614,8 +611,9 @@ function main()
       dhcp_instance:read_dhcp()
     end
 
-    --if info.config.component.control then
-    --end
+    if info.config.component.control then
+      control_instance:update()
+    end
 
     create_web_page('server.txt', _itterate_info(info, '', ''))
     

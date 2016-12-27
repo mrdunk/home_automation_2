@@ -40,7 +40,8 @@ function update_mosquitto_config()
       for connection_id, connection in pairs(connections) do
         if connection.reachable == true and broker ~= "localhost" then
           reachable_connection = connection
-          if config[connection.address] ~= nil and config[connection.address] == connection.port then
+          if config[connection.address] ~= nil and
+              config[connection.address] == connection.port then
             -- Is already in file.
             in_file = true
             break
