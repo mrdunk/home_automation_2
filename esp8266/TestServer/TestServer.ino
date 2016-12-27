@@ -16,15 +16,20 @@
 #define CONFIG_VERSION "001"
 
 // Maximum number of devices connected to IO pins.
-#define MAX_DEVICES 8
+#define MAX_DEVICES 3
+
+// Maximum number of subscriptions to MQTT.
+#define MAX_SUBSCRIPTIONS 6
 
 // Length of name strings. (hostname, room names, lamp names, etc.)
 #define NAME_LEN 32
 
 // Each device has an address in the form 'role/location1/location2/etc'
 // eg: 'lighting/kitchen/worktop/left'.
-#define ADDRESS_SEGMENTS 6
+#define ADDRESS_SEGMENTS 4
 #define ADDRESS_SEGMENT_LEN 32
+
+
 
 
 enum Io_Type {
@@ -57,7 +62,6 @@ struct Config {
 };
 
 String mac_address;
-const int led = 12;
 
 
 // Configuration
@@ -88,6 +92,24 @@ String DeviceAddress(Connected_device& device) {
 }
 
 
+// IO
+void change_state(Connected_device& device, String command){
+  if(device.io_type == test || device.io_type == onoff){
+    Serial.print("Switching ");
+    Serial.println(command);
+    if(command == "on"){
+      device.io_value[0] = 1;
+      pinMode(device.io_pins[0], OUTPUT);
+      digitalWrite(device.io_pins[0], 1);
+    } else if(command == "off"){
+      device.io_value[0] = 0;
+      pinMode(device.io_pins[0], OUTPUT);
+      digitalWrite(device.io_pins[0], 0);
+    }
+  }
+}
+
+
 // mDNS
 Brokers brokers(QUESTION_SERVICE);
 
@@ -102,7 +124,83 @@ mdns::MDns my_mdns(NULL, NULL, answerCallback);
 WiFiClient espClient;
 PubSubClient mqtt_client(espClient);
 
+void parse_topic(char* topic, Address_Segment* address_segments){
+  int segment = -2;  // We don't care about the first 2 segments.
+  char* p_segment_start = topic;
+  char* p_segment_end = strchr(topic, '/');
+  while(p_segment_end != NULL){
+    if(segment >= 0){
+      int segment_len = p_segment_end - p_segment_start;
+      if(segment_len > ADDRESS_SEGMENT_LEN){
+        segment_len = ADDRESS_SEGMENT_LEN;
+      }
+      strncpy(address_segments[segment].segment, p_segment_start, segment_len);
+      address_segments[segment].segment[segment_len] = '\0';
+    }
+    p_segment_start = p_segment_end +1;
+    p_segment_end = strchr(p_segment_start, '/');
+    segment++;
+  }
+  strncpy(address_segments[segment++].segment, p_segment_start, ADDRESS_SEGMENT_LEN);
+  
+  for(; segment < ADDRESS_SEGMENTS; segment++){
+    address_segments[segment].segment[0] = '\0';
+  }
+}
 
+bool compare_addresses(Address_Segment* address_1, Address_Segment* address_2){
+  if(strlen(address_2[0].segment) <= 0){
+    return false;
+  }
+  if(strcmp(address_1[0].segment, "_all") != 0 &&
+      strcmp(address_1[0].segment, address_2[0].segment) != 0){
+    return false;
+  }
+  for(int s=1; s < ADDRESS_SEGMENTS; s++){
+    if(strcmp(address_1[s].segment, "_all") == 0){
+      return true;
+    }
+    if(strcmp(address_1[s].segment, address_2[s].segment) != 0){
+      return false;
+    }
+  }
+  return true;
+}
+
+String value_from_payload(byte* payload, unsigned int length, String key) {
+  key.trim();
+  String buffer;
+  int index = 0;
+  for (int i = 0; i < length; i++) {
+    buffer += (char)payload[i];
+  }
+  buffer.trim();
+  
+  while(buffer.length()){
+    index = buffer.indexOf(",", index);
+    if(index < 0){
+      index = buffer.length();
+    }
+    String substring = buffer.substring(0, index);
+    int seperator_pos = substring.indexOf(":");
+    if(seperator_pos > 0){
+      String k = substring.substring(0, seperator_pos);
+      String v = substring.substring(seperator_pos +1);
+      k.trim();
+      v.trim();
+      if(k == key){
+        return v;
+      }
+    }
+
+    buffer = buffer.substring(index +1);
+    buffer.trim();
+  }
+
+  return "";
+}
+
+// Called whenever a MQTT topic we are subscribed to arrives.
 void mqtt_callback(char* topic, byte* payload, unsigned int length) {
   Serial.print("Message arrived [");
   Serial.print(topic);
@@ -111,19 +209,70 @@ void mqtt_callback(char* topic, byte* payload, unsigned int length) {
     Serial.print((char)payload[i]);
   }
   Serial.println();
+  
+  Address_Segment address_segments[ADDRESS_SEGMENTS];
+  parse_topic(topic, address_segments);
 
-  // Switch on the LED if an 1 was received as first character
-  if ((char)payload[0] == '1') {
-    digitalWrite(led, LOW);   // Turn the LED on (Note that LOW is the voltage level
-    // but actually the LED is on; this is because
-    // it is acive low on the ESP-01)
-  } else {
-    digitalWrite(led, HIGH);  // Turn the LED off by making the voltage HIGH
+  for (int i = 0; i < MAX_DEVICES; ++i) {
+      if(compare_addresses(address_segments, config.devices[i].address_segment)){
+          Serial.print("Matches: ");
+          Serial.println(i);
+
+          String command = value_from_payload(payload, length, "_command");
+          if(command == "solicit"){
+            mqtt_announce(config.devices[i]);
+          } else {
+            change_state(config.devices[i], command);
+          }          
+      }
   }
+  Serial.println();
 }
 
+void mqtt_announce(Connected_device& device){
+  char lamp[255];
+  String announce = "_subject : " + DeviceAddress(device);
+  announce += " , _state : ";
+  
+  if(device.io_type == test || device.io_type == onoff){
+    if(device.io_value[0] <= 0){
+      announce += "off";
+    } else {
+      announce += "on";
+    }
+  } else {
+    announce += "TODO";
+  }
+  
+  announce.toCharArray(lamp, 255);
+  mqtt_client.publish("homeautomation/0/lighting/_announce", lamp);
+}
+
+int subscribe_one(const char* path, char* previous, int count){
+  Serial.print(count);
+  Serial.print(" ");
+  Serial.print(path);
+  for(int i = 0; i < count; i++){
+    if(strncmp(&previous[i * 255], path, 255) == 0){
+      Serial.println(" n");
+      return count;
+    }
+  }
+  if(++count <= MAX_SUBSCRIPTIONS){
+    Serial.println(" y");
+    strncpy(&previous[count * 255], path, 255);
+    mqtt_client.subscribe(path);
+  } else {
+    Serial.println("Error. too many subscriptions.");
+  }
+  return count;
+}
+
+// Called whenever we want to make sure we are subscribed to necessary topics.
 void mqtt_connect() {
   Broker broker = brokers.GetBroker();
+  char subscriptions[255 * MAX_SUBSCRIPTIONS];
+  int subscription_count = 0;
   mqtt_client.setServer(broker.address, 1883);
   mqtt_client.setCallback(mqtt_callback);
   if (mqtt_client.connect(config.hostname)) {
@@ -131,16 +280,12 @@ void mqtt_connect() {
     char address[255];
     
     strncpy(address, "homeautomation/+/_all/_all", 254);
-    mqtt_client.subscribe(address);
+    subscription_count = subscribe_one(address, subscriptions, subscription_count);
 
     for (int i = 0; i < MAX_DEVICES; ++i) {
       if (strlen(config.devices[i].address_segment[0].segment) > 0) {
-        String announce = "_subject : " + DeviceAddress(config.devices[i]);
-        announce += " , _state : off";
-        announce.toCharArray(lamp, 255);
+        mqtt_announce(config.devices[i]);
 
-        mqtt_client.publish("homeautomation/0/lighting/_announce", lamp);
-        
         strncpy(address, "homeautomation/+/_all", 254);
 
         for(int j = 0; j < ADDRESS_SEGMENTS; j++){
@@ -149,11 +294,11 @@ void mqtt_connect() {
           }
           address[strlen(address) -4] = '\0';
           strncat(address, config.devices[i].address_segment[j].segment, 254 - strlen(address));
-          if (j < (ADDRESS_SEGMENTS -1) && strlen(config.devices[i].address_segment[j +1].segment) > 0) {
+          if (j < (ADDRESS_SEGMENTS -1) &&
+              strlen(config.devices[i].address_segment[j +1].segment) > 0) {
             strncat(address, "/_all", 254 - strlen(address));
           }
-          Serial.println(address);
-          mqtt_client.subscribe(address);
+          subscription_count = subscribe_one(address, subscriptions, subscription_count);
         }
       }
     }
@@ -166,12 +311,10 @@ void mqtt_connect() {
 }
 
 
-
 // HTTP
 ESP8266WebServer http_server(80);
 
 void handleRoot() {
-  digitalWrite(led, 1);
   int b;
 
   String message = "hello from esp8266!\n";
@@ -234,7 +377,6 @@ void handleRoot() {
   message += brokers.Summary();
 
   http_server.send(200, "text/plain", message);
-  digitalWrite(led, 0);
 }
 
 void handleConfig() {
@@ -320,12 +462,14 @@ void handleConfig() {
     // Force reconnect to MQTT so we subscribe to any new addreses.
     mqtt_client.disconnect();
   }
+  
+  Persist_Data::Persistent<Config> persist_config(CONFIG_VERSION, &config);
+  persist_config.writeConfig();
 
   http_server.send(200, "text/plain", message);
 }
 
 void handleNotFound() {
-  digitalWrite(led, 1);
   String message = "File Not Found\n\n";
   message += "URI: ";
   message += http_server.uri();
@@ -338,7 +482,6 @@ void handleNotFound() {
     message += " " + http_server.argName(i) + ": " + http_server.arg(i) + "\n";
   }
   http_server.send(404, "text/plain", message);
-  digitalWrite(led, 0);
 }
 
 
@@ -367,9 +510,6 @@ void setup_network(void) {
 }
 
 void setup(void) {
-  pinMode(led, OUTPUT);
-  digitalWrite(led, 0);
-
   Serial.begin(115200);
 
   
@@ -387,6 +527,8 @@ void setup(void) {
   mac_address = macToStr(mac);
 
   setup_network();
+  my_mdns.Check();
+  mqtt_connect();
 }
 
 void loop(void) {
