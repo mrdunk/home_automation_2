@@ -10,6 +10,7 @@
 #include "persist_data.h"
 #include "persist_data.cpp"   // WHY IS THIS NEEDED?? The linker can't find instances of Persistent.
 #include "Brokers.h"
+#include "html_primatives.h"
 
 
 // Increase this if any changes are made to "struct Config".
@@ -19,7 +20,7 @@
 #define MAX_DEVICES 3
 
 // Maximum number of subscriptions to MQTT.
-#define MAX_SUBSCRIPTIONS 6
+#define MAX_SUBSCRIPTIONS 8
 
 // Length of name strings. (hostname, room names, lamp names, etc.)
 #define NAME_LEN 32
@@ -123,6 +124,10 @@ mdns::MDns my_mdns(NULL, NULL, answerCallback);
 
 WiFiClient espClient;
 PubSubClient mqtt_client(espClient);
+char mqtt_subscriptions[255 * (MAX_SUBSCRIPTIONS +1)];
+int mqtt_subscription_count = 0;
+int mqtt_subscribed_count = 0;
+
 
 void parse_topic(char* topic, Address_Segment* address_segments){
   int segment = -2;  // We don't care about the first 2 segments.
@@ -213,12 +218,22 @@ void mqtt_callback(char* topic, byte* payload, unsigned int length) {
   Address_Segment address_segments[ADDRESS_SEGMENTS];
   parse_topic(topic, address_segments);
 
+  String command = value_from_payload(payload, length, "_command");
+
+  if(strncmp(address_segments[0].segment, "hosts", ADDRESS_SEGMENT_LEN) == 0 ||
+      strncmp(address_segments[0].segment, "_all", ADDRESS_SEGMENT_LEN) == 0)
+  {
+    if(command == "solicit"){
+      Serial.println("Announce host.");
+      mqtt_announce_host();
+    }
+  }
+
   for (int i = 0; i < MAX_DEVICES; ++i) {
       if(compare_addresses(address_segments, config.devices[i].address_segment)){
           Serial.print("Matches: ");
           Serial.println(i);
 
-          String command = value_from_payload(payload, length, "_command");
           if(command == "solicit"){
             mqtt_announce(config.devices[i]);
           } else {
@@ -227,6 +242,21 @@ void mqtt_callback(char* topic, byte* payload, unsigned int length) {
       }
   }
   Serial.println();
+}
+
+void mqtt_announce_host(){
+  char host[512];
+  String parsed_mac = mac_address;
+  parsed_mac.replace(":", "_");
+  String announce = "_subject : ";
+  announce += parsed_mac;
+  announce += ", _hostname : ";
+  announce += config.hostname;
+  announce += ", _ip : ";
+  announce += ip_to_string(WiFi.localIP());
+
+  announce.toCharArray(host, 512);
+  mqtt_client.publish("homeautomation/0/hosts/_announce", host);
 }
 
 void mqtt_announce(Connected_device& device){
@@ -248,39 +278,64 @@ void mqtt_announce(Connected_device& device){
   mqtt_client.publish("homeautomation/0/lighting/_announce", lamp);
 }
 
-int subscribe_one(const char* path, char* previous, int count){
-  Serial.print(count);
-  Serial.print(" ");
-  Serial.print(path);
-  for(int i = 0; i < count; i++){
-    if(strncmp(&previous[i * 255], path, 255) == 0){
-      Serial.println(" n");
-      return count;
+void queue_mqtt_subscription(const char* path){
+  for(int i = 0; i < mqtt_subscription_count; i++){
+    if(strncmp(&mqtt_subscriptions[i * 255], path, 255) == 0){
+      return;
     }
   }
-  if(++count <= MAX_SUBSCRIPTIONS){
-    Serial.println(" y");
-    strncpy(&previous[count * 255], path, 255);
-    mqtt_client.subscribe(path);
+  if(mqtt_subscription_count <= MAX_SUBSCRIPTIONS){
+    Serial.print(mqtt_subscription_count);
+    Serial.print(" ");
+    Serial.println(path);
+    strncpy(&mqtt_subscriptions[mqtt_subscription_count * 255], path, 255);
+    mqtt_subscription_count++;
   } else {
-    Serial.println("Error. too many subscriptions.");
+    Serial.println("Error. Too many subscriptions.");
   }
-  return count;
+  return;
+}
+
+void mqtt_subscribe_one(){
+  if(mqtt_subscription_count > mqtt_subscribed_count){
+    Serial.print("* ");
+    Serial.println(&mqtt_subscriptions[mqtt_subscribed_count * 255]);
+    mqtt_client.subscribe(&mqtt_subscriptions[mqtt_subscribed_count * 255]);
+    mqtt_subscribed_count++;
+  }
+}
+
+void mqtt_clear_buffers(){
+  for(int i = 0; i < MAX_SUBSCRIPTIONS; i++){
+    mqtt_subscriptions[i * 255] = '\0';
+  }
+  mqtt_subscription_count = 0;
+  mqtt_subscribed_count = 0;
 }
 
 // Called whenever we want to make sure we are subscribed to necessary topics.
 void mqtt_connect() {
   Broker broker = brokers.GetBroker();
-  char subscriptions[255 * MAX_SUBSCRIPTIONS];
-  int subscription_count = 0;
   mqtt_client.setServer(broker.address, 1883);
   mqtt_client.setCallback(mqtt_callback);
+
   if (mqtt_client.connect(config.hostname)) {
+    if(mqtt_subscribed_count > 0){
+      // In the event this is a re-connection, clear the subscription buffer.
+      mqtt_clear_buffers();
+    }
+
     char lamp[255];
     char address[255];
-    
+   
     strncpy(address, "homeautomation/+/_all/_all", 254);
-    subscription_count = subscribe_one(address, subscriptions, subscription_count);
+    queue_mqtt_subscription(address);
+    
+    strncpy(address, "homeautomation/+/hosts/_all", 254);
+    queue_mqtt_subscription(address);
+    strncpy(address, "homeautomation/+/hosts/", 254);
+    strncat(address, config.hostname, 254 - strlen(address));
+    queue_mqtt_subscription(address);
 
     for (int i = 0; i < MAX_DEVICES; ++i) {
       if (strlen(config.devices[i].address_segment[0].segment) > 0) {
@@ -298,7 +353,7 @@ void mqtt_connect() {
               strlen(config.devices[i].address_segment[j +1].segment) > 0) {
             strncat(address, "/_all", 254 - strlen(address));
           }
-          subscription_count = subscribe_one(address, subscriptions, subscription_count);
+          queue_mqtt_subscription(address);
         }
       }
     }
@@ -317,20 +372,56 @@ ESP8266WebServer http_server(80);
 void handleRoot() {
   int b;
 
-  String message = "hello from esp8266!\n";
+  String message = "";
 
-  for (b = 0; b < http_server.args(); ++b) {
-    message += "arg: " + http_server.argName(b) + " val: " + http_server.arg(b) + "\n";
-  }
-  message += "hostname: ";
-  message += config.hostname;
+  //for (b = 0; b < http_server.args(); ++b) {
+  //  message += "\narg: " + http_server.argName(b) + " val: " + http_server.arg(b);
+  //}
+
+  String description_list = "";
+  description_list += descriptionListItem("CPU frequency", String(ESP.getCpuFreqMHz()));
+  description_list += descriptionListItem("Flash size", String(ESP.getFlashChipSize()));
+  description_list += descriptionListItem("Flash speed", String(ESP.getFlashChipSpeed()));
+  description_list += descriptionListItem("Free memory", String(ESP.getFreeHeap()));
+  description_list += descriptionListItem("SDK version", ESP.getSdkVersion());
+  description_list += descriptionListItem("Core version", ESP.getCoreVersion());
+  description_list += descriptionListItem("Config version", config.config_version);
+  description_list += descriptionListItem("Analouge in", String(analogRead(A0)));
+  description_list += descriptionListItem("mac_address", mac_address);
+  description_list += descriptionListItem("IP address", String(ip_to_string(WiFi.localIP())));
+  description_list += descriptionListItem("hostname", String(config.hostname));
+
+  message = page(style(), "", descriptionList(description_list));
+
+  /*message += "\n";
+  message += "\nCPU frequency:\t";
+  message += ESP.getCpuFreqMHz();
+  message += "\nFlash size:\t";
+  message += ESP.getFlashChipSize();
+  message += "\nFlash speed:\t";
+  message += ESP.getFlashChipSpeed();
+  message += "\nFree memory:\t";
+  message += ESP.getFreeHeap();
   message += "\n";
-
-  message += "mac_address: ";
+  message += "\nSDK version:\t";
+  message += ESP.getSdkVersion();
+  message += "\nCore version:\t";
+  message += ESP.getCoreVersion();
+  message += "\nConfig version: ";
+  message += config.config_version;
+  message += "\n";
+  message += "\nAnalouge in:\t";
+  message += analogRead(A0);
+  message += "\n";
+  message += "\nmac_address:\t";
   message += mac_address;
+  message += "\nIP address:\t";
+  message += ip_to_string(WiFi.localIP());
   message += "\n";
+  message += "\nhostname:\t";
+  message += config.hostname;
 
-  message += "method: ";
+  message += "\nmethod:\t";
   if ( http_server.method() == HTTP_GET) {
     message += "HTTP_GET";
   } else if (http_server.method() == HTTP_POST) {
@@ -338,11 +429,6 @@ void handleRoot() {
   } else {
     message += "unknown";
   }
-  message += "\n";
-
-  message += "\n";
-  message += "version: ";
-  message += config.config_version;
   message += "\n";
 
   for (int i = 0; i < MAX_DEVICES; ++i) {
@@ -374,9 +460,9 @@ void handleRoot() {
     }
   }
 
-  message += brokers.Summary();
+  message += brokers.Summary();*/
 
-  http_server.send(200, "text/plain", message);
+  http_server.send(200, "text/html", message);
 }
 
 void handleConfig() {
@@ -512,10 +598,6 @@ void setup_network(void) {
 void setup(void) {
   Serial.begin(115200);
 
-  
-  Serial.print("VCC:");
-  Serial.println(analogRead(A0));
-
   Persist_Data::Persistent<Config> persist_config(CONFIG_VERSION, &config);
   persist_config.readConfig();
 
@@ -544,5 +626,7 @@ void loop(void) {
   if (!mqtt_client.connected()) {
     Serial.println("MQTT disconnected.");
     mqtt_connect();
+  } else {
+    mqtt_subscribe_one();
   }
 }

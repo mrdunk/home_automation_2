@@ -191,7 +191,8 @@ Broker Brokers::GetBroker() {
   const unsigned int now = millis() / 1000;
   while (brokers_[itterator].address == IPAddress(0, 0, 0, 0) and
          brokers_[itterator].host_valid_until < now and
-         brokers_[itterator].fail_counter < MAX_BROKER_FAILURES) {
+         brokers_[itterator].fail_counter < MAX_BROKER_FAILURES)
+  {
     if (++itterator == MAX_BROKERS) {
       itterator = 0;
       SendMDnsQuestion();
@@ -210,6 +211,7 @@ void Brokers::RateBroker(bool sucess) {
 }
 
 String Brokers::Summary() {
+  GetBroker();
   const unsigned int now = millis() / 1000;
   String return_string = "";
   return_string += "time: ";
@@ -217,7 +219,11 @@ String Brokers::Summary() {
   return_string += "\n";
   for (int i = 0; i < MAX_BROKERS; ++i) {
     if (brokers_[i].service_name != "") {
-      return_string += ">  ";
+      if(i == itterator){
+        return_string += "active > ";
+      } else {
+        return_string += "         ";
+      }
       return_string += brokers_[i].service_name;
       return_string += "    ";
       return_string += brokers_[i].port;
