@@ -74,6 +74,10 @@ function mqtt:disconnect()
 end
 
 function mqtt:publish(topic, payload)
+  if self.connection.broker == nil or self.connection.port == nil then
+    return
+  end
+
   local command = mosquitto_pub .. ' -h ' .. self.connection.broker .. ' -p ' .. self.connection.port .. ' -t ' .. topic .. ' -m "' .. payload .. '" &> /dev/null'
   local return_value = os.execute(command)
 

@@ -31,6 +31,10 @@ function control.new()
   info.logging = {mqtt_debug = 0,
                   logfile_debug = 0}
 
+  info.config.components_tmp_file = '/tmp/homeautomation/components_savefile'
+  info.config.components_savefile = '/etc/homeautomation/components_savefile'
+
+  self:load_config()
   return self
 end
 
@@ -49,6 +53,7 @@ function control:update()
       info.logging.logfile_debug = 0;
     end
   end
+  self:copy_saved_config()
 end
 
 function control:subscribe()
@@ -70,6 +75,63 @@ function control:announce()
 		local payload = json.encode(component)
 	  mqtt_instance:publish(topic, payload)
 	end
+end
+
+-- Load control configuration from permanent storage.
+function control:load_config()
+  log("control:load_config()")
+
+  local file_handle, e, c = io.open(info.config.components_savefile, "r")
+  if e ~= nil then
+    log(e, c)
+    return
+  end
+  while true do
+    local line = file_handle:read("*line")
+    -- Ignore lines starting with "#".
+    if line == nil then
+      break
+    end
+
+    local comment = line:find("^(%s*#)")
+    if comment == nil then
+      self:callback("control/_load_from_file", json.decode(line))
+    end
+  end
+  file_handle:close()
+end
+
+-- Save control configuration to permanent storage.
+function control:save_config()
+  log("control:save_config()")
+
+  local file_handle, e, c = io.open(info.config.components_tmp_file, "w")
+  if e ~= nil then
+    log(e, c)
+    return
+  end
+  for component_unique_id, component in pairs(info.components) do
+    local payload = json.encode(component)
+    file_handle:write(payload .. '\n')
+  end
+
+  file_handle:close()
+end
+
+function control:copy_saved_config()
+  if time_to_seconds(file_mod_time(info.config.components_tmp_file)) == nil then
+    return
+  end
+
+  -- Limit to update every 10 seconds.
+  if time_to_seconds(file_mod_time(info.config.components_savefile)) == nil or
+      (time_to_seconds(file_mod_time(info.config.components_tmp_file)) - 
+      time_to_seconds(file_mod_time(info.config.components_savefile))  >= 10 and
+      os.time() > time_to_seconds(file_mod_time(info.config.components_savefile)) + 10) then
+    log("Saving config", info.config.components_tmp_file, info.config.components_savefile)
+    mv(info.config.components_tmp_file, info.config.components_savefile)
+    log("done")
+  end
 end
 
 -- This gets called whenever a topic this module is subscribed to appears on the bus.
@@ -104,30 +166,35 @@ function control:callback(path, incoming_data)
         tonumber(incoming_command) ~= nil then
       info.logging.logfile_debug = tonumber(incoming_command)
     end
-  elseif incoming_command == 'solicit' then
-    self:announce()
-  elseif incoming_data.unique_id then
-    local object = self:object_from_uid(incoming_data.unique_id)
-    
-    if(object == nil) then
-      -- New object needed.
-      if get_path(incoming_data, 'data.general.instance_name') and
+  elseif address == '_announce' or address == '_load_from_file' then
+    if incoming_data.unique_id then
+      local object = self:object_from_uid(incoming_data.unique_id)
+
+      if(object == nil) then
+        -- New object needed.
+        if get_path(incoming_data, 'data.general.instance_name') and
           incoming_data.unique_id and incoming_data.object_type then
-			  local instance_name = incoming_data.data.general.instance_name.value
-				print('New object:', incoming_data.object_type, instance_name, incoming_data.unique_id)
-        if(_G[incoming_data.object_type] ~= nil) then
-				  object = _G[incoming_data.object_type]:new{instance_name=instance_name,
-                                                     unique_id=incoming_data.unique_id}
+          local instance_name = incoming_data.data.general.instance_name.value
+          print('New object:', incoming_data.object_type, instance_name, incoming_data.unique_id)
+          if(_G[incoming_data.object_type] ~= nil) then
+            object = _G[incoming_data.object_type]:new{instance_name=instance_name,
+            unique_id=incoming_data.unique_id, control_instance=self}
+          end
         end
       end
-    end
-		if(object ~= nil) then
-      if(object:merge(incoming_data) == true) then
-        -- Only do object:update() if object wasn't marked as deleted during object:merge().
-        object:update()
+      if(object ~= nil) then
+        if(object:merge(incoming_data) == true) then
+          -- Only do object:update() if object wasn't marked as deleted during object:merge().
+          object:update()
+        end
+        if incoming_data.version <= object.version and address ~= '_load_from_file' then
+          self:save_config()
+        end
       end
+      log('Final object: ', json.encode(object))
     end
-    log('Final object: ', json.encode(object))
+  elseif incoming_command == 'solicit' then
+    self:announce()
 	end
 end
 
@@ -174,9 +241,11 @@ function component:new(o)
     log('o.object_type:', o.object_type)
     self.object_type = o.object_type
   end
+
+  self.control_instance = o.control_instance
     
   if o.unique_id then
-	  o:setup(o.instance_name, o.unique_id)
+	  o:setup(o.instance_name, o.unique_id, o.control_instance)
   end
 
   return o
@@ -214,11 +283,8 @@ end
 function component:merge(new_data)
   log('component:merge', new_data)
   if get_path(new_data, 'version') then
-    if new_data.version < self.version then
+    if new_data.version <= self.version then
       return
-    elseif new_data.version == self.version then
-      -- TODO Investigate the implications of this.
-      log('WARNING: Matching version numbers in component:merge()')
     end
     self.version = new_data.version
   else
@@ -243,6 +309,7 @@ function component:merge(new_data)
       self.data = nil
       self.shape = nil
       self.was_setup = nil
+      
       return false
     end
   end
@@ -329,7 +396,8 @@ function component:send_output(data, output_label)
     return
   end
 
-	if get_path(self.data, 'outputs.default_out.ttl.value') and self.data.outputs.default_out.ttl.value then
+	if get_path(self.data, 'outputs.default_out.ttl.value') and
+        self.data.outputs.default_out.ttl.value then
 		data.ttl = self.data.outputs.default_out.ttl.value
 	end
 
@@ -356,7 +424,8 @@ function component:send_one_output(data, label)
   -- TODO. Allow this to be turned on/off.
   local topic = 'homeautomation/0/debug/' .. self.unique_id .. '/out/' .. label
   local payload = json.encode(data)
-  control_instance:update_log(topic, payload)
+  log(self.control_instance)
+  self.control_instance:update_log(topic, payload)
 
   if label == '_drop' then
     return
@@ -364,10 +433,13 @@ function component:send_one_output(data, label)
 
   if self.data.outputs[label] and self.data.outputs[label].links then
     for _, link_data in pairs(self.data.outputs[label].links) do
-      log('component:send_one_output:', self.unique_id, label, '->', link_data.destination_object, link_data.destination_port)
+      log('component:send_one_output:', self.unique_id, label, '->',
+          link_data.destination_object, link_data.destination_port)
       if info.components[link_data.destination_object] then
-				local data_copy = info.components[link_data.destination_object]:make_data_copy(data, link_data.destination_port, self.unique_id, label)
-        info.components[link_data.destination_object]:receive_input(data_copy, link_data.destination_port, self.unique_id, label)
+				local data_copy = info.components[link_data.destination_object]:make_data_copy(
+            data, link_data.destination_port, self.unique_id, label)
+        info.components[link_data.destination_object]:receive_input(
+            data_copy, link_data.destination_port, self.unique_id, label)
       end
     end
   end
@@ -508,10 +580,12 @@ FlowObjectReadFile = component:new({object_type='FlowObjectReadFile'})
 function FlowObjectReadFile:merge(new_data)
   populate_object(self.data, 'inputs.load_from_file.filename')
   if (component.merge(self, new_data) == true) then
-    if get_path(new_data, 'data.inputs.load_from_file.filename.value') and new_data.data.inputs.load_from_file.filename.value then
+    if get_path(new_data, 'data.inputs.load_from_file.filename.value') and
+        new_data.data.inputs.load_from_file.filename.value then
       if if_path_alowed(new_data.data.inputs.load_from_file.filename.value) and
            is_file(new_data.data.inputs.load_from_file.filename.value)  then
-        self.data.inputs.load_from_file.filename.value = new_data.data.inputs.load_from_file.filename.value
+        self.data.inputs.load_from_file.filename.value =
+            new_data.data.inputs.load_from_file.filename.value
       end
     end
     return true

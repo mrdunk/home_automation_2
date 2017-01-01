@@ -127,11 +127,16 @@ function outlets:read_config()
         if info.io[role] == nil then
           info.io[role] = {}
         end
+                                  -- Set to low value for timer_countdown we get 
+                                  -- to 0 soon and
+                                  -- transition to timer_action state.
+                                  -- THis ensures defined behaviour when daemon 
+                                  -- is restarted.
         info.io[role][address] = {command = command,
                                   timer_trigger = timer_trigger,
                                   timer_duration = timer_duration,
                                   timer_action = timer_action,
-                                  timer_countdown = 0;
+                                  timer_countdown = 1,
                                   potentially_invalid = nil}
         
         if self.io_local_copy[role] == nil then
@@ -274,6 +279,7 @@ function device_announce(role, address, command)
   local data = "_subject : " .. role .. "/" .. address .. " , _state : " .. value
   log("Announcing: " .. topic, data)
   mqtt_instance:publish(topic, data)
+
   if DEBUG then
     local found_match
     for k, v in pairs(info.mqtt.last_announced) do

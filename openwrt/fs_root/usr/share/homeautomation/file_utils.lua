@@ -16,8 +16,11 @@ function if_path_alowed(path)
     return
   end
 
-  if(array_starts_with(split_file_path, split_CONFIG_DIR) == nil and array_starts_with(split_file_path, split_TEMP_DIR) == nil) then
-    log('if_path_allowed: ', json.encode(split_file_path), ' does not start with either ', json.encode(split_CONFIG_DIR), ' or ', json.encode(split_TEMP_DIR))
+  if(array_starts_with(split_file_path, split_CONFIG_DIR) == nil and
+      array_starts_with(split_file_path, split_TEMP_DIR) == nil) then
+    log('if_path_allowed: ', json.encode(split_file_path), 
+        ' does not start with either ', json.encode(split_CONFIG_DIR),
+        ' or ', json.encode(split_TEMP_DIR))
     return
   end
 
@@ -37,7 +40,12 @@ end
 
 -- Move a file or directory.
 function mv(source, dest)
-  return os.rename(source, dest)
+  local return_val, e, c = os.rename(source, dest)
+  if c == 18 then
+    -- Trying to move between filesystems. Need the OS to do that.
+    return os.execute("mv -f " .. source .. " " .. dest)
+  end
+  return return_val
 end
 
 -- Test if a path exists on the file system. Wild cards can be used.
@@ -66,13 +74,30 @@ end
 
 -- Return last modification time of a file
 function file_mod_time(filename)
-  local handle = io.popen("date -r " .. filename)
+  local handle = io.popen("date -r " .. filename .. " 2> /dev/null")
   if handle then
     local output = handle:read("*line")
     handle:close()
     return output
   end
   return
+end
+
+function time_to_seconds(time_string)
+  if time_string == nul then
+    return
+  end
+  local p = "%a+%s+(%a+)%s+(%d+)%s+(%d+):(%d+):(%d+)%s+%a+%s+(%d+)"
+  local month, day, hour, min, sec, year = time_string:match(p)
+  local MON = {Jan=1,Feb=2,Mar=3,Apr=4,May=5,Jun=6,Jul=7,Aug=8,Sep=9,Oct=10,Nov=11,Dec=12}
+  local month = MON[month]
+  local offset = os.time()-os.time(os.date("!*t"))
+  local date_table = {day=day, month=month, year=year, hour=hour, min=min, sec=sec}
+  if month == nil or day == nil or hour == nil or min == nil or sec == nil or year == nil then
+    print('Error: Problem with regex match on string:', time_string)
+    return
+  end
+  return os.time(date_table) + offset
 end
 
 function sanitize_object_name(name)
