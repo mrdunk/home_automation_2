@@ -6,7 +6,9 @@ String ip_to_string(IPAddress ip){
   String return_value;
   for (byte thisByte = 0; thisByte < 4; thisByte++) {
     return_value += ip[thisByte];
-    return_value += ".";
+    if(thisByte < 3) {
+      return_value += ".";
+    }
   }
   return return_value;
 }

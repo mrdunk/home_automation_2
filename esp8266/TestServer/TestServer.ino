@@ -17,7 +17,7 @@
 #define CONFIG_VERSION "001"
 
 // Maximum number of devices connected to IO pins.
-#define MAX_DEVICES 3
+#define MAX_DEVICES 4
 
 // Maximum number of subscriptions to MQTT.
 #define MAX_SUBSCRIPTIONS 8
@@ -46,8 +46,8 @@ typedef struct Address_Segment {
 
 typedef struct Connected_device {
   Address_Segment address_segment[ADDRESS_SEGMENTS];
-  Io_Type io_type;
-  int io_pins[3];
+  Io_Type iotype;
+  int iopins[3];
   int io_value[3];
 } Connected_device;
 
@@ -66,9 +66,50 @@ String mac_address;
 
 
 // Configuration
+void sanitizeHostname(char* buffer){
+  for(int i=0; i< strlen(buffer);i++){
+    if(buffer[i] >= 'A' && buffer[i] <= 'Z'){
+      buffer[i] = buffer[i] + 'a' - 'A';
+    } else if(buffer[i] >= 'a' && buffer[i] <= 'z'){
+      // pass
+    } else if(buffer[i] >= '0' && buffer[i] <= '9'){
+      // pass
+    } else if(buffer[i] == '-'){
+      // pass
+    } else {
+      buffer[i] = '-';
+    }
+  }
+}
+
+void sanitizeTopic(char* buffer){
+  bool wildcard_found = false;
+  for(int i=0; i< strlen(buffer);i++){
+    if(wildcard_found){
+      // Wildcard was found as first character but there is other stuff here too
+      // so mask out the wildcard.
+      buffer[0] = '_';
+    }
+
+    if(buffer[i] >= 'A' && buffer[i] <= 'Z'){
+      // pass
+    } else if(buffer[i] >= 'a' && buffer[i] <= 'z'){
+      // pass
+    } else if(buffer[i] >= '0' && buffer[i] <= '9'){
+      // pass
+    } else if((buffer[i] == '+' || buffer[i] == '#') && (i == 0)){
+      // Wildcards only valid if they are the only character present.
+      wildcard_found = true;
+    } else {
+      buffer[i] = '_';
+    }
+  }
+}
+
 void SetHostname(const char* new_hostname) {
   strncpy(config.hostname, new_hostname, NAME_LEN -1);
   config.hostname[NAME_LEN] = '\0';
+  sanitizeHostname(config.hostname);
 }
 
 void SetDevice(const unsigned int index, struct Connected_device& device) {
@@ -95,17 +136,17 @@ String DeviceAddress(Connected_device& device) {
 
 // IO
 void change_state(Connected_device& device, String command){
-  if(device.io_type == test || device.io_type == onoff){
+  if(device.iotype == test || device.iotype == onoff){
     Serial.print("Switching ");
     Serial.println(command);
     if(command == "on"){
       device.io_value[0] = 1;
-      pinMode(device.io_pins[0], OUTPUT);
-      digitalWrite(device.io_pins[0], 1);
+      pinMode(device.iopins[0], OUTPUT);
+      digitalWrite(device.iopins[0], 1);
     } else if(command == "off"){
       device.io_value[0] = 0;
-      pinMode(device.io_pins[0], OUTPUT);
-      digitalWrite(device.io_pins[0], 0);
+      pinMode(device.iopins[0], OUTPUT);
+      digitalWrite(device.iopins[0], 0);
     }
   }
 }
@@ -264,7 +305,7 @@ void mqtt_announce(Connected_device& device){
   String announce = "_subject : " + DeviceAddress(device);
   announce += " , _state : ";
   
-  if(device.io_type == test || device.io_type == onoff){
+  if(device.iotype == test || device.iotype == onoff){
     if(device.io_value[0] <= 0){
       announce += "off";
     } else {
@@ -363,6 +404,8 @@ void mqtt_connect() {
     Serial.print("MQTT connected. Server: ");
     Serial.println(broker.address);
   }
+  
+  mqtt_announce_host();
 }
 
 
@@ -370,99 +413,90 @@ void mqtt_connect() {
 ESP8266WebServer http_server(80);
 
 void handleRoot() {
-  int b;
-
   String message = "";
 
-  //for (b = 0; b < http_server.args(); ++b) {
-  //  message += "\narg: " + http_server.argName(b) + " val: " + http_server.arg(b);
-  //}
-
   String description_list = "";
-  description_list += descriptionListItem("CPU frequency", String(ESP.getCpuFreqMHz()));
+  description_list += descriptionListItem("hostname", textField("hostname", "hostname", config.hostname, "hostname"));
+  description_list += descriptionListItem("mac_address", mac_address);
+  description_list += descriptionListItem("IP address", String(ip_to_string(WiFi.localIP())));
+
+  message = descriptionList(description_list);
+
+  String rows = row(header("index") + header("Topic") + header("type") + 
+                    header("IO pin") + header("") + header(""), "");
+  int empty_device = -1;
+  for (int i = 0; i < MAX_DEVICES; ++i) {
+    if (strlen(config.devices[i].address_segment[0].segment) > 0) {
+      String cells = cell(String(i));
+      String name = "topic_";
+      name += i;
+      cells += cell(textField(name, "some/topic", DeviceAddress(config.devices[i]),
+                    "device_" + String(i) + "_topic"));
+      if (config.devices[i].iotype == Io_Type::test) {
+        cells += cell(outletType("test", "device_" + String(i) + "_iotype"));
+        name = "pin_";
+        name += i;
+        cells += cell(ioPin(String(config.devices[i].iopins[0]),
+                      "device_" + String(i) + "_iopins"));
+      } else if (config.devices[i].iotype == Io_Type::rgb) {
+        cells += cell(outletType("rgb", "device_" + String(i) + "_iotype"));
+        String pins = "";
+        pins += String(config.devices[i].iopins[0]);
+        pins += ",";
+        pins += String(config.devices[i].iopins[0]);
+        pins += ",";
+        pins += String(config.devices[i].iopins[0]);
+        cells += cell(pins);
+      } else if (config.devices[i].iotype == Io_Type::pwm) {
+        cells += cell(outletType("pwm", "device_" + String(i) + "_iotype"));
+        name = "pin_";
+        name += i;
+        cells += cell(ioPin(String(config.devices[i].iopins[0]),
+                      "device_" + String(i) + "_iopins"));
+      } else if (config.devices[i].iotype == Io_Type::onoff) {
+        cells += cell(outletType("onoff", "device_" + String(i) + "_iotype"));
+        name = "pin_";
+        name += i;
+        cells += cell(ioPin(String(config.devices[i].iopins[0]),
+                      "device_" + String(i) + "_iopins"));
+      }
+      cells += cell(submit("Save", "save_" + String(i), "save('device_" + String(i) +"')"));
+      cells += cell(submit("Delete", "del_" + String(i), "del('device_" + String(i) +"')"));
+      rows += row(cells, "device_" + String(i));
+    } else if (empty_device < 0){
+      empty_device = i;
+    }
+  }
+  if (empty_device >= 0){
+    // An empty slot for new device.
+    String cells = cell(String(empty_device));
+    String name = "address_";
+    name += empty_device;
+    cells += cell(textField(name, "new/topic", "", "device_" + String(empty_device) + "_topic"));
+    cells += cell(outletType("onoff", "device_" + String(empty_device) + "_iotype"));
+    name = "pin_";
+    name += empty_device;
+    cells += cell(ioPin("", "device_" + String(empty_device) + "_iopins"));
+    cells += cell(submit("Save", "save_" + String(empty_device),
+                  "save('device_" + String(empty_device) + "')"));
+    cells += cell("");
+    rows += row(cells, "device_" + String(empty_device));
+  }
+  message += table(rows);
+
+  description_list = descriptionListItem("CPU frequency", String(ESP.getCpuFreqMHz()));
   description_list += descriptionListItem("Flash size", String(ESP.getFlashChipSize()));
   description_list += descriptionListItem("Flash speed", String(ESP.getFlashChipSpeed()));
   description_list += descriptionListItem("Free memory", String(ESP.getFreeHeap()));
   description_list += descriptionListItem("SDK version", ESP.getSdkVersion());
   description_list += descriptionListItem("Core version", ESP.getCoreVersion());
   description_list += descriptionListItem("Config version", config.config_version);
-  description_list += descriptionListItem("Analouge in", String(analogRead(A0)));
-  description_list += descriptionListItem("mac_address", mac_address);
-  description_list += descriptionListItem("IP address", String(ip_to_string(WiFi.localIP())));
-  description_list += descriptionListItem("hostname", String(config.hostname));
-
-  message = page(style(), "", descriptionList(description_list));
-
-  /*message += "\n";
-  message += "\nCPU frequency:\t";
-  message += ESP.getCpuFreqMHz();
-  message += "\nFlash size:\t";
-  message += ESP.getFlashChipSize();
-  message += "\nFlash speed:\t";
-  message += ESP.getFlashChipSpeed();
-  message += "\nFree memory:\t";
-  message += ESP.getFreeHeap();
-  message += "\n";
-  message += "\nSDK version:\t";
-  message += ESP.getSdkVersion();
-  message += "\nCore version:\t";
-  message += ESP.getCoreVersion();
-  message += "\nConfig version: ";
-  message += config.config_version;
-  message += "\n";
-  message += "\nAnalouge in:\t";
-  message += analogRead(A0);
-  message += "\n";
-  message += "\nmac_address:\t";
-  message += mac_address;
-  message += "\nIP address:\t";
-  message += ip_to_string(WiFi.localIP());
-  message += "\n";
-  message += "\nhostname:\t";
-  message += config.hostname;
-
-  message += "\nmethod:\t";
-  if ( http_server.method() == HTTP_GET) {
-    message += "HTTP_GET";
-  } else if (http_server.method() == HTTP_POST) {
-    message += "HTTP_POST";
-  } else {
-    message += "unknown";
-  }
-  message += "\n";
-
-  for (int i = 0; i < MAX_DEVICES; ++i) {
-    if (strlen(config.devices[i].address_segment[0].segment) > 0) {
-      message += i;
-      message += "  ";
-      message += DeviceAddress(config.devices[i]);
-      message += "  ";
-      if (config.devices[i].io_type == Io_Type::test) {
-        message += "test";
-      } else if (config.devices[i].io_type == Io_Type::rgb) {
-        message += "rgb";
-      } else if (config.devices[i].io_type == Io_Type::pwm) {
-        message += "pwm";
-      } else if (config.devices[i].io_type == Io_Type::onoff) {
-        message += "onoff";
-      }
-      message += "  ";
-      
-      for(int j = 0; j < 3; ++j){
-        if(config.devices[i].io_pins[0] >= 0){
-          if(j > 0){
-            message +=  ",";
-          }
-          message += config.devices[i].io_pins[0];
-        }
-      }
-      message += "\n";
-    }
-  }
-
-  message += brokers.Summary();*/
-
-  http_server.send(200, "text/html", message);
+  description_list += descriptionListItem("Analogue in", String(analogRead(A0)));
+  description_list += descriptionListItem("System clock", String(millis() / 1000));
+  description_list += descriptionListItem("Brokers", brokers.Summary());
+  message += descriptionList(description_list);
+  
+  http_server.send(200, "text/html", page(style(), javascript(), "", message));
 }
 
 void handleConfig() {
@@ -491,34 +525,37 @@ void handleConfig() {
   }
 
   if (http_server.hasArg("device") and http_server.hasArg("address_segment") and
-      http_server.hasArg("io_type") and http_server.hasArg("io_pins")) {
+      http_server.hasArg("iotype") and http_server.hasArg("iopins")) {
     unsigned int index = http_server.arg("device").toInt();
     Connected_device device;
 
     int segment_counter = 0;
     for(int i = 0; i < http_server.args(); i++){
-      if(http_server.argName(i) == "address_segment"){
-        http_server.arg(i).toCharArray(device.address_segment[segment_counter++].segment, ADDRESS_SEGMENT_LEN);
+      if(http_server.argName(i) == "address_segment" && segment_counter < ADDRESS_SEGMENTS){
+        http_server.arg(i).toCharArray(device.address_segment[segment_counter].segment,
+                                       ADDRESS_SEGMENT_LEN);
+        sanitizeTopic(device.address_segment[segment_counter].segment);
+        segment_counter++;
       }
     }
     for(int i = segment_counter; i < ADDRESS_SEGMENTS; i++){
       device.address_segment[segment_counter++].segment[0] = '\0';
     }
 
-    if (http_server.arg("io_type") == "test") {
-      device.io_type = Io_Type::test;
-    } else if (http_server.arg("io_type") == "rgb") {
-      device.io_type = Io_Type::rgb;
-    } else if (http_server.arg("io_type") == "pwm") {
-      device.io_type = Io_Type::pwm;
-    } else if (http_server.arg("io_type") == "onoff") {
-      device.io_type = Io_Type::onoff;
+    if (http_server.arg("iotype") == "test") {
+      device.iotype = Io_Type::test;
+    } else if (http_server.arg("iotype") == "rgb") {
+      device.iotype = Io_Type::rgb;
+    } else if (http_server.arg("iotype") == "pwm") {
+      device.iotype = Io_Type::pwm;
+    } else if (http_server.arg("iotype") == "onoff") {
+      device.iotype = Io_Type::onoff;
     }
 
     // strtok() is broken in esp8266 Arduino so we must parse by hand.
     char io_pins_buffer[NAME_LEN];
     char pin_buffer[4];
-    http_server.arg("io_pins").toCharArray(io_pins_buffer, NAME_LEN);
+    http_server.arg("iopins").toCharArray(io_pins_buffer, NAME_LEN);
     if (strlen(io_pins_buffer) + 1 < NAME_LEN) {
       io_pins_buffer[strlen(io_pins_buffer) + 1] = '\0';
       io_pins_buffer[strlen(io_pins_buffer)] = ',';
@@ -528,7 +565,7 @@ void handleConfig() {
     memset(pin_buffer, '\0', 4);
     for (unsigned int i = 0; i < strlen(io_pins_buffer); ++i) {
       if (io_pins_buffer[i] == ',') {
-        device.io_pins[pin_num++] = atoi(pin_buffer);
+        device.iopins[pin_num++] = atoi(pin_buffer);
         memset(pin_buffer, '\0', 4);
         pin_buffer_pointer = 0;
       } else if (pin_buffer_pointer < 4) {
@@ -545,7 +582,7 @@ void handleConfig() {
     message += "device: " + http_server.arg("device") + "\n";
     Serial.println(message);
 
-    // Force reconnect to MQTT so we subscribe to any new addreses.
+    // Force reconnect to MQTT so we subscribe to any new addresses.
     mqtt_client.disconnect();
   }
   
@@ -597,6 +634,8 @@ void setup_network(void) {
 
 void setup(void) {
   Serial.begin(115200);
+  Serial.println();
+  Serial.println("Reset.");
 
   Persist_Data::Persistent<Config> persist_config(CONFIG_VERSION, &config);
   persist_config.readConfig();

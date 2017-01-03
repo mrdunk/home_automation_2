@@ -1,6 +1,8 @@
 #ifndef ESP8266__DECODE_MDNS__H
 #define ESP8266__DECODE_MDNS__H
 
+#include "html_primatives.h"
+
 #define QUESTION_SERVICE "_mqtt._tcp.local"
 
 #define MAX_BROKERS 4
@@ -36,6 +38,7 @@ class Brokers {
   unsigned int itterator;
   unsigned int last_mdns_question_time;
 };
+
 
 
 #endif  // ESP8266__DECODE_MDNS__H

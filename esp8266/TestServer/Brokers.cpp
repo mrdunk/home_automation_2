@@ -23,13 +23,14 @@ void Brokers::SendMDnsQuestion() {
 }
 
 void Brokers::ParseMDnsAnswer(const mdns::Answer* answer) {
-  bool updated = false;
   const unsigned int now = millis() / 1000;
 
   // Remove expired entries.
   for (int i = 0; i < MAX_BROKERS; ++i) {
     if ((brokers_[i].service_valid_until < now and brokers_[i].service_valid_until > 0) or 
-        (brokers_[i].host_valid_until < now and brokers_[i].host_valid_until > 0)) {
+        (brokers_[i].host_valid_until < now and brokers_[i].host_valid_until > 0))
+    {
+    //if ((brokers_[i].service_valid_until < now) or (brokers_[i].host_valid_until < now)){
       brokers_[i].service_name = "";
       brokers_[i].host_name = "";
       brokers_[i].port = 0;
@@ -43,33 +44,40 @@ void Brokers::ParseMDnsAnswer(const mdns::Answer* answer) {
   //  name:    Mosquitto MQTT server on twinkle.local
   if (answer->rrtype == MDNS_TYPE_PTR and strstr(answer->name_buffer, QUESTION_SERVICE) != 0) {
     unsigned int i = 0;
+    bool found = false;
     for (; i < MAX_BROKERS; ++i) {
       if (brokers_[i].service_name == answer->rdata_buffer) {
         // Already in brokers_[].
+        // Note that there may be more than one match. (Same host, different IP.)
         if (now + answer->rrttl > brokers_[i].service_valid_until) {
           brokers_[i].service_valid_until = now + answer->rrttl;
         }
-        break;
-      }
-      if (brokers_[i].service_name == "") {
-        // This brokers[][] entry is still empty.
-        brokers_[i].service_name = answer->rdata_buffer;
-        if (now + answer->rrttl > brokers_[i].service_valid_until) {
-          brokers_[i].service_valid_until = now + answer->rrttl;
-        }
-        updated = true;
-        break;
+        found = true;
       }
     }
-    if (i == MAX_BROKERS) {
-      Serial.print(" ** ERROR ** No space in buffer for ");
-      Serial.print('"');
-      Serial.print(answer->name_buffer);
-      Serial.print('"');
-      Serial.print("  :  ");
-      Serial.print('"');
-      Serial.println(answer->rdata_buffer);
-      Serial.print('"');
+    if(!found){
+      // Didn't find any matching entries so insert it in a blank space.
+      i = 0;
+      for (; i < MAX_BROKERS; ++i) {
+        if (brokers_[i].service_name == "") {
+          // This brokers[][] entry is still empty.
+          brokers_[i].service_name = answer->rdata_buffer;
+          if (now + answer->rrttl > brokers_[i].service_valid_until) {
+            brokers_[i].service_valid_until = now + answer->rrttl;
+          }
+          break;
+        }
+      }
+      if (i == MAX_BROKERS) {
+        Serial.print(" ** ERROR ** No space in buffer for ");
+        Serial.print('"');
+        Serial.print(answer->name_buffer);
+        Serial.print('"');
+        Serial.print("  :  ");
+        Serial.print('"');
+        Serial.println(answer->rdata_buffer);
+        Serial.print('"');
+      }
     }
   }
 
@@ -78,11 +86,13 @@ void Brokers::ParseMDnsAnswer(const mdns::Answer* answer) {
   //  name:    Mosquitto MQTT server on twinkle.local
   //  data:    p=0;w=0;port=1883;host=twinkle.local
   if (answer->rrtype == MDNS_TYPE_SRV) {
-    unsigned int i = 0;
-    for (; i < MAX_BROKERS; ++i) {
+    bool exists = false;
+    for (int i = 0; i < MAX_BROKERS; ++i) {
       if (brokers_[i].service_name == answer->name_buffer) {
         // This brokers entry matches the name of the host we are looking for
         // so parse data for port and hostname.
+        // Note that there may be more than one match. (Same host, different IP.)
+        exists = true;
         char* port_start = strstr(answer->rdata_buffer, "port=");
         if (port_start) {
           port_start += 5;
@@ -101,14 +111,12 @@ void Brokers::ParseMDnsAnswer(const mdns::Answer* answer) {
               if (now + answer->rrttl > brokers_[i].host_valid_until) {
                 brokers_[i].host_valid_until = now + answer->rrttl;
               }
-              updated = true;
             }
           }
         }
-        break;
       }
     }
-    if (i == MAX_BROKERS) {
+    if (!exists) {
       /*Serial.print(" SRV.  Did not find ");
       Serial.print('"');
       Serial.print(answer->name_buffer);
@@ -122,58 +130,80 @@ void Brokers::ParseMDnsAnswer(const mdns::Answer* answer) {
   //   name:    twinkle.local
   //   address: 192.168.192.9
   if (answer->rrtype == MDNS_TYPE_A) {
-    int i = 0;
-    for (; i < MAX_BROKERS; ++i) {
+    bool exists = false;
+    int empty_slot = -1;
+    for (int i = 0; i < MAX_BROKERS; ++i) {
       if (brokers_[i].host_name == answer->name_buffer) {
         // Hostname matches.
         if (brokers_[i].address == string_to_ip(answer->rdata_buffer)) {
-          // Already up-to-date.
+          // This entry with matching hostname already has the advertised ipv4 address.
+          // Note that more than one entry with a matching hostname and IP address could exist.
+          // (ie, different service name on the same host.)
+          exists = true;
           if (now + answer->rrttl > brokers_[i].host_valid_until) {
             brokers_[i].host_valid_until = now + answer->rrttl;
           }
-          updated = true;  // TODO remove me once we know "host_valid_until" is getting updated correclty.
-          break;
-        } else if (brokers_[i].address != IPAddress(0, 0, 0, 0)) {
-          // Already have an IP address for this entry.
-          // It appears more than one address is advertised for this Host.
-          // Make a duplicate entry with the new address.
-          int j = 0;
-          for (; j < MAX_BROKERS; ++j) {
-            if (brokers_[j].service_name == "") {
-              // Here's an empty slot in the buffer. Copy the record here and give it the new IP Address.
-              brokers_[j].service_name = brokers_[i].service_name;
-              brokers_[j].host_name = brokers_[i].host_name;
-              brokers_[j].port = brokers_[i].port;
-              brokers_[j].service_valid_until = brokers_[i].service_valid_until;
-              brokers_[j].address = string_to_ip(answer->rdata_buffer);
-              if (now + answer->rrttl > brokers_[i].host_valid_until) {
-                brokers_[i].host_valid_until = now + answer->rrttl;
-              }
-              updated = true;
-              break;
-            }
-          }
-          if (j == MAX_BROKERS) {
-            // Didn't find an empty space in buffer so let's just overwrite the old address.
-            brokers_[i].address = string_to_ip(answer->rdata_buffer);
-            if (now + answer->rrttl > brokers_[i].host_valid_until) {
-              brokers_[i].host_valid_until = now + answer->rrttl;
-            }
-            updated = true;
-            break;
-          }
-        } else {
-          // IP Address not set for this entry yet so do that now.
+        } else if(brokers_[i].address == IPAddress(0, 0, 0, 0)) {
+          // Hostname matches but IP has not been set yet.
+          // Lets do that now.
+          exists = true;
           brokers_[i].address = string_to_ip(answer->rdata_buffer);
           if (now + answer->rrttl > brokers_[i].host_valid_until) {
             brokers_[i].host_valid_until = now + answer->rrttl;
           }
-          updated = true;
-          break;
+        } else {
+          // The hostname matches but the address does not.
+          // This is probably a host with more than one IP address.
+          // Check for a match elsewhere in the buffer:
+          for (int j = 0; j < MAX_BROKERS; ++j) {
+            if(i != j &&
+                brokers_[j].host_name == answer->name_buffer &&
+                brokers_[j].address == string_to_ip(answer->rdata_buffer))
+            {
+              // Found match elsewhere in the buffer.
+              exists = true;
+              if (now + answer->rrttl > brokers_[j].host_valid_until) {
+                brokers_[j].host_valid_until = now + answer->rrttl;
+              }
+              break;
+            } else if (brokers_[j].host_name == "") {
+              // Track empty slot so we can use it later.
+              if(empty_slot < 0){
+                empty_slot = j;
+              }
+            }
+          }
+
+          if(!exists){
+            if(empty_slot >= 0){
+              Serial.print("Copying: ");
+              Serial.print(i);
+              Serial.print(" to: ");
+              Serial.println(empty_slot);
+              brokers_[empty_slot].service_name = brokers_[i].service_name;
+              brokers_[empty_slot].host_name = brokers_[i].host_name;
+              brokers_[empty_slot].port = brokers_[i].port;
+              brokers_[empty_slot].service_valid_until = brokers_[i].service_valid_until;
+              brokers_[empty_slot].address = string_to_ip(answer->rdata_buffer);
+              if (now + answer->rrttl > brokers_[empty_slot].host_valid_until) {
+                brokers_[empty_slot].host_valid_until = now + answer->rrttl;
+              }
+              exists = true;
+            } else {
+              Serial.print(" ** ERROR ** No space in buffer to copy record with "
+                  "duplicate ipv4 address: ");
+              Serial.println(brokers_[i].service_name);
+            }
+          }
+        }
+      } else if (brokers_[i].host_name == "") {
+        // Empty slot.
+        if(empty_slot < 0){
+          empty_slot = i;
         }
       }
     }
-    if (i == MAX_BROKERS) {
+    if (!exists) {
       /*Serial.print(" A.    Did not find ");
       Serial.print('"');
       Serial.print(answer->name_buffer);
@@ -182,9 +212,6 @@ void Brokers::ParseMDnsAnswer(const mdns::Answer* answer) {
     }
   }
 
-  if (updated) {
-    //Serial.println(Summary());
-  }
 }
 
 Broker Brokers::GetBroker() {
@@ -212,34 +239,31 @@ void Brokers::RateBroker(bool sucess) {
 
 String Brokers::Summary() {
   GetBroker();
-  const unsigned int now = millis() / 1000;
-  String return_string = "";
-  return_string += "time: ";
-  return_string += now;
-  return_string += "\n";
+  const String now = String(millis() / 1000);
+  String rows = row(header("") + header("service_name") + header("port") +
+                    header("hostname") + header("ip") + header("service valid until") +
+                    header("host valid until") + header("fail counter"), "");
   for (int i = 0; i < MAX_BROKERS; ++i) {
     if (brokers_[i].service_name != "") {
+      String cells = "";
       if(i == itterator){
-        return_string += "active > ";
+        cells += cell(" active ");
       } else {
-        return_string += "         ";
+        cells += cell(" ");
       }
-      return_string += brokers_[i].service_name;
-      return_string += "    ";
-      return_string += brokers_[i].port;
-      return_string += "    ";
-      return_string += brokers_[i].host_name;
-      return_string += "    ";
-      return_string += ip_to_string(brokers_[i].address);
-      return_string += "    ";
-      return_string += brokers_[i].service_valid_until;
-      return_string += "    ";
-      return_string += brokers_[i].host_valid_until;
-      return_string += "    ";
-      return_string += brokers_[i].fail_counter;
-      return_string += "\n";
+      cells += cell(brokers_[i].service_name);
+      cells += cell(String(brokers_[i].port));
+      cells += cell(brokers_[i].host_name);
+      cells += cell(ip_to_string(brokers_[i].address));
+      cells += cell(String(brokers_[i].service_valid_until));
+      cells += cell(String(brokers_[i].host_valid_until));
+      cells += cell(String(brokers_[i].fail_counter));
+      if(i == itterator){
+        rows += (row(cells, "highlight"));
+      } else {
+        rows += row(cells, "");
+      }
     }
   }
-  return return_string;
+  return table(rows);
 }
-
