@@ -27,6 +27,8 @@ dhcp_instance = {}          -- Will get assigned parse_dhcp instance during init
 outlets_instance = {}       -- Will get assigned outlets instance during initilize() function.
 control_instance = {}
 DEBUG = false
+json = nil
+mqtt_class = nil
 
 -- Constants
 WEB_DIR = '/www/info/'
@@ -271,8 +273,6 @@ function initilize()
   end
 
   -- Load lua-mosquitto and luci.json modules if possible.
-  mqtt_class = nil
-  json = nil
   for _, searcher in ipairs(package.searchers or package.loaders) do
     local loader = searcher('mosquitto')
     if type(loader) == 'function' then
@@ -590,11 +590,11 @@ function main()
   end
   print()
 
-  run = true
+  local run = true
   initilize()
 
   while run do
-    log('tick', info.config.last_updated)
+    log('tick ' .. info.config.last_updated .. '\t' .. collectgarbage("count") .. 'kb')
     process_list()
     local_network()
     broker_list()

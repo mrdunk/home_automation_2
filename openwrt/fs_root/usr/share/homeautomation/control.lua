@@ -63,6 +63,13 @@ function control:subscribe()
   subscriptions[#subscriptions +1] = {role = 'control', address = 'mqtt_debug'}
   subscriptions[#subscriptions +1] = {role = 'control', address = 'logfile_debug'}
 
+	for component_unique_id, component in pairs(info.components) do
+    -- Any components should subscribe using the global subscribe_to_all() as it
+    -- adds the component to info.mqtt.subscriptions without returning it as part
+    -- of "subscriptions" here.
+    component:subscribe()
+  end
+
 	return subscriptions
 end
 
@@ -304,7 +311,7 @@ function component:merge(new_data)
     if new_data.object_type == 'deleted' then
       log('Deleting:', new_data.unique_id)
       self.object_type = 'deleted'
-      info.components[self.unique_id]  = nil
+      info.components[self.unique_id] = nil
       self.origin = 'backend'
       self.data = nil
       self.shape = nil
@@ -458,7 +465,9 @@ function component:make_data_copy(data, port_label, from_unique_id, from_port_la
     data.error = 'Unexpected __trace configuration.'
   else
     for _, trace_entry in pairs(data.__trace) do
-      if trace_entry.destination_object == self.unique_id and trace_entry.destination_port == port_label then
+      if trace_entry.destination_object == self.unique_id and
+          trace_entry.destination_port == port_label
+      then
         data.error = 'Loop detected! Data has already passed through this port.'
         break
       end
@@ -488,6 +497,10 @@ end
 function component:update()
 end
 
+function component:subscribe()
+end
+
+
 
 
 FlowObjectMqttSubscribe = component:new({object_type='FlowObjectMqttSubscribe'})
@@ -502,7 +515,7 @@ function FlowObjectMqttSubscribe:setup(instance_name, unique_id)
 end
 
 function FlowObjectMqttSubscribe:callback(path, data)
-  --log(" ", "FlowObjectMqttSubscribe:callback(" .. tostring(path) .. ", " .. flatten_data(data) .. ")")
+  log(" ", "FlowObjectMqttSubscribe:callback(" .. tostring(path) .. ", " .. flatten_data(data) .. ")")
   data.__thread_track = {}
   data.__thread_track[1] = info.thread_counter
   info.thread_counter = info.thread_counter +1
@@ -535,7 +548,8 @@ function FlowObjectMqttSubscribe:merge(new_data)
   if component.merge(self, new_data) then
     populate_object(self, 'data.inputs.subscription.subscribed_topic')
     if get_path(new_data, 'data.inputs.subscription.subscribed_topic.value') then
-      local topic = sanitize_topic_with_wild(new_data.data.inputs.subscription.subscribed_topic.value)
+      local topic = sanitize_topic_with_wild(
+          new_data.data.inputs.subscription.subscribed_topic.value)
       if topic == '' then
         return
       end
@@ -682,8 +696,11 @@ end
 function FlowObjectCombineData:merge(new_data)
   populate_object(self.data, 'inputs.default_in.primary_key')
   if component.merge(self, new_data) then
-    if get_path(new_data, 'data.inputs.default_in.primary_key.value') and new_data.data.inputs.default_in.primary_key.value then
-      self.data.inputs.default_in.primary_key.value = new_data.data.inputs.default_in.primary_key.value
+    if get_path(new_data, 'data.inputs.default_in.primary_key.value') and
+        new_data.data.inputs.default_in.primary_key.value
+    then
+      self.data.inputs.default_in.primary_key.value =
+          new_data.data.inputs.default_in.primary_key.value
     end
   end
   return true
@@ -754,7 +771,8 @@ function FlowObjectCombineData:removeExpired()
   for _from_unique_id, data1 in pairs(self.data.data) do
     for _from_port_label, data2  in pairs(data1) do
       for primary_key, data3  in pairs(data2) do
-        -- data3.__expiry should never be greater than (now + data3.ttl). If it is, something strange has happened to the system clock.
+        -- data3.__expiry should never be greater than (now + data3.ttl).
+        -- If it is, something strange has happened to the system clock.
         if data3.__expiry ~= 0 and data3.__expiry ~= nil and (data3.__expiry < now or data3.__expiry > now + data3.ttl) then
           remove_these[#remove_these +1] = {_from_unique_id, _from_port_label, primary_key}
         end
@@ -834,69 +852,53 @@ function FlowObjectSwitch:receive_input(data, out_port_label)
   local label = self.data.inputs.default_in.transitions.filter_on_label.value
   for rule_index, rule in pairs(self.data.inputs.default_in.transitions.values.rules) do
     if rule.if_type == 'bool' then
-      log('~~~', toBoolean(data[label]), 'is', toBoolean(rule.if_value))
       if toBoolean(rule.if_value) == toBoolean(data[label]) then
-        log('~')
         self:send_one_output(data, rule.send_to)
         if stop_after_match then
-          log('~!')
           return
         end
       end
     elseif rule.if_type == 'number' and tonumber(data[label]) ~= nil then
-      log('~~~', data[label], rule.if_value.opperand, rule.if_value.value)
       local number = tonumber(data[label])
       if rule.if_value.opperand == 'lt' then
         if number < tonumber(rule.if_value.value) then
-          log('~')
           self:send_one_output(data, rule.send_to)
           if stop_after_match then
-            log('~!')
             return
           end
         end
       elseif rule.if_value.opperand == 'lteq' then
         if number <= tonumber(rule.if_value.value) then
-          log('~')
           self:send_one_output(data, rule.send_to)
           if stop_after_match then
-            log('~!')
             return
           end
         end
       elseif rule.if_value.opperand == 'eq' then
         if number == tonumber(rule.if_value.value) then
-          log('~')
           self:send_one_output(data, rule.send_to)
           if stop_after_match then
-            log('~!')
             return
           end
         end
       elseif rule.if_value.opperand == 'gteq' then
         if number >= tonumber(rule.if_value.value) then
-          log('~')
           self:send_one_output(data, rule.send_to)
           if stop_after_match then
-            log('~!')
             return
           end
         end
       elseif rule.if_value.opperand == 'gt' then
         if number > tonumber(rule.if_value.value) then
-          log('~')
           self:send_one_output(data, rule.send_to)
           if stop_after_match then
-            log('~!')
             return
           end
         end
       elseif rule.if_value.opperand == 'noteq' then
         if number ~= tonumber(rule.if_value.value) then
-          log('~')
           self:send_one_output(data, rule.send_to)
           if stop_after_match then
-            log('~!')
             return
           end
         end
@@ -904,61 +906,46 @@ function FlowObjectSwitch:receive_input(data, out_port_label)
     elseif rule.if_type == 'string' then
       local string_1 = tostring(data[label]):match "^%s*(.-)%s*$"
       local string_2 = tostring(rule.if_value.value):match "^%s*(.-)%s*$"
-      log('~~~', string_1, rule.if_value.opperand, string_2)
       if rule.if_value.opperand == 'matches' then
         if string_1 == string_2 then
-          log('~')
           self:send_one_output(data, rule.send_to)
           if stop_after_match then
-            log('~!')
             return
           end
         end
       elseif rule.if_value.opperand == 'nomatch' then
         if string_1 ~= string_2 then
-          log('~')
           self:send_one_output(data, rule.send_to)
           if stop_after_match then
-            log('~!')
             return
           end
         end
       elseif rule.if_value.opperand == 'contains' then
         if string.match(string_1, string_2) then
-          log('~')
           self:send_one_output(data, rule.send_to)
           if stop_after_match then
-            log('~!')
             return
           end
         end
       elseif rule.if_value.opperand == 'nocontain' then
         if not string.match(string_1, string_2) then
-          log('~')
           self:send_one_output(data, rule.send_to)
           if stop_after_match then
-            log('~!')
             return
           end
         end
       end
     elseif rule.if_type == 'missing' then
-      log('~~~', data[label], rule.if_type)
 			if data[label] == nil then
-        log('~')
         self:send_one_output(data, rule.send_to)
         if stop_after_match then
-          log('~!')
           return
         end
       end
     elseif rule.if_type == 'exists' then
-      log('~~~', data[label], rule.if_type)
       if data[label] ~= nil then
-        log('~')
         self:send_one_output(data, rule.send_to)
         if stop_after_match then
-          log('~!')
           return
         end
       end
