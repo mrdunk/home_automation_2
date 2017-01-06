@@ -1,49 +1,12 @@
 #include "html_primatives.h"
 
-const String javascript(){
-  return 
-         "  function save(label, nw_address) {\n"
-         "    console.log('save', label);\n"
-         "    var target = label.split('_')[0];\n"
-         "    if(target === 'device'){\n"
-         "      var device = label.split('_')[1];\n"
-         "      var topic = document.getElementsByClassName(label + '_topic')[0].value;\n"
-         "      var topics = topic.split('/');\n"
-         "      var iotype = document.getElementsByClassName(label + '_iotype')[0].value;\n"
-         "      var iopins = document.getElementsByClassName(label + '_iopins')[0].value;\n"
-         "      var url = 'http://' + window.location.host + '/configure/?device=' + device;\n"
-         "      url += '&iotype=' + iotype;\n"
-         "      url += '&iopins=' + iopins;\n"
-         "      for(var i = 0; i < topics.length; i++){\n"
-         "        url += '&address_segment=' + encodeURIComponent(topics[i]);\n"
-         "      }\n"
-         "      console.log(url);\n"
-         "      var xmlHttp = new XMLHttpRequest();\n"
-         "      xmlHttp.onreadystatechange = function() {\n"
-         "          if (xmlHttp.readyState == 4 && xmlHttp.status == 200){\n"
-         "            console.log('Successful GET');\n"
-         "            location.reload();\n"
-         "          }\n"
-         "      }\n"
-         "      xmlHttp.open(\"GET\", url);\n"
-         "      xmlHttp.send();\n"
-         "    }\n"
-         "  };\n"
-         "  function del(label) {\n"
-         "    console.log('delete', label);\n"
-         "    var target = label.split('_')[0];\n"
-         "    if(target === 'device'){\n"
-         "      document.getElementsByClassName(label + '_topic')[0].value = '';\n"
-         "    }\n"
-         "  };\n";
-}
 
-const String page(const String& style, const String& script,
+const String page(const char* style, const char* script,
                   const String& head, const String& body)
 {
   return "<!DOCTYPE html>\n"
-         "<html><head><style>" + style + "</style>" +
-         "<script>" + script + "</script>" +
+         "<html><head><style>" + String(style) + "</style>" +
+         "<script>" + String(script) + "</script>" +
          head + "</head>" +
          "<body>" + body + "</body>" +
          "</html>";
@@ -57,20 +20,6 @@ const String descriptionListItem(const String& key, const String& value){
   return "<dt>" + key + "</dt><dd>" + value + "</dd>";
 }
 
-const String style(){
-  return "dl {border: 3px double #ccc;}" 
-         "dt {float: left; width: 10em; font-weight: bold; background: darkgrey}" 
-         "dt:after {content: ':'; }" 
-         "dd {margin-bottom: 1px; margin-left: 0; background: darkgrey;}"
-         "table {border-spacing: 1px; border: 1px solid grey;}"
-         "tr {background: darkgrey; padding: 3px;}"
-         "th {border: 1px solid grey;}"
-         "td {border: 1px solid grey;}"
-         "input, [type=text] {width: 20em;}"
-         "input, [type=number] {width: 3em;}"
-         ".highlight {background: lightgreen;}"
-         ".div-shrink{display: inline;}";
-}
 
 const String textField(const String& name, const String& placeholder,
                        const String& value, const String& class_)

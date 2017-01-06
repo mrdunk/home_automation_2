@@ -6,7 +6,7 @@
 void Brokers::SendMDnsQuestion() {
   const unsigned int now = millis() / 1000;
   if (last_mdns_question_time > 0 and last_mdns_question_time + MDNS_QUESTION_INTERVAL > now) {
-    //return;
+    return;
   }
   last_mdns_question_time = now;
   Serial.print("Sending mDNS question at ");
@@ -176,10 +176,6 @@ void Brokers::ParseMDnsAnswer(const mdns::Answer* answer) {
 
           if(!exists){
             if(empty_slot >= 0){
-              Serial.print("Copying: ");
-              Serial.print(i);
-              Serial.print(" to: ");
-              Serial.println(empty_slot);
               brokers_[empty_slot].service_name = brokers_[i].service_name;
               brokers_[empty_slot].host_name = brokers_[i].host_name;
               brokers_[empty_slot].port = brokers_[i].port;
