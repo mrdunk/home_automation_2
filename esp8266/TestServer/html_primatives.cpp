@@ -63,8 +63,8 @@ const String outletType(const String& type, const String& class_name){
   String return_value = "<select class=\"" + class_name + "\">";
   return_value += option("test", type);
   return_value += option("onoff", type);
-  return_value += option("rgb", type);
   return_value += option("pwm", type);
+  return_value += option("input", type);
   return_value += "</select>";
   return return_value;
 }

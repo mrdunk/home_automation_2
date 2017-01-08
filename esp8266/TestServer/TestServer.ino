@@ -14,34 +14,32 @@
 
 
 // Increase this if any changes are made to "struct Config".
-#define CONFIG_VERSION "002"
+#define CONFIG_VERSION "004"
 
 // Maximum number of devices connected to IO pins.
 #define MAX_DEVICES 4
 
 // Maximum number of subscriptions to MQTT.
-#define MAX_SUBSCRIPTIONS 8
+#define MAX_SUBSCRIPTIONS 9
 
 // Length of name strings. (hostname, room names, lamp names, etc.)
-#define NAME_LEN 32
+#define NAME_LEN 16
 
 // Each device has an address in the form 'role/location1/location2/etc'
 // eg: 'lighting/kitchen/worktop/left'.
 #define ADDRESS_SEGMENTS 4
-#define ADDRESS_SEGMENT_LEN 32
-#define PREFIX_LEN 64
-
+#define PREFIX_LEN 32
 
 
 enum Io_Type {
   test,
-  rgb,
   pwm,
-  onoff
+  onoff,
+  input
 };
 
 typedef struct Address_Segment {
-  char segment[ADDRESS_SEGMENT_LEN];
+  char segment[NAME_LEN];
 } Address_Segment;
 
 typedef struct Connected_device {
@@ -156,7 +154,7 @@ void SetDevice(const unsigned int index, struct Connected_device& device) {
   }
 }
 
-String DeviceAddress(Connected_device& device) {
+String DeviceAddress(const Connected_device& device) {
   String return_value = "";
   for(int i = 0; i < ADDRESS_SEGMENTS; i++){
     if(strlen(device.address_segment[i].segment) > 0){
@@ -169,24 +167,6 @@ String DeviceAddress(Connected_device& device) {
     }
   }
   return return_value;
-}
-
-
-// IO
-void change_state(Connected_device& device, String command){
-  if(device.iotype == test || device.iotype == onoff){
-    Serial.print("Switching ");
-    Serial.println(command);
-    if(command == "on"){
-      device.io_value[0] = 1;
-      pinMode(device.iopins[0], OUTPUT);
-      digitalWrite(device.iopins[0], 1);
-    } else if(command == "off"){
-      device.io_value[0] = 0;
-      pinMode(device.iopins[0], OUTPUT);
-      digitalWrite(device.iopins[0], 0);
-    }
-  }
 }
 
 
@@ -208,15 +188,25 @@ int mqtt_subscription_count = 0;
 int mqtt_subscribed_count = 0;
 
 
-void parse_topic(char* topic, Address_Segment* address_segments){
-  int segment = -2;  // We don't care about the first 2 segments.
-  char* p_segment_start = topic;
+void parse_topic(const char* topic, Address_Segment* address_segments){
+  // We only care about the part of the topic without the prefix
+  // so check how many segments there are in config.subscribe_prefix
+  // so we can ignore that many segments later.
+  int i, segment = 0;
+  if(strlen(config.subscribe_prefix)){
+    for (i=0, segment=-1; config.subscribe_prefix[i]; i++){
+      segment -= (config.subscribe_prefix[i] == '/');
+    }
+  }
+
+  // Casting non-const here as we don't actually modify topic.
+  char* p_segment_start = (char*)topic;
   char* p_segment_end = strchr(topic, '/');
   while(p_segment_end != NULL){
     if(segment >= 0){
       int segment_len = p_segment_end - p_segment_start;
-      if(segment_len > ADDRESS_SEGMENT_LEN){
-        segment_len = ADDRESS_SEGMENT_LEN;
+      if(segment_len > NAME_LEN){
+        segment_len = NAME_LEN;
       }
       strncpy(address_segments[segment].segment, p_segment_start, segment_len);
       address_segments[segment].segment[segment_len] = '\0';
@@ -225,14 +215,14 @@ void parse_topic(char* topic, Address_Segment* address_segments){
     p_segment_end = strchr(p_segment_start, '/');
     segment++;
   }
-  strncpy(address_segments[segment++].segment, p_segment_start, ADDRESS_SEGMENT_LEN);
+  strncpy(address_segments[segment++].segment, p_segment_start, NAME_LEN);
   
   for(; segment < ADDRESS_SEGMENTS; segment++){
     address_segments[segment].segment[0] = '\0';
   }
 }
 
-bool compare_addresses(Address_Segment* address_1, Address_Segment* address_2){
+bool compare_addresses(const Address_Segment* address_1, const Address_Segment* address_2){
   if(strlen(address_2[0].segment) <= 0){
     return false;
   }
@@ -251,8 +241,7 @@ bool compare_addresses(Address_Segment* address_1, Address_Segment* address_2){
   return true;
 }
 
-String value_from_payload(byte* payload, unsigned int length, String key) {
-  key.trim();
+String value_from_payload(const byte* payload, const unsigned int length, const String key) {
   String buffer;
   int index = 0;
   for (int i = 0; i < length; i++) {
@@ -285,7 +274,7 @@ String value_from_payload(byte* payload, unsigned int length, String key) {
 }
 
 // Called whenever a MQTT topic we are subscribed to arrives.
-void mqtt_callback(char* topic, byte* payload, unsigned int length) {
+void mqtt_callback(const char* topic, const byte* payload, const unsigned int length) {
   Serial.print("Message arrived [");
   Serial.print(topic);
   Serial.print("] ");
@@ -299,8 +288,8 @@ void mqtt_callback(char* topic, byte* payload, unsigned int length) {
 
   String command = value_from_payload(payload, length, "_command");
 
-  if(strncmp(address_segments[0].segment, "hosts", ADDRESS_SEGMENT_LEN) == 0 ||
-      strncmp(address_segments[0].segment, "_all", ADDRESS_SEGMENT_LEN) == 0)
+  if(strncmp(address_segments[0].segment, "hosts", NAME_LEN) == 0 ||
+      strncmp(address_segments[0].segment, "_all", NAME_LEN) == 0)
   {
     if(command == "solicit"){
       Serial.println("Announce host.");
@@ -342,22 +331,19 @@ void mqtt_announce_host(){
   mqtt_client.publish(address_char, host);
 }
 
-void mqtt_announce(Connected_device& device){
-  char lamp[255];
-  String announce = "_subject : " + DeviceAddress(device);
-  announce += " , _state : ";
+void mqtt_announce(const Connected_device& device){
+  char target[255];
+  String announce = "_subject: " + DeviceAddress(device);
+  announce += ", _state: ";
   
-  if(device.iotype == test || device.iotype == onoff){
-    if(device.io_value[0] <= 0){
-      announce += "off";
-    } else {
-      announce += "on";
-    }
-  } else {
-    announce += "TODO";
+  if(device.iotype == onoff || device.iotype == pwm || device.iotype == test){
+    announce += String(device.io_value[0]);
+  } else if(device.iotype == input){
+    pinMode(device.iopins[0], INPUT_PULLUP);
+    announce += digitalRead(device.iopins[0]);
   }
   
-  announce.toCharArray(lamp, 255);
+  announce.toCharArray(target, 255);
   
   String address_string = config.publish_prefix;
   address_string += "/";
@@ -365,7 +351,7 @@ void mqtt_announce(Connected_device& device){
   address_string += "/_announce";
   char address_char[255];
   address_string.toCharArray(address_char, 255);
-  mqtt_client.publish(address_char, lamp);
+  mqtt_client.publish(address_char, target);
 }
 
 void queue_mqtt_subscription(const char* path){
@@ -466,6 +452,39 @@ void mqtt_connect() {
 }
 
 
+// IO
+void change_state(Connected_device& device, String command){
+  device.io_value[0] = command.toInt();
+  if(command == "on"){
+    device.io_value[0] = 255;
+  } else if(command == "off"){
+    device.io_value[0] = 0;
+  }
+  set_state(device);
+}
+
+void set_state(const Connected_device& device){
+  if(device.iotype == onoff){
+    pinMode(device.iopins[0], OUTPUT);
+    // If pin was previously set to Io_Type::pwm we need to switch off analogue output
+    // before using digital output.
+    analogWrite(device.iopins[0], 0);
+    
+    digitalWrite(device.iopins[0], device.io_value[0]);
+  } else if(device.iotype == pwm){
+    pinMode(device.iopins[0], OUTPUT);
+    analogWrite(device.iopins[0], device.io_value[0]);
+  } else if(device.iotype == test){
+    Serial.print("Switching pin: ");
+    Serial.print(device.iopins[0]);
+    Serial.print(" to value: ");
+    Serial.println(device.io_value[0]);
+  } else if(device.iotype == input){
+    mqtt_announce(device);
+  }
+}
+
+
 // HTTP
 ESP8266WebServer http_server(80);
 
@@ -482,7 +501,7 @@ void handleRoot() {
       textField("subscribeprefix", "subscribeprefix", config.subscribe_prefix,
         "subscribeprefix") +
       submit("Save", "save_subscribeprefix" , "save('subscribeprefix')"));
-  description_list += descriptionListItem("MQTT subscription prefix",
+  description_list += descriptionListItem("MQTT publish prefix",
       textField("publishprefix", "publishprefix", config.publish_prefix,
         "publishprefix") +
       submit("Save", "save_publishprefix" , "save('publishprefix')"));
@@ -501,34 +520,19 @@ void handleRoot() {
       cells += cell(config.subscribe_prefix + String("/") +
                     textField(name, "some/topic", DeviceAddress(config.devices[i]),
                     "device_" + String(i) + "_topic"));
-      if (config.devices[i].iotype == Io_Type::test) {
-        cells += cell(outletType("test", "device_" + String(i) + "_iotype"));
-        name = "pin_";
-        name += i;
-        cells += cell(ioPin(String(config.devices[i].iopins[0]),
-                      "device_" + String(i) + "_iopins"));
-      } else if (config.devices[i].iotype == Io_Type::rgb) {
-        cells += cell(outletType("rgb", "device_" + String(i) + "_iotype"));
-        String pins = "";
-        pins += String(config.devices[i].iopins[0]);
-        pins += ",";
-        pins += String(config.devices[i].iopins[0]);
-        pins += ",";
-        pins += String(config.devices[i].iopins[0]);
-        cells += cell(pins);
-      } else if (config.devices[i].iotype == Io_Type::pwm) {
+      if (config.devices[i].iotype == Io_Type::pwm) {
         cells += cell(outletType("pwm", "device_" + String(i) + "_iotype"));
-        name = "pin_";
-        name += i;
-        cells += cell(ioPin(String(config.devices[i].iopins[0]),
-                      "device_" + String(i) + "_iopins"));
       } else if (config.devices[i].iotype == Io_Type::onoff) {
         cells += cell(outletType("onoff", "device_" + String(i) + "_iotype"));
-        name = "pin_";
-        name += i;
-        cells += cell(ioPin(String(config.devices[i].iopins[0]),
-                      "device_" + String(i) + "_iopins"));
+      } else if (config.devices[i].iotype == Io_Type::input) {
+        cells += cell(outletType("input", "device_" + String(i) + "_iotype"));
+      } else {
+        cells += cell(outletType("test", "device_" + String(i) + "_iotype"));
       }
+      name = "pin_";
+      name += i;
+      cells += cell(ioPin(String(config.devices[i].iopins[0]),
+            "device_" + String(i) + "_iopins"));
       cells += cell(submit("Save", "save_" + String(i), "save('device_" + String(i) +"')"));
       cells += cell(submit("Delete", "del_" + String(i), "del('device_" + String(i) +"')"));
       rows += row(cells, "device_" + String(i));
@@ -574,7 +578,6 @@ void handleRoot() {
 }
 
 void handleConfig() {
-  Serial.println("handleConfig()");
   const unsigned int now = millis() / 1000;
 
   String message = "";
@@ -613,7 +616,7 @@ void handleConfig() {
     for(int i = 0; i < http_server.args(); i++){
       if(http_server.argName(i) == "address_segment" && segment_counter < ADDRESS_SEGMENTS){
         http_server.arg(i).toCharArray(device.address_segment[segment_counter].segment,
-                                       ADDRESS_SEGMENT_LEN);
+                                       NAME_LEN);
         sanitizeTopicSection(device.address_segment[segment_counter].segment);
         segment_counter++;
       }
@@ -622,14 +625,14 @@ void handleConfig() {
       device.address_segment[segment_counter++].segment[0] = '\0';
     }
 
-    if (http_server.arg("iotype") == "test") {
-      device.iotype = Io_Type::test;
-    } else if (http_server.arg("iotype") == "rgb") {
-      device.iotype = Io_Type::rgb;
-    } else if (http_server.arg("iotype") == "pwm") {
+    if (http_server.arg("iotype") == "pwm") {
       device.iotype = Io_Type::pwm;
     } else if (http_server.arg("iotype") == "onoff") {
       device.iotype = Io_Type::onoff;
+    } else if (http_server.arg("iotype") == "input") {
+      device.iotype = Io_Type::input;
+    } else {
+      device.iotype = Io_Type::test;
     }
 
     // strtok() is broken in esp8266 Arduino so we must parse by hand.
@@ -672,7 +675,6 @@ void handleConfig() {
   Serial.println(message);
 
   http_server.send(200, "text/plain", message);
-  Serial.println("handleConfig() -");
 }
 
 void handleNotFound() {
@@ -712,7 +714,7 @@ void setup_network(void) {
   http_server.begin();
   Serial.println("HTTP server started");
 
-  brokers.RegisterMDns(my_mdns);
+  brokers.RegisterMDns(&my_mdns);
 }
 
 void setup(void) {

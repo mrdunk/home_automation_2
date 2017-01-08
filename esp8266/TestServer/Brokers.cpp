@@ -1,6 +1,4 @@
-#include <mdns.h>
 #include "Brokers.h"
-#include "ipv4_helpers.h"
 
 
 void Brokers::SendMDnsQuestion() {
@@ -12,14 +10,14 @@ void Brokers::SendMDnsQuestion() {
   Serial.print("Sending mDNS question at ");
   Serial.println(now);
 
-  mdns_.Clear();
+  mdns_->Clear();
   struct mdns::Query query_mqtt;
   service_type_.toCharArray(query_mqtt.qname_buffer, MAX_MDNS_NAME_LEN);
   query_mqtt.qtype = MDNS_TYPE_PTR;
   query_mqtt.qclass = 1;    // "INternet"
   query_mqtt.unicast_response = 0;
-  mdns_.AddQuery(query_mqtt);
-  mdns_.Send();
+  mdns_->AddQuery(query_mqtt);
+  mdns_->Send();
 }
 
 void Brokers::ParseMDnsAnswer(const mdns::Answer* answer) {
@@ -30,7 +28,6 @@ void Brokers::ParseMDnsAnswer(const mdns::Answer* answer) {
     if ((brokers_[i].service_valid_until < now and brokers_[i].service_valid_until > 0) or 
         (brokers_[i].host_valid_until < now and brokers_[i].host_valid_until > 0))
     {
-    //if ((brokers_[i].service_valid_until < now) or (brokers_[i].host_valid_until < now)){
       brokers_[i].service_name = "";
       brokers_[i].host_name = "";
       brokers_[i].port = 0;

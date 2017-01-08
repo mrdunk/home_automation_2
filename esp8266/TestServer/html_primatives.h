@@ -47,6 +47,7 @@ function del(label) {
   var target = label.split('_')[0];
   if(target === 'device'){
     document.getElementsByClassName(label + '_topic')[0].value = '';
+    save(label);
   }
 };
 )=====";
