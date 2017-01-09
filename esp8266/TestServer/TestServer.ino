@@ -1,9 +1,9 @@
 #include <ESP8266WiFi.h>
 #include <WiFiClient.h>
 #include <ESP8266WebServer.h>
-#include <PubSubClient.h>
 #include <EEPROM.h>
-#include <mdns.h>
+#include <PubSubClient.h>      // Include "PubSubClient" library.
+#include <mdns.h>              // Include "esp8266_mdns" library.
 
 #include "ipv4_helpers.h"
 #include "secrets.h"
@@ -27,7 +27,12 @@
 
 // Each device has an address in the form 'role/location1/location2/etc'
 // eg: 'lighting/kitchen/worktop/left'.
+// These map to the second half of the MQTT topic.
 #define ADDRESS_SEGMENTS 4
+
+// MQTT topics will start with a prefix.
+// eg: in the topic 'homeautomation/0/lighting/kitchen/worktop/left',
+//     'homeautomation/0' maps to the prefix.
 #define PREFIX_LEN 32
 
 
@@ -742,7 +747,9 @@ void loop(void) {
     setup_network();
   }
 
-  my_mdns.Check();
+  if(!my_mdns.Check()){
+    //Serial.println("mDNS error.");
+  }
 
   if (!mqtt_client.connected()) {
     if(mqtt_connected){

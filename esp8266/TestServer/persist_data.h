@@ -1,6 +1,8 @@
 #ifndef ESP8266__PERSIST_DATA__H
 #define ESP8266__PERSIST_DATA__H
 
+#include "Arduino.h"
+#include <EEPROM.h>
 
 namespace Persist_Data {
 
