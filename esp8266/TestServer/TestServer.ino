@@ -13,16 +13,21 @@
 #include "html_primatives.h"
 
 
-// Increase this if any changes are made to "struct Config".
-#define CONFIG_VERSION "004"
+// Maximum size of an incoming mDNS packet. Make this as big as free RAM allows.
+#define MAX_MDNS_PACKET_SIZE 512
+
+// Increase this if any changes are made to "struct Config" or you need to reset
+// config to default values.
+#define CONFIG_VERSION "006"
 
 // Maximum number of devices connected to IO pins.
 #define MAX_DEVICES 4
 
 // Maximum number of subscriptions to MQTT.
-#define MAX_SUBSCRIPTIONS 9
+#define MAX_SUBSCRIPTIONS 10
 
 // Length of name strings. (hostname, room names, lamp names, etc.)
+#define HOSTNAME_LEN 32
 #define NAME_LEN 16
 
 // Each device has an address in the form 'role/location1/location2/etc'
@@ -35,6 +40,11 @@
 //     'homeautomation/0' maps to the prefix.
 #define PREFIX_LEN 32
 
+// IO Pin that will enable configuration web page.
+#define CONFIGURE_PIN 0
+
+// Maximum length of a MQTT topic.
+#define MAX_TOPIC_LENGTH  (PREFIX_LEN + ((NAME_LEN +1) * ADDRESS_SEGMENTS) +1)
 
 enum Io_Type {
   test,
@@ -55,7 +65,7 @@ typedef struct Connected_device {
 } Connected_device;
 
 struct Config {
-  char hostname[NAME_LEN];
+  char hostname[HOSTNAME_LEN];
   char subscribe_prefix[PREFIX_LEN];
   char publish_prefix[PREFIX_LEN];
   Connected_device devices[MAX_DEVICES];
@@ -64,7 +74,7 @@ struct Config {
   char config_version[4];
   // TODO: add WFI ssid and password.
 } config = {
-  "esp8266",
+  "",
   "homeautomation/+",
   "homeautomation/0",
   {},
@@ -74,6 +84,7 @@ struct Config {
 };
 
 String mac_address;
+bool allow_config = false;
 
 
 // Configuration
@@ -119,7 +130,13 @@ void sanitizeTopicSection(char* buffer){
 
 void sanitizeTopic(char* buffer){
   bool wildcard_found = false;
-  for(int i=0; i < strlen(buffer);i++){
+  
+  // Remove any trailing "/".
+  if(buffer[strlen(buffer) -1] == '/'){
+    buffer[strlen(buffer) -1] = '\0';
+  }
+
+  for(int i=0; i < strlen(buffer); i++){
     if(buffer[i] == '/' && i > 0 && i < strlen(buffer) -1){
       // Section seperator is fine as long as it's not the first or last character
     } else if(buffer[i] >= 'A' && buffer[i] <= 'Z'){
@@ -139,18 +156,15 @@ void sanitizeTopic(char* buffer){
 }
 
 void SetHostname(const char* new_hostname) {
-  strncpy(config.hostname, new_hostname, NAME_LEN -1);
-  config.hostname[NAME_LEN -1] = '\0';
+  strncpy(config.hostname, new_hostname, HOSTNAME_LEN -1);
+  config.hostname[HOSTNAME_LEN -1] = '\0';
   sanitizeHostname(config.hostname);
 }
 
 void SetPrefix(const char* new_prefix, char* dest_buffer) {
-  Serial.println(dest_buffer);
-  Serial.println(new_prefix);
   strncpy(dest_buffer, new_prefix, PREFIX_LEN -1);
   dest_buffer[PREFIX_LEN -1] = '\0';
   sanitizeTopic(dest_buffer);
-  Serial.println(dest_buffer);
 }
 
 void SetDevice(const unsigned int index, struct Connected_device& device) {
@@ -179,16 +193,17 @@ String DeviceAddress(const Connected_device& device) {
 Brokers brokers(QUESTION_SERVICE);
 
 void answerCallback(const mdns::Answer* answer) {
+  //answer->Display();
   brokers.ParseMDnsAnswer(answer);
 }
-mdns::MDns my_mdns(NULL, NULL, answerCallback);
+mdns::MDns my_mdns(NULL, NULL, answerCallback, MAX_MDNS_PACKET_SIZE);
 
 
 // MQTT
 
 WiFiClient espClient;
 PubSubClient mqtt_client(espClient);
-char mqtt_subscriptions[255 * (MAX_SUBSCRIPTIONS +1)];
+char mqtt_subscriptions[MAX_TOPIC_LENGTH * MAX_SUBSCRIPTIONS];
 int mqtt_subscription_count = 0;
 int mqtt_subscribed_count = 0;
 
@@ -297,50 +312,49 @@ void mqtt_callback(const char* topic, const byte* payload, const unsigned int le
       strncmp(address_segments[0].segment, "_all", NAME_LEN) == 0)
   {
     if(command == "solicit"){
-      Serial.println("Announce host.");
+      //Serial.println("Announce host.");
       mqtt_announce_host();
     }
   }
 
   for (int i = 0; i < MAX_DEVICES; ++i) {
       if(compare_addresses(address_segments, config.devices[i].address_segment)){
-          Serial.print("Matches: ");
-          Serial.println(i);
+          //Serial.print("Matches: ");
+          //Serial.println(i);
 
-          if(command == "solicit"){
+          if(command == ""){
+            // pass
+          } else if(command == "solicit"){
             mqtt_announce(config.devices[i]);
           } else {
             change_state(config.devices[i], command);
           }          
       }
   }
-  Serial.println();
 }
 
 void mqtt_announce_host(){
-  char host[512];
   String parsed_mac = mac_address;
   parsed_mac.replace(":", "_");
-  String announce = "_subject : ";
+  String announce = "_subject:";
   announce += parsed_mac;
-  announce += ", _hostname : ";
+  announce += ", _hostname:";
   announce += config.hostname;
-  announce += ", _ip : ";
+  announce += ", _ip:";
   announce += ip_to_string(WiFi.localIP());
+  char host[60 + HOSTNAME_LEN];  // eg: "_subject:AA_BB_CC_DD_EE_FF, _hostname:somehost, ip:123.123.123.123"
+  announce.toCharArray(host, 60 + HOSTNAME_LEN);
 
-  announce.toCharArray(host, 512);
   String address_string = config.publish_prefix;
   address_string += "/hosts/_announce";
-  char address_char[255];
-  address_string.toCharArray(address_char, 255);
+  char address_char[PREFIX_LEN + 17];  // eg: "pre/fix/hosts/_announce"
+  address_string.toCharArray(address_char, PREFIX_LEN + 17);
+
   mqtt_client.publish(address_char, host);
 }
 
 void mqtt_announce(const Connected_device& device){
-  char target[255];
-  String announce = "_subject: " + DeviceAddress(device);
-  announce += ", _state: ";
-  
+  String announce = "_state:";
   if(device.iotype == onoff || device.iotype == pwm || device.iotype == test){
     announce += String(device.io_value[0]);
   } else if(device.iotype == input){
@@ -348,28 +362,29 @@ void mqtt_announce(const Connected_device& device){
     announce += digitalRead(device.iopins[0]);
   }
   
-  announce.toCharArray(target, 255);
+  char target[11];
+  announce.toCharArray(target, 11);
   
   String address_string = config.publish_prefix;
   address_string += "/";
-  address_string += device.address_segment[0].segment;
-  address_string += "/_announce";
-  char address_char[255];
-  address_string.toCharArray(address_char, 255);
+  address_string += DeviceAddress(device);
+  char address_char[MAX_TOPIC_LENGTH];
+  address_string.toCharArray(address_char, MAX_TOPIC_LENGTH);
+
   mqtt_client.publish(address_char, target);
 }
 
 void queue_mqtt_subscription(const char* path){
   for(int i = 0; i < mqtt_subscription_count; i++){
-    if(strncmp(&mqtt_subscriptions[i * 255], path, 255) == 0){
+    if(strncmp(&mqtt_subscriptions[i * MAX_TOPIC_LENGTH], path, MAX_TOPIC_LENGTH) == 0){
       return;
     }
   }
-  if(mqtt_subscription_count <= MAX_SUBSCRIPTIONS){
+  if(mqtt_subscription_count < MAX_SUBSCRIPTIONS){
     Serial.print(mqtt_subscription_count);
     Serial.print(" ");
     Serial.println(path);
-    strncpy(&mqtt_subscriptions[mqtt_subscription_count * 255], path, 255);
+    strncpy(&mqtt_subscriptions[mqtt_subscription_count * MAX_TOPIC_LENGTH], path, MAX_TOPIC_LENGTH -1);
     mqtt_subscription_count++;
   } else {
     Serial.println("Error. Too many subscriptions.");
@@ -380,15 +395,15 @@ void queue_mqtt_subscription(const char* path){
 void mqtt_subscribe_one(){
   if(mqtt_subscription_count > mqtt_subscribed_count){
     Serial.print("* ");
-    Serial.println(&mqtt_subscriptions[mqtt_subscribed_count * 255]);
-    mqtt_client.subscribe(&mqtt_subscriptions[mqtt_subscribed_count * 255]);
+    Serial.println(&mqtt_subscriptions[mqtt_subscribed_count * MAX_TOPIC_LENGTH]);
+    mqtt_client.subscribe(&mqtt_subscriptions[mqtt_subscribed_count * MAX_TOPIC_LENGTH]);
     mqtt_subscribed_count++;
   }
 }
 
 void mqtt_clear_buffers(){
   for(int i = 0; i < MAX_SUBSCRIPTIONS; i++){
-    mqtt_subscriptions[i * 255] = '\0';
+    mqtt_subscriptions[i * MAX_TOPIC_LENGTH] = '\0';
   }
   mqtt_subscription_count = 0;
   mqtt_subscribed_count = 0;
@@ -409,38 +424,37 @@ void mqtt_connect() {
       mqtt_clear_buffers();
     }
 
-    char lamp[255];
-    char address[255];
+    char address[MAX_TOPIC_LENGTH];
    
-    strncpy(address, config.subscribe_prefix, 254);
-    strncat(address, "/_all/_all", 254 - strlen(address));
+    strncpy(address, config.subscribe_prefix, MAX_TOPIC_LENGTH -1);
+    strncat(address, "/_all/_all", MAX_TOPIC_LENGTH -1 -strlen(address));
     queue_mqtt_subscription(address);
     
-    strncpy(address, config.subscribe_prefix, 254);
-    strncat(address, "/hosts/_all", 254 - strlen(address));
+    strncpy(address, config.subscribe_prefix, MAX_TOPIC_LENGTH -1);
+    strncat(address, "/hosts/_all", MAX_TOPIC_LENGTH -1 - strlen(address));
     queue_mqtt_subscription(address);
 
-    strncpy(address, config.subscribe_prefix, 254);
-    strncat(address, "/hosts/", 254 - strlen(address));
-    strncat(address, config.hostname, 254 - strlen(address));
+    strncpy(address, config.subscribe_prefix, MAX_TOPIC_LENGTH -1);
+    strncat(address, "/hosts/", MAX_TOPIC_LENGTH -1 - strlen(address));
+    strncat(address, config.hostname, MAX_TOPIC_LENGTH -1 - strlen(address));
     queue_mqtt_subscription(address);
 
     for (int i = 0; i < MAX_DEVICES; ++i) {
       if (strlen(config.devices[i].address_segment[0].segment) > 0) {
         mqtt_announce(config.devices[i]);
 
-        strncpy(address, config.subscribe_prefix, 254);
-        strncat(address, "/_all", 254 - strlen(address));
+        strncpy(address, config.subscribe_prefix, MAX_TOPIC_LENGTH -1);
+        strncat(address, "/_all", MAX_TOPIC_LENGTH -1 - strlen(address));
 
         for(int j = 0; j < ADDRESS_SEGMENTS; j++){
           if(strlen(config.devices[i].address_segment[j].segment) <= 0) {
             break;
           }
           address[strlen(address) -4] = '\0';
-          strncat(address, config.devices[i].address_segment[j].segment, 254 - strlen(address));
+          strncat(address, config.devices[i].address_segment[j].segment, MAX_TOPIC_LENGTH -1 - strlen(address));
           if (j < (ADDRESS_SEGMENTS -1) &&
               strlen(config.devices[i].address_segment[j +1].segment) > 0) {
-            strncat(address, "/_all", 254 - strlen(address));
+            strncat(address, "/_all", MAX_TOPIC_LENGTH -1 - strlen(address));
           }
           queue_mqtt_subscription(address);
         }
@@ -449,7 +463,7 @@ void mqtt_connect() {
   }
   brokers.RateBroker(mqtt_client.connected());
   if (mqtt_client.connected()) {
-    Serial.print("MQTT connected. Server: ");
+    Serial.print("MQTT connected to: ");
     Serial.println(broker.address);
   }
   
@@ -458,11 +472,56 @@ void mqtt_connect() {
 
 
 // IO
+bool to_service_input = false;
+void inputCallback(){
+  //Serial.println("inputCallback()");
+  to_service_input = true;
+}
+
+void inputSerice(){
+  if(!to_service_input){
+    return;
+  }
+  //Serial.println("inputSerice()");
+  to_service_input = false;
+  for(int i=0; i < MAX_DEVICES; i++){
+    if(config.devices[i].iotype == input){
+      byte value = digitalRead(config.devices[i].iopins[0]);
+      if(value != config.devices[i].io_value[0]){
+        config.devices[i].io_value[0] = value;
+        Serial.print("## ");
+        Serial.println(value);
+        mqtt_announce(config.devices[i]);
+
+        if(i == CONFIGURE_PIN){
+          configInterrupt();
+        }
+      }
+    }
+  }
+}
+
+void setupIo(){
+  for(int i=0; i < MAX_DEVICES; i++){
+    if(config.devices[i].iotype == input){
+      Serial.println("input");
+      config.devices[i].io_value[0] = 1;
+      pinMode(config.devices[i].iopins[0], INPUT_PULLUP);
+      attachInterrupt(digitalPinToInterrupt(config.devices[i].iopins[0]), inputCallback, CHANGE);
+    } else if (config.devices[i].io_value[0] > 255 || config.devices[i].io_value[0] < 0) {
+      config.devices[i].io_value[0] = 0;
+    }
+  }
+}
+
 void change_state(Connected_device& device, String command){
+  command.toLowerCase();
   device.io_value[0] = command.toInt();
-  if(command == "on"){
+  if(command == "on" || command == "true"){
     device.io_value[0] = 255;
-  } else if(command == "off"){
+  } else if(command == "off" || command == "false"){
+    device.io_value[0] = 0;
+  } else if (device.io_value[0] > 255 || device.io_value[0] < 0) {
     device.io_value[0] = 0;
   }
   set_state(device);
@@ -485,8 +544,8 @@ void set_state(const Connected_device& device){
     Serial.print(" to value: ");
     Serial.println(device.io_value[0]);
   } else if(device.iotype == input){
-    mqtt_announce(device);
   }
+	mqtt_announce(device);
 }
 
 
@@ -496,75 +555,26 @@ ESP8266WebServer http_server(80);
 void handleRoot() {
   Serial.println("handleRoot()");
   String message = "";
-
-  String description_list = "";
-  description_list += descriptionListItem("mac_address", mac_address);
-  description_list += descriptionListItem("hostname", 
-      textField("hostname", "hostname", config.hostname, "hostname") +
-      submit("Save", "save_hostname" , "save('hostname')"));
-  description_list += descriptionListItem("MQTT subscription prefix",
-      textField("subscribeprefix", "subscribeprefix", config.subscribe_prefix,
-        "subscribeprefix") +
-      submit("Save", "save_subscribeprefix" , "save('subscribeprefix')"));
-  description_list += descriptionListItem("MQTT publish prefix",
-      textField("publishprefix", "publishprefix", config.publish_prefix,
-        "publishprefix") +
-      submit("Save", "save_publishprefix" , "save('publishprefix')"));
+  String description_list ="";
+  description_list += descriptionListItem("MAC address", mac_address);
+  description_list += descriptionListItem("Hostname", config.hostname);
   description_list += descriptionListItem("IP address", String(ip_to_string(WiFi.localIP())));
+  description_list += descriptionListItem("&nbsp", "&nbsp");
 
-  message = descriptionList(description_list);
-
-  String rows = row(header("index") + header("Topic") + header("type") + 
-                    header("IO pin") + header("") + header(""), "");
-  int empty_device = -1;
-  for (int i = 0; i < MAX_DEVICES; ++i) {
-    if (strlen(config.devices[i].address_segment[0].segment) > 0) {
-      String cells = cell(String(i));
-      String name = "topic_";
-      name += i;
-      cells += cell(config.subscribe_prefix + String("/") +
-                    textField(name, "some/topic", DeviceAddress(config.devices[i]),
-                    "device_" + String(i) + "_topic"));
-      if (config.devices[i].iotype == Io_Type::pwm) {
-        cells += cell(outletType("pwm", "device_" + String(i) + "_iotype"));
-      } else if (config.devices[i].iotype == Io_Type::onoff) {
-        cells += cell(outletType("onoff", "device_" + String(i) + "_iotype"));
-      } else if (config.devices[i].iotype == Io_Type::input) {
-        cells += cell(outletType("input", "device_" + String(i) + "_iotype"));
-      } else {
-        cells += cell(outletType("test", "device_" + String(i) + "_iotype"));
-      }
-      name = "pin_";
-      name += i;
-      cells += cell(ioPin(String(config.devices[i].iopins[0]),
-            "device_" + String(i) + "_iopins"));
-      cells += cell(submit("Save", "save_" + String(i), "save('device_" + String(i) +"')"));
-      cells += cell(submit("Delete", "del_" + String(i), "del('device_" + String(i) +"')"));
-      rows += row(cells, "device_" + String(i));
-    } else if (empty_device < 0){
-      empty_device = i;
-    }
+  description_list += descriptionListItem("WiFI RSSI", String(WiFi.RSSI()));
+  // WiFi.BSSID() does not appear to work as expected.
+  // MAC Address changes between a few set values. Possibly the addresses of other APs in range?
+  //byte bssid[6];
+  //WiFi.BSSID(*bssid);
+  //description_list += descriptionListItem("Router MAC address", macToStr(bssid));
+  byte numSsid = WiFi.scanNetworks();
+  for (int thisNet = 0; thisNet<numSsid; thisNet++) {
+    description_list += descriptionListItem("WiFi SSID", WiFi.SSID(thisNet) +
+        "&nbsp&nbsp&nbsp(" + String(WiFi.RSSI(thisNet)) + ")");
   }
-  if (empty_device >= 0){
-    // An empty slot for new device.
-    String cells = cell(String(empty_device));
-    String name = "address_";
-    name += empty_device;
-    cells += cell(config.subscribe_prefix + String("/") +
-                  textField(name, "new/topic", "", "device_" + String(empty_device) + "_topic"));
-    cells += cell(outletType("onoff", "device_" + String(empty_device) + "_iotype"));
-    name = "pin_";
-    name += empty_device;
-    cells += cell(ioPin("", "device_" + String(empty_device) + "_iopins"));
-    cells += cell(submit("Save", "save_" + String(empty_device),
-                  "save('device_" + String(empty_device) + "')"));
-    cells += cell("");
-    rows += row(cells, "device_" + String(empty_device));
-  }
-  message += table(rows);
+  description_list += descriptionListItem("&nbsp", "&nbsp");
 
-  description_list ="";
-  /*description_list += descriptionListItem("CPU frequency", String(ESP.getCpuFreqMHz()));
+  description_list += descriptionListItem("CPU frequency", String(ESP.getCpuFreqMHz()));
   description_list += descriptionListItem("Flash size", String(ESP.getFlashChipSize()));
   description_list += descriptionListItem("Flash space",
       String(int(100 * ESP.getFreeSketchSpace() / ESP.getFlashChipSize())) + "%");
@@ -573,9 +583,26 @@ void handleRoot() {
   description_list += descriptionListItem("SDK version", ESP.getSdkVersion());
   description_list += descriptionListItem("Core version", ESP.getCoreVersion());
   description_list += descriptionListItem("Config version", config.config_version);
+  description_list += descriptionListItem("&nbsp", "&nbsp");
   description_list += descriptionListItem("Analogue in", String(analogRead(A0)));
-  description_list += descriptionListItem("System clock", String(millis() / 1000));*/
+  description_list += descriptionListItem("System clock", String(millis() / 1000));
+  description_list += descriptionListItem("&nbsp", "&nbsp");
+  
   description_list += descriptionListItem("Brokers", brokers.Summary());
+ 
+#ifdef DEBUG_STATISTICS
+  if(my_mdns.packet_count != 0){
+    description_list += descriptionListItem("&nbsp", "&nbsp");
+    description_list += descriptionListItem("mDNS decode success rate",
+        String(my_mdns.packet_count - my_mdns.buffer_size_fail) + " / " + 
+        String(my_mdns.packet_count) + "&nbsp&nbsp&nbsp" +
+        String(100 - (100 * my_mdns.buffer_size_fail / my_mdns.packet_count)) + "%");
+    description_list += descriptionListItem("Largest mDNS packet size",
+        String(my_mdns.largest_packet_seen) + " / " + 
+        String(MAX_MDNS_PACKET_SIZE) + " bytes");
+  }
+#endif
+
   message += descriptionList(description_list);
   
   http_server.send(200, "text/html", page(style, javascript, "", message));
@@ -583,6 +610,98 @@ void handleRoot() {
 }
 
 void handleConfig() {
+  Serial.println("handleConfig()");
+  String message = "";
+  
+  if(allow_config){
+    String description_list = "";
+    description_list += descriptionListItem("mac_address", mac_address);
+    description_list += descriptionListItem("hostname", 
+        textField("hostname", "hostname", config.hostname, "hostname") +
+        submit("Save", "save_hostname" , "save('hostname')"));
+    description_list += descriptionListItem("MQTT subscription prefix",
+        textField("subscribeprefix", "subscribeprefix", config.subscribe_prefix,
+          "subscribeprefix") +
+        submit("Save", "save_subscribeprefix" , "save('subscribeprefix')"));
+    description_list += descriptionListItem("MQTT publish prefix",
+        textField("publishprefix", "publishprefix", config.publish_prefix,
+          "publishprefix") +
+        submit("Save", "save_publishprefix" , "save('publishprefix')"));
+    description_list += descriptionListItem("IP address", String(ip_to_string(WiFi.localIP())));
+
+    message = descriptionList(description_list);
+
+    String rows = row(header("index") + header("Topic") + header("type") + 
+        header("IO pin") + header("") + header(""), "");
+    int empty_device = -1;
+    for (int i = 0; i < MAX_DEVICES; ++i) {
+      if (strlen(config.devices[i].address_segment[0].segment) > 0) {
+        String cells = cell(String(i));
+        String name = "topic_";
+        name += i;
+        cells += cell(config.subscribe_prefix + String("/") +
+            textField(name, "some/topic", DeviceAddress(config.devices[i]),
+              "device_" + String(i) + "_topic"));
+        if (config.devices[i].iotype == Io_Type::pwm) {
+          cells += cell(outletType("pwm", "device_" + String(i) + "_iotype"));
+        } else if (config.devices[i].iotype == Io_Type::onoff) {
+          cells += cell(outletType("onoff", "device_" + String(i) + "_iotype"));
+        } else if (config.devices[i].iotype == Io_Type::input) {
+          cells += cell(outletType("input", "device_" + String(i) + "_iotype"));
+        } else {
+          cells += cell(outletType("test", "device_" + String(i) + "_iotype"));
+        }
+        name = "pin_";
+        name += i;
+        cells += cell(ioPin(String(config.devices[i].iopins[0]),
+              "device_" + String(i) + "_iopins"));
+        cells += cell(submit("Save", "save_" + String(i), "save('device_" + String(i) +"')"));
+        cells += cell(submit("Delete", "del_" + String(i), "del('device_" + String(i) +"')"));
+        rows += row(cells, "device_" + String(i));
+      } else if (empty_device < 0){
+        empty_device = i;
+      }
+    }
+    if (empty_device >= 0){
+      // An empty slot for new device.
+      String cells = cell(String(empty_device));
+      String name = "address_";
+      name += empty_device;
+      cells += cell(config.subscribe_prefix + String("/") +
+          textField(name, "new/topic", "", "device_" + String(empty_device) + "_topic"));
+      cells += cell(outletType("onoff", "device_" + String(empty_device) + "_iotype"));
+      name = "pin_";
+      name += empty_device;
+      cells += cell(ioPin("", "device_" + String(empty_device) + "_iopins"));
+      cells += cell(submit("Save", "save_" + String(empty_device),
+            "save('device_" + String(empty_device) + "')"));
+      cells += cell("");
+      rows += row(cells, "device_" + String(empty_device));
+    }
+    message += table(rows);
+
+    description_list ="";
+    description_list += descriptionListItem("Brokers", brokers.Summary());
+    message += descriptionList(description_list);
+  } else {
+    Serial.println("Not allowed to handleConfig()");
+    message += "Configuration mode not enabled.\nPress button connected to IO ";
+    message += String(CONFIGURE_PIN);
+    message += " and reload.";
+  }
+  
+  http_server.send(200, "text/html", page(style, javascript, "", message));
+  Serial.println("handleConfig() -");
+}
+
+void handleSet() {
+  Serial.println("handleSet() +");
+  if(!allow_config){
+    Serial.println("Not allowed to handleSet()");
+    http_server.send(200, "text/html", "Not allowed to handleSet()");
+    return;
+  }
+
   const unsigned int now = millis() / 1000;
 
   String message = "";
@@ -592,24 +711,27 @@ void handleConfig() {
     message += '\t';
     message += http_server.arg(i);
     message += '\n';
+    Serial.print(http_server.argName(i));
+    Serial.print("\t");
+    Serial.println(http_server.arg(i));
   }
   message += '\n';
 
   if (http_server.hasArg("test_arg")) {
     message += "test_arg: " + http_server.arg("test_arg") + "\n";
   } else if (http_server.hasArg("hostname")) {
-    char tmp_buffer[NAME_LEN];
-    http_server.arg("hostname").toCharArray(tmp_buffer, NAME_LEN);
+    char tmp_buffer[HOSTNAME_LEN];
+    http_server.arg("hostname").toCharArray(tmp_buffer, HOSTNAME_LEN);
     SetHostname(tmp_buffer);
     message += "hostname: " + http_server.arg("hostname") + "\n";
   } else if (http_server.hasArg("publishprefix")) {
-    char tmp_buffer[NAME_LEN];
-    http_server.arg("publishprefix").toCharArray(tmp_buffer, NAME_LEN);
+    char tmp_buffer[PREFIX_LEN];
+    http_server.arg("publishprefix").toCharArray(tmp_buffer, PREFIX_LEN);
     SetPrefix(tmp_buffer, config.publish_prefix);
     message += "publishprefix: " + http_server.arg("publishprefix") + "\n";
   } else if (http_server.hasArg("subscribeprefix")) {
-    char tmp_buffer[NAME_LEN];
-    http_server.arg("subscribeprefix").toCharArray(tmp_buffer, NAME_LEN);
+    char tmp_buffer[PREFIX_LEN];
+    http_server.arg("subscribeprefix").toCharArray(tmp_buffer, PREFIX_LEN);
     SetPrefix(tmp_buffer, config.subscribe_prefix);
     message += "subscribeprefix: " + http_server.arg("subscribeprefix") + "\n";
   } else if (http_server.hasArg("device") and http_server.hasArg("address_segment") and
@@ -672,6 +794,7 @@ void handleConfig() {
 
     // Force reconnect to MQTT so we subscribe to any new addresses.
     mqtt_client.disconnect();
+    setupIo();
   }
   
   Persist_Data::Persistent<Config> persist_config(CONFIG_VERSION, &config);
@@ -680,6 +803,7 @@ void handleConfig() {
   Serial.println(message);
 
   http_server.send(200, "text/plain", message);
+  Serial.println("handleSet() -");
 }
 
 void handleNotFound() {
@@ -711,15 +835,21 @@ void setup_network(void) {
   Serial.print("IP address: ");
   Serial.println(WiFi.localIP());
 
-
   http_server.on("/", handleRoot);
+  http_server.on("/configure", handleConfig);
   http_server.on("/configure/", handleConfig);
+  http_server.on("/set/", handleSet);
   http_server.onNotFound(handleNotFound);
 
   http_server.begin();
   Serial.println("HTTP server started");
 
   brokers.RegisterMDns(&my_mdns);
+}
+
+void configInterrupt(){
+  Serial.println("configInterrupt");
+  allow_config = true;
 }
 
 void setup(void) {
@@ -736,9 +866,24 @@ void setup(void) {
   uint8_t mac[6];
   WiFi.macAddress(mac);
   mac_address = macToStr(mac);
+
+  if (strlen(config.hostname) == 0){
+    String hostname = "esp8266_";
+    hostname += mac_address;
+    char hostname_arr[HOSTNAME_LEN];
+    hostname.toCharArray(hostname_arr, HOSTNAME_LEN);
+    SetHostname(hostname_arr);
+  }
+
+  pinMode(CONFIGURE_PIN, INPUT_PULLUP);
+  attachInterrupt(digitalPinToInterrupt(CONFIGURE_PIN), configInterrupt, CHANGE);
+  config.devices[CONFIGURE_PIN].io_value[0] = 1;
+
+  setupIo();
 }
 
 bool mqtt_connected = true;
+int count = 0;
 void loop(void) {
   http_server.handleClient();
   mqtt_client.loop();
@@ -757,6 +902,10 @@ void loop(void) {
       mqtt_connected = false;
     }
     mqtt_connect();
+    delay(500);
+    //if((++count % 10000) == 0){
+    //  Serial.print("-");
+    //}
   } else {
     if(!mqtt_connected){
       // Serial.println("MQTT connected.");
@@ -764,4 +913,6 @@ void loop(void) {
     }
     mqtt_subscribe_one();
   }
+
+  inputSerice();
 }

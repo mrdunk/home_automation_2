@@ -40,7 +40,9 @@ class Brokers {
   Broker GetBroker();
   void RateBroker(bool sucess);
   String Summary();
+  void SummarySerial();
  private:
+  void CleanBuffer();
   const String service_type_;
   Broker brokers_[MAX_BROKERS];
   mdns::MDns* mdns_;

@@ -31,7 +31,8 @@ xtag.register('ha-container', {
       }
     },
     // Add a child element to this element.
-    // Will add recursive layers of elements to account for the requested child being many layers deeper than the current.
+    // Will add recursive layers of elements to account for the requested child
+    // being many layers deeper than the current.
     addChild: function(child_address, child_value){
       console.log("addChild:", child_address, child_value)
         
@@ -49,7 +50,8 @@ xtag.register('ha-container', {
           immediate_child = document.createElement("ha-container")
           this.getElementsByClassName("ha-container-children")[0].appendChild(immediate_child)
 
-          immediate_child.getElementsByTagName("ha-button-show-children")[0].style.display = 'none'
+          immediate_child.getElementsByTagName("ha-button-show-children")[0].style.display =
+              'none'
 
           immediate_child.name = immediate_child_name
           immediate_child.address = immediate_child_address
@@ -66,12 +68,13 @@ xtag.register('ha-container', {
         immediate_child.addChild(child_address, child_value)
 
       } else {
-        var child_value_bool = false
-        if(child_value === "on"){
-          child_value_bool = true
+        var child_value_parsed = false
+        if(child_value.toLowerCase() === "on" || child_value.toLowerCase() === "true" ||
+            parseInt(child_value) > 0){
+          child_value_parsed = true
         }
         if(this.device_icon){
-          this.device_icon.displayed = child_value_bool
+          this.device_icon.displayed = child_value_parsed
           this.device_icon.tidyParent()
         }
       }

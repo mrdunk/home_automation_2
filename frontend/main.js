@@ -51,25 +51,24 @@ Mqtt.MQTTconnect = function() {
     options.userName = username;
     options.password = password;
   }
-  console.log("Host="+ BROKER_ADDRESS + ", port=" + BROKER_PORT + " TLS = " + USE_TLS + " username=" + username + " password=" + password);
+  console.log("Host="+ BROKER_ADDRESS + ", port=" + BROKER_PORT +
+      " TLS = " + USE_TLS + " username=" + username + " password=" + password);
   Mqtt.broker.connect(options);
 }
 
 Mqtt.onConnect = function() {
   console.log('Connected to ' + BROKER_ADDRESS + ':' + BROKER_PORT);
-  Mqtt.broker.subscribe(ANNOUNCE_SUBSCRIPTION, {qos: 1});
-  console.log('Subscribed to topic: ' + ANNOUNCE_SUBSCRIPTION);
+  Mqtt.broker.subscribe(STATE_SUBSCRIPTION, {qos: 1});
+  console.log('Subscribed to topic: ' + STATE_SUBSCRIPTION);
 
   Page.AppendToLog(Page.topics.all_devices + " = _command:solicit", 'RED');
   Mqtt.send(Page.topics.all_devices, "_command : solicit");
-
 }
 
 Mqtt.onConnectionLost = function(response) {
   setTimeout(Mqtt.MQTTconnect, Mqtt.reconnectTimeout);
   console.log("connection lost: " + response.errorMessage + ". Reconnecting");
 };
-
 
 Mqtt.onMessageArrived = function(message) {
   // Make sure topic looks like valid MQTT addresses.
@@ -109,7 +108,8 @@ Mqtt.onMessageArrived = function(message) {
       // pass.
     } else if(!key_or_val){
       if (data[index][0] !== '_') {
-        console.log('Mqtt.onMessageArrived: Incorrectly formed key: ' + data[index] + '. Expected to start with "_".');
+        console.log('Mqtt.onMessageArrived: Incorrectly formed key: ' + data[index] +
+            '. Expected to start with "_".');
         return;
       }
       key_or_val = data[index];
@@ -126,6 +126,11 @@ Mqtt.onMessageArrived = function(message) {
     }
   }
 
+  // If "_subject" missing from data_object, presume it matches the topic.
+  if(data_object._subject === undefined){
+    data_object._subject = topic.split('/').slice(2).join('/');
+  }
+
   // The "_subject" in data_object refers to the target that this MQTT packet is about and
   // should also look like a topic.
   if (!data_object._subject.match(regex_topic)) {
@@ -137,8 +142,10 @@ Mqtt.onMessageArrived = function(message) {
   Page.AppendToLog(topic + ' = ' + JSON.stringify(data_object));
 
   if(data_object._subject && data_object._state){
-    Page.AppendToLog('  payload parsed as: {_subject: ' + data_object._subject + ', _state: ' + data_object._state + '}', 'yellow');
-    document.getElementById('ha-container-lighting').addChild(data_object._subject, data_object._state);
+    Page.AppendToLog('  payload parsed as: {_subject: ' + data_object._subject +
+        ', _state: ' + data_object._state + '}', 'yellow');
+    document.getElementById('ha-container-lighting').addChild(
+        data_object._subject, data_object._state);
   }
 };
 

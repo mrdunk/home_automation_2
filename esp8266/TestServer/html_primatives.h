@@ -14,7 +14,7 @@ function save(label) {
     var topics = topic.split('/');
     var iotype = document.getElementsByClassName(label + '_iotype')[0].value;
     var iopins = document.getElementsByClassName(label + '_iopins')[0].value;
-    var url = 'http://' + window.location.host + '/configure/?device=' + device;
+    var url = 'http://' + window.location.host + '/set/?device=' + device;
     url += '&iotype=' + iotype;
     url += '&iopins=' + iopins;
     for(var i = 0; i < topics.length; i++){
@@ -24,7 +24,7 @@ function save(label) {
   } else if(target === 'hostname' || target === 'publishprefix' || target === 'subscribeprefix'){
     var data = document.getElementsByClassName(target)[0].value;
     console.log(target);
-    var url = 'http://' + window.location.host + '/configure/?' + target + '=';
+    var url = 'http://' + window.location.host + '/set/?' + target + '=';
     url += encodeURIComponent(data);
     send(url);
   } else {

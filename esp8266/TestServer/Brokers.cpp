@@ -23,18 +23,6 @@ void Brokers::SendMDnsQuestion() {
 void Brokers::ParseMDnsAnswer(const mdns::Answer* answer) {
   const unsigned int now = millis() / 1000;
 
-  // Remove expired entries.
-  for (int i = 0; i < MAX_BROKERS; ++i) {
-    if ((brokers_[i].service_valid_until < now and brokers_[i].service_valid_until > 0) or 
-        (brokers_[i].host_valid_until < now and brokers_[i].host_valid_until > 0))
-    {
-      brokers_[i].service_name = "";
-      brokers_[i].host_name = "";
-      brokers_[i].port = 0;
-      brokers_[i].address = IPAddress(0, 0, 0, 0);
-    }
-  }
-
   // A typical PTR record matches service to a human readable name.
   // eg:
   //  service: _mqtt._tcp.local
@@ -207,14 +195,38 @@ void Brokers::ParseMDnsAnswer(const mdns::Answer* answer) {
 
 }
 
-Broker Brokers::GetBroker() {
+// Remove expired or failed entries.
+void Brokers::CleanBuffer(){
   const unsigned int now = millis() / 1000;
-  while (brokers_[itterator].address == IPAddress(0, 0, 0, 0) and
-         brokers_[itterator].host_valid_until < now and
-         brokers_[itterator].fail_counter < MAX_BROKER_FAILURES)
-  {
+  for (int i = 0; i < MAX_BROKERS; ++i) {
+    if ((brokers_[i].service_valid_until < now and brokers_[i].service_valid_until > 0) or 
+        (brokers_[i].host_valid_until < now and brokers_[i].host_valid_until > 0) or
+        brokers_[i].fail_counter > MAX_BROKER_FAILURES)
+    {
+      brokers_[i].service_name = "";
+      brokers_[i].host_name = "";
+      brokers_[i].address = IPAddress(0, 0, 0, 0);
+      brokers_[i].port = 0;
+      brokers_[i].service_valid_until = 0;
+      brokers_[i].host_valid_until = 0;
+      brokers_[i].fail_counter = 0;
+    }
+  }
+}
+
+// Get a reachable MQTT broker address from buffer.
+Broker Brokers::GetBroker() {
+  // Remove any brokers that have a high number of failures or have timed out.
+  CleanBuffer();
+
+  const unsigned int now = millis() / 1000;
+  const unsigned int starting_itterator = itterator;
+  while (brokers_[itterator].address == IPAddress(0, 0, 0, 0)){
     if (++itterator == MAX_BROKERS) {
       itterator = 0;
+    }
+    if(itterator == starting_itterator){
+      // Haven't found a valid broker so try querying mDNS for the address of some.
       SendMDnsQuestion();
       return Broker{};
     }
@@ -233,12 +245,13 @@ void Brokers::RateBroker(bool sucess) {
 String Brokers::Summary() {
   GetBroker();
   const String now = String(millis() / 1000);
-  String rows = row(header("") + header("service_name") + header("port") +
+  String rows = row(header("") + header("") + header("service_name") + header("port") +
                     header("hostname") + header("ip") + header("service valid until") +
                     header("host valid until") + header("fail counter"), "");
   for (int i = 0; i < MAX_BROKERS; ++i) {
     if (brokers_[i].service_name != "") {
       String cells = "";
+      cells += cell(String(i));
       if(i == itterator){
         cells += cell(" active ");
       } else {
