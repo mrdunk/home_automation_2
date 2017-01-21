@@ -95,4 +95,5 @@ const String div(const String& content, const String& class_name);
 
 const String submit(const String& label, const String& name, const String& action);
 
+const String link(const String& label, const String& url);
 #endif  // ESP8266__HTML_PRIMATIVES__H

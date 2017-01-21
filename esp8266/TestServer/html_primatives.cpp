@@ -115,4 +115,11 @@ const String submit(const String& label, const String& name, const String& actio
   return return_value;
 }
 
-
+const String link(const String& label, const String& url){
+  String return_value = "<a \"href=\"";
+  return_value += url;
+  return_value += "\" class=\"button\">";
+  return_value += label;
+  return_value += "</a>";
+  return return_value;
+}

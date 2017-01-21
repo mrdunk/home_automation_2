@@ -13,7 +13,7 @@ namespace Persist_Data {
       static int initialised;
       static char config_version[4];
     public:
-      Persistent(char const* _config_version, T* _p_persistent_data);
+      Persistent(T* _p_persistent_data);
       int readConfig();
       int writeConfig();
   };

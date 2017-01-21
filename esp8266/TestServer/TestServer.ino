@@ -5,6 +5,10 @@
 #include <PubSubClient.h>      // Include "PubSubClient" library.
 #include <mdns.h>              // Include "esp8266_mdns" library.
 
+#include <ESP8266WiFiMulti.h>
+#include <ESP8266HTTPClient.h>
+#include "ESP8266httpUpdate.h"
+
 #include "ipv4_helpers.h"
 #include "secrets.h"
 #include "persist_data.h"
@@ -14,11 +18,11 @@
 
 
 // Maximum size of an incoming mDNS packet. Make this as big as free RAM allows.
-#define MAX_MDNS_PACKET_SIZE 512
+#define MAX_MDNS_PACKET_SIZE 256
 
 // Increase this if any changes are made to "struct Config" or you need to reset
 // config to default values.
-#define CONFIG_VERSION "006"
+#define CONFIG_VERSION "010"
 
 // Maximum number of devices connected to IO pins.
 #define MAX_DEVICES 4
@@ -71,8 +75,9 @@ struct Config {
   Connected_device devices[MAX_DEVICES];
   IPAddress local_address;
   IPAddress broker_address;
-  char config_version[4];
+  bool pullFirmware;
   // TODO: add WFI ssid and password.
+  char config_version[4];
 } config = {
   "",
   "homeautomation/+",
@@ -80,9 +85,11 @@ struct Config {
   {},
   {0,0,0,0},
   {0,0,0,0},
+  false,
   CONFIG_VERSION
 };
 
+ESP8266WiFiMulti WiFiMulti;
 String mac_address;
 bool allow_config = false;
 
@@ -451,7 +458,8 @@ void mqtt_connect() {
             break;
           }
           address[strlen(address) -4] = '\0';
-          strncat(address, config.devices[i].address_segment[j].segment, MAX_TOPIC_LENGTH -1 - strlen(address));
+          strncat(address, config.devices[i].address_segment[j].segment,
+                  MAX_TOPIC_LENGTH -1 - strlen(address));
           if (j < (ADDRESS_SEGMENTS -1) &&
               strlen(config.devices[i].address_segment[j +1].segment) > 0) {
             strncat(address, "/_all", MAX_TOPIC_LENGTH -1 - strlen(address));
@@ -603,6 +611,9 @@ void handleRoot() {
   }
 #endif
 
+  description_list += descriptionListItem("&nbsp", "&nbsp");
+  description_list += descriptionListItem("Configure", link("go", "configure"));
+
   message += descriptionList(description_list);
   
   http_server.send(200, "text/html", page(style, javascript, "", message));
@@ -614,22 +625,19 @@ void handleConfig() {
   String message = "";
   
   if(allow_config){
-    String description_list = "";
-    description_list += descriptionListItem("mac_address", mac_address);
-    description_list += descriptionListItem("hostname", 
+    message += descriptionListItem("mac_address", mac_address);
+    message += descriptionListItem("hostname", 
         textField("hostname", "hostname", config.hostname, "hostname") +
         submit("Save", "save_hostname" , "save('hostname')"));
-    description_list += descriptionListItem("MQTT subscription prefix",
+    message += descriptionListItem("MQTT subscription prefix",
         textField("subscribeprefix", "subscribeprefix", config.subscribe_prefix,
           "subscribeprefix") +
         submit("Save", "save_subscribeprefix" , "save('subscribeprefix')"));
-    description_list += descriptionListItem("MQTT publish prefix",
+    message += descriptionListItem("MQTT publish prefix",
         textField("publishprefix", "publishprefix", config.publish_prefix,
           "publishprefix") +
         submit("Save", "save_publishprefix" , "save('publishprefix')"));
-    description_list += descriptionListItem("IP address", String(ip_to_string(WiFi.localIP())));
-
-    message = descriptionList(description_list);
+    message += descriptionListItem("IP address", String(ip_to_string(WiFi.localIP())));
 
     String rows = row(header("index") + header("Topic") + header("type") + 
         header("IO pin") + header("") + header(""), "");
@@ -680,9 +688,6 @@ void handleConfig() {
     }
     message += table(rows);
 
-    description_list ="";
-    description_list += descriptionListItem("Brokers", brokers.Summary());
-    message += descriptionList(description_list);
   } else {
     Serial.println("Not allowed to handleConfig()");
     message += "Configuration mode not enabled.\nPress button connected to IO ";
@@ -797,13 +802,57 @@ void handleSet() {
     setupIo();
   }
   
-  Persist_Data::Persistent<Config> persist_config(CONFIG_VERSION, &config);
+  Persist_Data::Persistent<Config> persist_config(&config);
   persist_config.writeConfig();
 
   Serial.println(message);
 
   http_server.send(200, "text/plain", message);
   Serial.println("handleSet() -");
+}
+
+// Set the config.pullFirmware bit in flash and reboot so we pull new firmware on
+// next boot.
+void handlePullFirmware(){
+  String message = "Pulling firmware\n";
+  http_server.send(404, "text/plain", message);
+  
+  config.pullFirmware = true;
+  Persist_Data::Persistent<Config> persist_config(&config);
+  persist_config.writeConfig();
+  
+  delay(100);
+  ESP.reset();
+}
+
+// If we boot with the config.pullFirmware bit set in flash we should pull new firmware
+// from an HTTP server.
+void pullFirmware(){
+  config.pullFirmware = false;
+  Persist_Data::Persistent<Config> persist_config(&config);
+  persist_config.writeConfig();
+
+  ESPhttpUpdate.rebootOnUpdate(false);
+  t_httpUpdate_return ret = ESPhttpUpdate.update("http://192.168.192.54:8000/firmware.bin");
+  //t_httpUpdate_return  ret = ESPhttpUpdate.update("https://server/file.bin");
+
+  switch(ret) {
+    case HTTP_UPDATE_FAILED:
+      Serial.printf("HTTP_UPDATE_FAILD Error (%d): %s", 
+          ESPhttpUpdate.getLastError(),
+          ESPhttpUpdate.getLastErrorString().c_str());
+      break;
+
+    case HTTP_UPDATE_NO_UPDATES:
+      Serial.println("HTTP_UPDATE_NO_UPDATES");
+      break;
+
+    case HTTP_UPDATE_OK:
+      Serial.println("HTTP_UPDATE_OK");
+      break;
+  }
+  delay(100);
+  ESP.reset();
 }
 
 void handleNotFound() {
@@ -825,7 +874,10 @@ void handleNotFound() {
 
 void setup_network(void) {
   // Wait for connection
-  while (WiFi.status() != WL_CONNECTED) {
+  //while (WiFi.status() != WL_CONNECTED) {
+  while ((WiFiMulti.run() != WL_CONNECTED)) {
+    //WiFi.begin(ssid, pass);
+    WiFiMulti.addAP(ssid, pass);
     delay(500);
     Serial.print(".");
   }
@@ -835,84 +887,97 @@ void setup_network(void) {
   Serial.print("IP address: ");
   Serial.println(WiFi.localIP());
 
-  http_server.on("/", handleRoot);
-  http_server.on("/configure", handleConfig);
-  http_server.on("/configure/", handleConfig);
-  http_server.on("/set/", handleSet);
-  http_server.onNotFound(handleNotFound);
+  if(!config.pullFirmware){
+    http_server.on("/", handleRoot);
+    http_server.on("/configure", handleConfig);
+    http_server.on("/configure/", handleConfig);
+    http_server.on("/set/", handleSet);
+    http_server.on("/pullfirmware", handlePullFirmware);
+    http_server.onNotFound(handleNotFound);
 
-  http_server.begin();
-  Serial.println("HTTP server started");
+    http_server.begin();
+    Serial.println("HTTP server started");
 
-  brokers.RegisterMDns(&my_mdns);
+    brokers.RegisterMDns(&my_mdns);
+  }
 }
 
 void configInterrupt(){
   Serial.println("configInterrupt");
   allow_config = true;
+  //ESPhttpUpdate.update("192.168.192.54", 8000, "/TestServer.ino.bin");
 }
 
 void setup(void) {
   Serial.begin(115200);
+  delay(100);
   Serial.println();
   Serial.println("Reset.");
+  Serial.println();
 
-  Persist_Data::Persistent<Config> persist_config(CONFIG_VERSION, &config);
+  Persist_Data::Persistent<Config> persist_config(&config);
   persist_config.readConfig();
 
-  WiFi.begin(ssid, pass);
   Serial.println("");
+  
+  if(config.pullFirmware){
+    Serial.println("Pull Firmware mode!!");
+  } else {
+    uint8_t mac[6];
+    WiFi.macAddress(mac);
+    mac_address = macToStr(mac);
 
-  uint8_t mac[6];
-  WiFi.macAddress(mac);
-  mac_address = macToStr(mac);
+    if (strlen(config.hostname) == 0){
+      String hostname = "esp8266_";
+      hostname += mac_address;
+      char hostname_arr[HOSTNAME_LEN];
+      hostname.toCharArray(hostname_arr, HOSTNAME_LEN);
+      SetHostname(hostname_arr);
+    }
 
-  if (strlen(config.hostname) == 0){
-    String hostname = "esp8266_";
-    hostname += mac_address;
-    char hostname_arr[HOSTNAME_LEN];
-    hostname.toCharArray(hostname_arr, HOSTNAME_LEN);
-    SetHostname(hostname_arr);
+    pinMode(CONFIGURE_PIN, INPUT_PULLUP);
+    attachInterrupt(digitalPinToInterrupt(CONFIGURE_PIN), configInterrupt, CHANGE);
+    config.devices[CONFIGURE_PIN].io_value[0] = 1;
+
+    setupIo();
   }
-
-  pinMode(CONFIGURE_PIN, INPUT_PULLUP);
-  attachInterrupt(digitalPinToInterrupt(CONFIGURE_PIN), configInterrupt, CHANGE);
-  config.devices[CONFIGURE_PIN].io_value[0] = 1;
-
-  setupIo();
 }
 
 bool mqtt_connected = true;
-int count = 0;
 void loop(void) {
-  http_server.handleClient();
-  mqtt_client.loop();
-
-  if (WiFi.status() != WL_CONNECTED) {
-    setup_network();
-  }
-
-  if(!my_mdns.Check()){
-    //Serial.println("mDNS error.");
-  }
-
-  if (!mqtt_client.connected()) {
-    if(mqtt_connected){
-      Serial.println("MQTT disconnected.");
-      mqtt_connected = false;
+  if(config.pullFirmware){
+    if (WiFi.status() != WL_CONNECTED) {
+      setup_network();
     }
-    mqtt_connect();
-    delay(500);
-    //if((++count % 10000) == 0){
-    //  Serial.print("-");
-    //}
+    pullFirmware();
   } else {
-    if(!mqtt_connected){
-      // Serial.println("MQTT connected.");
-      mqtt_connected = true;
-    }
-    mqtt_subscribe_one();
-  }
+    http_server.handleClient();
+    mqtt_client.loop();
 
-  inputSerice();
+    if (WiFi.status() != WL_CONNECTED) {
+      setup_network();
+    }
+
+    if(!my_mdns.Check()){
+      //Serial.println("mDNS error.");
+    }
+
+    if (!mqtt_client.connected()) {
+      if(mqtt_connected){
+        Serial.println("MQTT disconnected.");
+        mqtt_connected = false;
+      }
+      Serial.print("-");
+      mqtt_connect();
+      delay(1000);
+    } else {
+      if(!mqtt_connected){
+        // Serial.println("MQTT connected.");
+        mqtt_connected = true;
+      }
+      mqtt_subscribe_one();
+    }
+
+    inputSerice();
+  }
 }

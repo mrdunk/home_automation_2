@@ -9,7 +9,7 @@
 
 #define MAX_BROKERS 4
 #define MAX_BROKER_FAILURES 3
-#define MDNS_QUESTION_INTERVAL 60
+#define MDNS_QUESTION_INTERVAL 5
 
 typedef struct Broker {
   String service_name;
