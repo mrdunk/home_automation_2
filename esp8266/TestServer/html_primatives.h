@@ -21,7 +21,8 @@ function save(label) {
       url += '&address_segment=' + encodeURIComponent(topics[i]);
     }
     send(url);
-  } else if(target === 'hostname' || target === 'publishprefix' || target === 'subscribeprefix'){
+  } else if(target === 'hostname' || target === 'publishprefix' ||
+            target === 'subscribeprefix' || target === 'firmwareserver'){
     var data = document.getElementsByClassName(target)[0].value;
     console.log(target);
     var url = 'http://' + window.location.host + '/set/?' + target + '=';

@@ -44,6 +44,9 @@
 //     'homeautomation/0' maps to the prefix.
 #define PREFIX_LEN 32
 
+// Length of Firmware server URL.
+#define FIRMWARE_SERVER_LEN 64
+
 // IO Pin that will enable configuration web page.
 #define CONFIGURE_PIN 0
 
@@ -75,7 +78,8 @@ struct Config {
   Connected_device devices[MAX_DEVICES];
   IPAddress local_address;
   IPAddress broker_address;
-  bool pullFirmware;
+  char firmware_server[FIRMWARE_SERVER_LEN];
+  bool pull_firmware;
   // TODO: add WFI ssid and password.
   char config_version[4];
 } config = {
@@ -85,6 +89,7 @@ struct Config {
   {},
   {0,0,0,0},
   {0,0,0,0},
+  "http://192.168.192.54:8000/firmware.bin",
   false,
   CONFIG_VERSION
 };
@@ -178,6 +183,11 @@ void SetDevice(const unsigned int index, struct Connected_device& device) {
   if (index < MAX_DEVICES) {
     memcpy(&(config.devices[index]), &device, sizeof(device));
   }
+}
+
+void SetFirmwareServer(const char* new_fws, char* dest_buffer) {
+  strncpy(dest_buffer, new_fws, FIRMWARE_SERVER_LEN -1);
+  dest_buffer[FIRMWARE_SERVER_LEN -1] = '\0';
 }
 
 String DeviceAddress(const Connected_device& device) {
@@ -637,6 +647,10 @@ void handleConfig() {
         textField("publishprefix", "publishprefix", config.publish_prefix,
           "publishprefix") +
         submit("Save", "save_publishprefix" , "save('publishprefix')"));
+    message += descriptionListItem("HTTP Firmware URL",
+        textField("firmware_server", "firmware_server", config.firmware_server,
+          "firmwareserver") +
+        submit("Save", "save_firmwareserver" , "save('firmwareserver')"));
     message += descriptionListItem("IP address", String(ip_to_string(WiFi.localIP())));
 
     String rows = row(header("index") + header("Topic") + header("type") + 
@@ -739,6 +753,11 @@ void handleSet() {
     http_server.arg("subscribeprefix").toCharArray(tmp_buffer, PREFIX_LEN);
     SetPrefix(tmp_buffer, config.subscribe_prefix);
     message += "subscribeprefix: " + http_server.arg("subscribeprefix") + "\n";
+  } else if (http_server.hasArg("firmwareserver")) {
+    char tmp_buffer[FIRMWARE_SERVER_LEN];
+    http_server.arg("firmwareserver").toCharArray(tmp_buffer, FIRMWARE_SERVER_LEN);
+    SetFirmwareServer(tmp_buffer, config.firmware_server);
+    message += "subscribeprefix: " + http_server.arg("subscribeprefix") + "\n";
   } else if (http_server.hasArg("device") and http_server.hasArg("address_segment") and
       http_server.hasArg("iotype") and http_server.hasArg("iopins")) {
     unsigned int index = http_server.arg("device").toInt();
@@ -811,13 +830,13 @@ void handleSet() {
   Serial.println("handleSet() -");
 }
 
-// Set the config.pullFirmware bit in flash and reboot so we pull new firmware on
+// Set the config.pull_firmware bit in flash and reboot so we pull new firmware on
 // next boot.
 void handlePullFirmware(){
   String message = "Pulling firmware\n";
   http_server.send(404, "text/plain", message);
   
-  config.pullFirmware = true;
+  config.pull_firmware = true;
   Persist_Data::Persistent<Config> persist_config(&config);
   persist_config.writeConfig();
   
@@ -825,15 +844,15 @@ void handlePullFirmware(){
   ESP.reset();
 }
 
-// If we boot with the config.pullFirmware bit set in flash we should pull new firmware
+// If we boot with the config.pull_firmware bit set in flash we should pull new firmware
 // from an HTTP server.
 void pullFirmware(){
-  config.pullFirmware = false;
+  config.pull_firmware = false;
   Persist_Data::Persistent<Config> persist_config(&config);
   persist_config.writeConfig();
 
   ESPhttpUpdate.rebootOnUpdate(false);
-  t_httpUpdate_return ret = ESPhttpUpdate.update("http://192.168.192.54:8000/firmware.bin");
+  t_httpUpdate_return ret = ESPhttpUpdate.update(config.firmware_server);
   //t_httpUpdate_return  ret = ESPhttpUpdate.update("https://server/file.bin");
 
   switch(ret) {
@@ -887,7 +906,7 @@ void setup_network(void) {
   Serial.print("IP address: ");
   Serial.println(WiFi.localIP());
 
-  if(!config.pullFirmware){
+  if(!config.pull_firmware){
     http_server.on("/", handleRoot);
     http_server.on("/configure", handleConfig);
     http_server.on("/configure/", handleConfig);
@@ -905,7 +924,6 @@ void setup_network(void) {
 void configInterrupt(){
   Serial.println("configInterrupt");
   allow_config = true;
-  //ESPhttpUpdate.update("192.168.192.54", 8000, "/TestServer.ino.bin");
 }
 
 void setup(void) {
@@ -920,7 +938,7 @@ void setup(void) {
 
   Serial.println("");
   
-  if(config.pullFirmware){
+  if(config.pull_firmware){
     Serial.println("Pull Firmware mode!!");
   } else {
     uint8_t mac[6];
@@ -945,7 +963,7 @@ void setup(void) {
 
 bool mqtt_connected = true;
 void loop(void) {
-  if(config.pullFirmware){
+  if(config.pull_firmware){
     if (WiFi.status() != WL_CONNECTED) {
       setup_network();
     }
