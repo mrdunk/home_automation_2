@@ -100,6 +100,27 @@ const String ioPin(const String& value, const String& class_name){
   return return_value;
 }
 
+const String ioValue(const String& value, const String& class_name){
+  String return_value = "<input type=\"number\" max=\"255\" min=\"0\" class=\"";
+  return_value += class_name;
+  return_value += "\" value=\"";
+  return_value += String(value);
+  return_value += "\"></input>";
+  return return_value;
+}
+
+const String ioInverted(const bool value, const String& class_name){
+  String return_value = "<input type=\"checkbox\" class=\"";
+  return_value += class_name;
+  return_value += "\" ";
+  Serial.println(value);
+  if(value){
+    return_value += "checked";
+  }
+  return_value += "></input>";
+  return return_value;
+}
+
 const String div(const String& content, const String& class_name){
   return "<div class=\""+ class_name + "\">" + content + "</div>";
 }
@@ -116,9 +137,9 @@ const String submit(const String& label, const String& name, const String& actio
 }
 
 const String link(const String& label, const String& url){
-  String return_value = "<a \"href=\"";
+  String return_value = "<a href=\"";
   return_value += url;
-  return_value += "\" class=\"button\">";
+  return_value += "\">";
   return_value += label;
   return_value += "</a>";
   return return_value;
