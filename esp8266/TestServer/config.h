@@ -2,6 +2,9 @@
 #define ESP8266__CONFIG_H
 
 
+// Reset if unable to connect to WiFi after this many seconds.
+#define RESET_ON_CONNECT_FAIL 60
+
 // Maximum size of an incoming mDNS packet. Make this as big as free RAM allows.
 #define MAX_MDNS_PACKET_SIZE 256
 

@@ -1,12 +1,9 @@
 #include <ESP8266WiFi.h>
-#include <WiFiClient.h>
 #include <ESP8266WebServer.h>
 #include <EEPROM.h>
 #include <PubSubClient.h>      // Include "PubSubClient" library.
 #include <mdns.h>              // Include "esp8266_mdns" library.
 
-#include <ESP8266WiFiMulti.h>
-#include <ESP8266HTTPClient.h>
 #include "ESP8266httpUpdate.h"
 
 #include "ipv4_helpers.h"
@@ -32,7 +29,6 @@ Config config = {
   CONFIG_VERSION
 };
 
-ESP8266WiFiMulti WiFiMulti;
 String mac_address;
 bool allow_config = false;
 
@@ -204,12 +200,7 @@ void mqtt_announce_host(){
 
 void mqtt_announce(const Connected_device& device){
   String announce = "_state:";
-  if(device.iotype == onoff || device.iotype == pwm || device.iotype == test){
-    announce += String(device.io_value);
-  } else if(device.iotype == input){
-    pinMode(device.io_pin, INPUT_PULLUP);
-    announce += digitalRead(device.io_pin);
-  }
+  announce += String(device.io_value);
   
   char target[11];
   announce.toCharArray(target, 11);
@@ -315,25 +306,24 @@ void mqtt_connect() {
   if (mqtt_client.connected()) {
     Serial.print("MQTT connected to: ");
     Serial.println(broker.address);
+    mqtt_announce_host();
   }
-  
-  mqtt_announce_host();
 }
 
 
 // IO
-bool to_service_input = false;
+bool io_service_input = false;
 void inputCallback(){
   //Serial.println("inputCallback()");
-  to_service_input = true;
+  io_service_input = true;
 }
 
 void inputSerice(){
-  if(!to_service_input){
+  if(!io_service_input){
     return;
   }
   //Serial.println("inputSerice()");
-  to_service_input = false;
+  io_service_input = false;
   for(int i=0; i < MAX_DEVICES; i++){
     if (strlen(config.devices[i].address_segment[0].segment) > 0) {
       if(config.devices[i].iotype == input){
@@ -341,8 +331,8 @@ void inputSerice(){
         value = (config.devices[i].inverted ? value == 0 : value);
         if(value != config.devices[i].io_value){
           config.devices[i].io_value = value;
-          Serial.print("## ");
-          Serial.println(value);
+          //Serial.print("## ");
+          //Serial.println(value);
           mqtt_announce(config.devices[i]);
 
           if(i == CONFIGURE_PIN){
@@ -358,7 +348,6 @@ void setupIo(){
   for(int i=0; i < MAX_DEVICES; i++){
     if (strlen(config.devices[i].address_segment[0].segment) > 0) {
       if(config.devices[i].iotype == input){
-        Serial.println("input");
         config.devices[i].io_value = 1;
         pinMode(config.devices[i].io_pin, INPUT_PULLUP);
         attachInterrupt(digitalPinToInterrupt(config.devices[i].io_pin), inputCallback, CHANGE);
@@ -371,6 +360,8 @@ void setupIo(){
       }
     }
   }
+  io_service_input = true;
+  inputSerice();
 }
 
 void change_state(Connected_device& device, String command){
@@ -744,16 +735,29 @@ void handleNotFound() {
 
 
 void setup_network(void) {
+  //Serial.setDebugOutput(true);
+  
+  if(WiFi.SSID() != ssid || WiFi.psk() != pass){
+    Serial.println("Reassigning WiFi username and password.");
+    WiFi.mode(WIFI_STA);
+    WiFi.begin(ssid, pass);
+  }
+  WiFi.setAutoConnect(true);
+  WiFi.setAutoReconnect(true);
+ 
   // Wait for connection
-  //while (WiFi.status() != WL_CONNECTED) {
-  while ((WiFiMulti.run() != WL_CONNECTED)) {
-    //WiFi.begin(ssid, pass);
-    WiFiMulti.addAP(ssid, pass);
-    delay(500);
+  int timer = RESET_ON_CONNECT_FAIL * 10;
+  while (WiFi.status() != WL_CONNECTED){
+    delay(100);
     Serial.print(".");
+    if(timer-- == 0){
+      timer = RESET_ON_CONNECT_FAIL;
+      ESP.reset();
+      Serial.println();
+    }
   }
   Serial.println("");
-  Serial.print("Connected to ");
+  Serial.print("Connected to: ");
   Serial.println(ssid);
   Serial.print("IP address: ");
   Serial.println(WiFi.localIP());
@@ -816,18 +820,15 @@ void setup(void) {
 
 bool mqtt_connected = true;
 void loop(void) {
+  if (WiFi.status() != WL_CONNECTED) {
+    setup_network();
+  }
+
   if(config.pull_firmware){
-    if (WiFi.status() != WL_CONNECTED) {
-      setup_network();
-    }
     pullFirmware();
   } else {
     http_server.handleClient();
     mqtt_client.loop();
-
-    if (WiFi.status() != WL_CONNECTED) {
-      setup_network();
-    }
 
     if(!my_mdns.Check()){
       //Serial.println("mDNS error.");

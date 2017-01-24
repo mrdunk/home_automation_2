@@ -113,7 +113,6 @@ const String ioInverted(const bool value, const String& class_name){
   String return_value = "<input type=\"checkbox\" class=\"";
   return_value += class_name;
   return_value += "\" ";
-  Serial.println(value);
   if(value){
     return_value += "checked";
   }
