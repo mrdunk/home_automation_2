@@ -26,7 +26,8 @@ function save(label) {
     }
     send(url);
   } else if(target === 'hostname' || target === 'publishprefix' ||
-            target === 'subscribeprefix' || target === 'firmwareserver'){
+            target === 'subscribeprefix' || target === 'firmwareserver' ||
+            target === 'enablepassphrase' || target === 'enableiopin'){
     var data = document.getElementsByClassName(target)[0].value;
     console.log(target);
     var url = 'http://' + window.location.host + '/set/?' + target + '=';
@@ -94,9 +95,9 @@ const String option(const String& type, const String& selected);
 
 const String outletType(const String& type, const String& class_name);
 
-const String ioPin(const String& value, const String& class_name);
+const String ioPin(const int value, const String& class_name);
 
-const String ioValue(const String& value, const String& class_name);
+const String ioValue(const int value, const String& class_name);
 
 const String ioInverted(const bool value, const String& class_name);
 

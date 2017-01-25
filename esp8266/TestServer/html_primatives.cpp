@@ -69,7 +69,7 @@ const String outletType(const String& type, const String& class_name){
   return return_value;
 }
 
-const String ioPin(const String& value, const String& class_name){
+const String ioPin(const int value, const String& class_name){
   // http://www.esp8266.com/wiki/doku.php?id=esp8266_gpio_pin_allocations
   String return_value = "<select class=\"";
   return_value += class_name;
@@ -78,7 +78,7 @@ const String ioPin(const String& value, const String& class_name){
     return_value += "<option value=\"";
     return_value += String(pin);
     return_value += "\"";
-    if(String(pin) == value){
+    if(pin == value){
       return_value += " selected";
     }
     return_value += ">";
@@ -89,7 +89,7 @@ const String ioPin(const String& value, const String& class_name){
     return_value += "<option value=\"";
     return_value += String(pin);
     return_value += "\"";
-    if(String(pin) == value){
+    if(pin == value){
       return_value += " selected";
     }
     return_value += ">";
@@ -100,7 +100,7 @@ const String ioPin(const String& value, const String& class_name){
   return return_value;
 }
 
-const String ioValue(const String& value, const String& class_name){
+const String ioValue(const int value, const String& class_name){
   String return_value = "<input type=\"number\" max=\"255\" min=\"0\" class=\"";
   return_value += class_name;
   return_value += "\" value=\"";

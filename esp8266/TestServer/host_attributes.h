@@ -13,6 +13,8 @@ struct Config {
   IPAddress local_address;
   IPAddress broker_address;
   char firmware_server[FIRMWARE_SERVER_LEN];
+  char enable_passphrase[FIRMWARE_SERVER_LEN];
+  int enable_io_pin;
   bool pull_firmware;
   // TODO: add WFI ssid and password.
   char config_version[4];

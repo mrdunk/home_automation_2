@@ -25,12 +25,14 @@ Config config = {
   {0,0,0,0},
   {0,0,0,0},
   "http://192.168.192.54:8000/firmware.bin",
+  "",
+  0,
   false,
   CONFIG_VERSION
 };
 
 String mac_address;
-bool allow_config = false;
+int allow_config = 0;
 
 
 // mDNS
@@ -335,7 +337,8 @@ void inputSerice(){
           //Serial.println(value);
           mqtt_announce(config.devices[i]);
 
-          if(i == CONFIGURE_PIN){
+          // This pin is also the enable pin for the configuration menu.
+          if(i == config.enable_io_pin){
             configInterrupt();
           }
         }
@@ -465,6 +468,13 @@ void handleRoot() {
 void handleConfig() {
   Serial.println("handleConfig()");
   String message = "";
+  if(allow_config){
+    --allow_config;
+  }
+  if(http_server.hasArg("enablepassphrase") &&
+      http_server.arg("enablepassphrase") == config.enable_passphrase){
+    allow_config = 1;
+  }
   
   if(allow_config){
     message += descriptionListItem("mac_address", mac_address);
@@ -483,6 +493,14 @@ void handleConfig() {
         textField("firmware_server", "firmware_server", config.firmware_server,
           "firmwareserver") +
         submit("Save", "save_firmwareserver" , "save('firmwareserver')"));
+    message += descriptionListItem("Enable passphrase",
+        textField("enable_passphrase", "enable_passphrase", config.enable_passphrase,
+          "enablepassphrase") +
+        submit("Save", "save_enablepassphrase" , "save('enablepassphrase')"));
+    message += descriptionListItem("Enable IO pin",
+        ioPin(config.enable_io_pin, "enableiopin") +
+        submit("Save", "save_enableiopin" , "save('enableiopin')"));
+
     message += descriptionListItem("IP address", String(ip_to_string(WiFi.localIP())));
 
     String rows = row(header("index") + header("Topic") + header("type") + 
@@ -506,9 +524,9 @@ void handleConfig() {
         } else {
           cells += cell(outletType("test", "device_" + String(i) + "_iotype"));
         }
-        cells += cell(ioPin(String(config.devices[i].io_pin),
+        cells += cell(ioPin(config.devices[i].io_pin,
               "device_" + String(i) + "_io_pin"));
-        cells += cell(ioValue(String(config.devices[i].io_default),
+        cells += cell(ioValue(config.devices[i].io_default,
               "device_" + String(i) + "_io_default"));
         cells += cell(ioInverted(config.devices[i].inverted,
               "device_" + String(i) + "_inverted"));
@@ -530,8 +548,8 @@ void handleConfig() {
       cells += cell(outletType("onoff", "device_" + String(empty_device) + "_iotype"));
       name = "pin_";
       name += empty_device;
-      cells += cell(ioPin("", "device_" + String(empty_device) + "_io_pin"));
-      cells += cell(ioValue("0", "device_" + String(empty_device) + "_io_default"));
+      cells += cell(ioPin(0, "device_" + String(empty_device) + "_io_pin"));
+      cells += cell(ioValue(0, "device_" + String(empty_device) + "_io_default"));
       cells += cell(ioInverted(false, "device_" + String(empty_device) + "_inverted"));
       cells += cell(submit("Save", "save_" + String(empty_device),
             "save('device_" + String(empty_device) + "')"));
@@ -544,7 +562,7 @@ void handleConfig() {
   } else {
     Serial.println("Not allowed to handleConfig()");
     message += "Configuration mode not enabled.\nPress button connected to IO ";
-    message += String(CONFIGURE_PIN);
+    message += String(config.enable_io_pin);
     message += " and reload.";
   }
   
@@ -554,7 +572,7 @@ void handleConfig() {
 
 void handleSet() {
   Serial.println("handleSet() +");
-  if(!allow_config){
+  if(allow_config <= 0){
     Serial.println("Not allowed to handleSet()");
     http_server.send(200, "text/html", "Not allowed to handleSet()");
     return;
@@ -593,7 +611,13 @@ void handleSet() {
     char tmp_buffer[FIRMWARE_SERVER_LEN];
     http_server.arg("firmwareserver").toCharArray(tmp_buffer, FIRMWARE_SERVER_LEN);
     SetFirmwareServer(tmp_buffer, config.firmware_server);
-    message += "subscribeprefix: " + http_server.arg("subscribeprefix") + "\n";
+    message += "firmwareserver: " + http_server.arg("firmwareserver") + "\n";
+  } else if (http_server.hasArg("enablepassphrase")) {
+    http_server.arg("enablepassphrase").toCharArray(config.enable_passphrase, NAME_LEN);
+    message += "enablepassphrase: " + http_server.arg("enablepassphrase") + "\n";
+  } else if (http_server.hasArg("enableiopin")) {
+    config.enable_io_pin = http_server.arg("enableiopin").toInt();
+    message += "enableiopin: " + http_server.arg("enableiopin") + "\n";
   } else if (http_server.hasArg("device") and http_server.hasArg("address_segment") and
       http_server.hasArg("iotype") and http_server.hasArg("io_pin")) {
     unsigned int index = http_server.arg("device").toInt();
@@ -736,7 +760,7 @@ void handleNotFound() {
 
 void setup_network(void) {
   //Serial.setDebugOutput(true);
-  
+ 
   if(WiFi.SSID() != ssid || WiFi.psk() != pass){
     Serial.println("Reassigning WiFi username and password.");
     WiFi.mode(WIFI_STA);
@@ -745,6 +769,12 @@ void setup_network(void) {
   WiFi.setAutoConnect(true);
   WiFi.setAutoReconnect(true);
  
+  /*IPAddress staticIP(192,168,192,200);
+  IPAddress gateway(192,168,192,1);
+  IPAddress subnet(255,255,255,0);
+
+  WiFi.config(staticIP, gateway, subnet);*/
+
   // Wait for connection
   int timer = RESET_ON_CONNECT_FAIL * 10;
   while (WiFi.status() != WL_CONNECTED){
@@ -780,7 +810,7 @@ void setup_network(void) {
 
 void configInterrupt(){
   Serial.println("configInterrupt");
-  allow_config = true;
+  allow_config = 100;
 }
 
 void setup(void) {
@@ -810,9 +840,8 @@ void setup(void) {
       SetHostname(hostname_arr);
     }
 
-    pinMode(CONFIGURE_PIN, INPUT_PULLUP);
-    attachInterrupt(digitalPinToInterrupt(CONFIGURE_PIN), configInterrupt, CHANGE);
-    config.devices[CONFIGURE_PIN].io_value = 1;
+    pinMode(config.enable_io_pin, INPUT_PULLUP);
+    attachInterrupt(digitalPinToInterrupt(config.enable_io_pin), configInterrupt, CHANGE);
 
     setupIo();
   }
