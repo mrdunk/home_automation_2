@@ -6,6 +6,8 @@
 
 #include "ESP8266httpUpdate.h"
 
+#include "devices.h"
+#include "mqtt.h"
 #include "ipv4_helpers.h"
 #include "secrets.h"
 #include "persist_data.h"
@@ -13,7 +15,6 @@
 #include "Brokers.h"
 #include "html_primatives.h"
 #include "host_attributes.h"
-//#include "devices.h"
 #include "config.h"
 
 
@@ -48,358 +49,21 @@ mdns::MDns my_mdns(NULL, NULL, answerCallback, MAX_MDNS_PACKET_SIZE);
 
 // MQTT
 
-WiFiClient espClient;
-PubSubClient mqtt_client(espClient);
-char mqtt_subscriptions[MAX_TOPIC_LENGTH * MAX_SUBSCRIPTIONS];
-int mqtt_subscription_count = 0;
-int mqtt_subscribed_count = 0;
+WiFiClient wifiClient;
+Mqtt mqtt(wifiClient, &brokers);
 
-
-void parse_topic(const char* topic, Address_Segment* address_segments){
-  // We only care about the part of the topic without the prefix
-  // so check how many segments there are in config.subscribe_prefix
-  // so we can ignore that many segments later.
-  int i, segment = 0;
-  if(strlen(config.subscribe_prefix)){
-    for (i=0, segment=-1; config.subscribe_prefix[i]; i++){
-      segment -= (config.subscribe_prefix[i] == '/');
-    }
-  }
-
-  // Casting non-const here as we don't actually modify topic.
-  char* p_segment_start = (char*)topic;
-  char* p_segment_end = strchr(topic, '/');
-  while(p_segment_end != NULL){
-    if(segment >= 0){
-      int segment_len = p_segment_end - p_segment_start;
-      if(segment_len > NAME_LEN){
-        segment_len = NAME_LEN;
-      }
-      strncpy(address_segments[segment].segment, p_segment_start, segment_len);
-      address_segments[segment].segment[segment_len] = '\0';
-    }
-    p_segment_start = p_segment_end +1;
-    p_segment_end = strchr(p_segment_start, '/');
-    segment++;
-  }
-  strncpy(address_segments[segment++].segment, p_segment_start, NAME_LEN);
-  
-  for(; segment < ADDRESS_SEGMENTS; segment++){
-    address_segments[segment].segment[0] = '\0';
-  }
-}
-
-bool compare_addresses(const Address_Segment* address_1, const Address_Segment* address_2){
-  if(strlen(address_2[0].segment) <= 0){
-    return false;
-  }
-  if(strcmp(address_1[0].segment, "_all") != 0 &&
-      strcmp(address_1[0].segment, address_2[0].segment) != 0){
-    return false;
-  }
-  for(int s=1; s < ADDRESS_SEGMENTS; s++){
-    if(strcmp(address_1[s].segment, "_all") == 0){
-      return true;
-    }
-    if(strcmp(address_1[s].segment, address_2[s].segment) != 0){
-      return false;
-    }
-  }
-  return true;
-}
-
-String value_from_payload(const byte* payload, const unsigned int length, const String key) {
-  String buffer;
-  int index = 0;
-  for (int i = 0; i < length; i++) {
-    buffer += (char)payload[i];
-  }
-  buffer.trim();
-  
-  while(buffer.length()){
-    index = buffer.indexOf(",", index);
-    if(index < 0){
-      index = buffer.length();
-    }
-    String substring = buffer.substring(0, index);
-    int seperator_pos = substring.indexOf(":");
-    if(seperator_pos > 0){
-      String k = substring.substring(0, seperator_pos);
-      String v = substring.substring(seperator_pos +1);
-      k.trim();
-      v.trim();
-      if(k == key){
-        return v;
-      }
-    }
-
-    buffer = buffer.substring(index +1);
-    buffer.trim();
-  }
-
-  return "";
-}
-
-// Called whenever a MQTT topic we are subscribed to arrives.
-void mqtt_callback(const char* topic, const byte* payload, const unsigned int length) {
-  Serial.print("Message arrived [");
-  Serial.print(topic);
-  Serial.print("] ");
-  for (int i = 0; i < length; i++) {
-    Serial.print((char)payload[i]);
-  }
-  Serial.println();
-  
-  Address_Segment address_segments[ADDRESS_SEGMENTS];
-  parse_topic(topic, address_segments);
-
-  String command = value_from_payload(payload, length, "_command");
-
-  if(strncmp(address_segments[0].segment, "hosts", NAME_LEN) == 0 ||
-      strncmp(address_segments[0].segment, "_all", NAME_LEN) == 0)
-  {
-    if(command == "solicit"){
-      //Serial.println("Announce host.");
-      mqtt_announce_host();
-    }
-  }
-
-  for (int i = 0; i < MAX_DEVICES; ++i) {
-      if(compare_addresses(address_segments, config.devices[i].address_segment)){
-          //Serial.print("Matches: ");
-          //Serial.println(i);
-
-          if(command == ""){
-            // pass
-          } else if(command == "solicit"){
-            mqtt_announce(config.devices[i]);
-          } else {
-            change_state(config.devices[i], command);
-          }          
-      }
-  }
-}
-
-void mqtt_announce_host(){
-  String parsed_mac = mac_address;
-  parsed_mac.replace(":", "_");
-  String announce = "_subject:";
-  announce += parsed_mac;
-  announce += ", _hostname:";
-  announce += config.hostname;
-  announce += ", _ip:";
-  announce += ip_to_string(WiFi.localIP());
-  char host[60 + HOSTNAME_LEN];  // eg: "_subject:AA_BB_CC_DD_EE_FF, _hostname:somehost, ip:123.123.123.123"
-  announce.toCharArray(host, 60 + HOSTNAME_LEN);
-
-  String address_string = config.publish_prefix;
-  address_string += "/hosts/_announce";
-  char address_char[PREFIX_LEN + 17];  // eg: "pre/fix/hosts/_announce"
-  address_string.toCharArray(address_char, PREFIX_LEN + 17);
-
-  mqtt_client.publish(address_char, host);
-}
-
-void mqtt_announce(const Connected_device& device){
-  String announce = "_state:";
-  announce += String(device.io_value);
-  
-  char target[11];
-  announce.toCharArray(target, 11);
-  
-  String address_string = config.publish_prefix;
-  address_string += "/";
-  address_string += DeviceAddress(device);
-  char address_char[MAX_TOPIC_LENGTH];
-  address_string.toCharArray(address_char, MAX_TOPIC_LENGTH);
-
-  mqtt_client.publish(address_char, target);
-}
-
-void queue_mqtt_subscription(const char* path){
-  for(int i = 0; i < mqtt_subscription_count; i++){
-    if(strncmp(&mqtt_subscriptions[i * MAX_TOPIC_LENGTH], path, MAX_TOPIC_LENGTH) == 0){
-      return;
-    }
-  }
-  if(mqtt_subscription_count < MAX_SUBSCRIPTIONS){
-    Serial.print(mqtt_subscription_count);
-    Serial.print(" ");
-    Serial.println(path);
-    strncpy(&mqtt_subscriptions[mqtt_subscription_count * MAX_TOPIC_LENGTH], path, MAX_TOPIC_LENGTH -1);
-    mqtt_subscription_count++;
-  } else {
-    Serial.println("Error. Too many subscriptions.");
-  }
-  return;
-}
-
-void mqtt_subscribe_one(){
-  if(mqtt_subscription_count > mqtt_subscribed_count){
-    Serial.print("* ");
-    Serial.println(&mqtt_subscriptions[mqtt_subscribed_count * MAX_TOPIC_LENGTH]);
-    mqtt_client.subscribe(&mqtt_subscriptions[mqtt_subscribed_count * MAX_TOPIC_LENGTH]);
-    mqtt_subscribed_count++;
-  }
-}
-
-void mqtt_clear_buffers(){
-  for(int i = 0; i < MAX_SUBSCRIPTIONS; i++){
-    mqtt_subscriptions[i * MAX_TOPIC_LENGTH] = '\0';
-  }
-  mqtt_subscription_count = 0;
-  mqtt_subscribed_count = 0;
-}
-
-// Called whenever we want to make sure we are subscribed to necessary topics.
-void mqtt_connect() {
-  Broker broker = brokers.GetBroker();
-  if(broker.address == IPAddress(0,0,0,0)){
-    return;
-  }
-  mqtt_client.setServer(broker.address, 1883);
-  mqtt_client.setCallback(mqtt_callback);
-
-  if (mqtt_client.connect(config.hostname)) {
-    if(mqtt_subscribed_count > 0){
-      // In the event this is a re-connection, clear the subscription buffer.
-      mqtt_clear_buffers();
-    }
-
-    char address[MAX_TOPIC_LENGTH];
-   
-    strncpy(address, config.subscribe_prefix, MAX_TOPIC_LENGTH -1);
-    strncat(address, "/_all/_all", MAX_TOPIC_LENGTH -1 -strlen(address));
-    queue_mqtt_subscription(address);
-    
-    strncpy(address, config.subscribe_prefix, MAX_TOPIC_LENGTH -1);
-    strncat(address, "/hosts/_all", MAX_TOPIC_LENGTH -1 - strlen(address));
-    queue_mqtt_subscription(address);
-
-    strncpy(address, config.subscribe_prefix, MAX_TOPIC_LENGTH -1);
-    strncat(address, "/hosts/", MAX_TOPIC_LENGTH -1 - strlen(address));
-    strncat(address, config.hostname, MAX_TOPIC_LENGTH -1 - strlen(address));
-    queue_mqtt_subscription(address);
-
-    for (int i = 0; i < MAX_DEVICES; ++i) {
-      if (strlen(config.devices[i].address_segment[0].segment) > 0) {
-        mqtt_announce(config.devices[i]);
-
-        strncpy(address, config.subscribe_prefix, MAX_TOPIC_LENGTH -1);
-        strncat(address, "/_all", MAX_TOPIC_LENGTH -1 - strlen(address));
-
-        for(int j = 0; j < ADDRESS_SEGMENTS; j++){
-          if(strlen(config.devices[i].address_segment[j].segment) <= 0) {
-            break;
-          }
-          address[strlen(address) -4] = '\0';
-          strncat(address, config.devices[i].address_segment[j].segment,
-                  MAX_TOPIC_LENGTH -1 - strlen(address));
-          if (j < (ADDRESS_SEGMENTS -1) &&
-              strlen(config.devices[i].address_segment[j +1].segment) > 0) {
-            strncat(address, "/_all", MAX_TOPIC_LENGTH -1 - strlen(address));
-          }
-          queue_mqtt_subscription(address);
-        }
-      }
-    }
-  }
-  brokers.RateBroker(mqtt_client.connected());
-  if (mqtt_client.connected()) {
-    Serial.print("MQTT connected to: ");
-    Serial.println(broker.address);
-    mqtt_announce_host();
-  }
+void mqttCallback(const char* topic, const byte* payload, const unsigned int length){
+  mqtt.callback(topic, payload, length);
 }
 
 
 // IO
-bool io_service_input = false;
-void inputCallback(){
-  //Serial.println("inputCallback()");
-  io_service_input = true;
+Io io(&mqtt);
+void ioCallbackWrapper(){
+  Serial.println("ioCallbackWrapper");
+  io.inputCallback();
 }
 
-void inputSerice(){
-  if(!io_service_input){
-    return;
-  }
-  //Serial.println("inputSerice()");
-  io_service_input = false;
-  for(int i=0; i < MAX_DEVICES; i++){
-    if (strlen(config.devices[i].address_segment[0].segment) > 0) {
-      if(config.devices[i].iotype == input){
-        byte value = digitalRead(config.devices[i].io_pin);
-        value = (config.devices[i].inverted ? value == 0 : value);
-        if(value != config.devices[i].io_value){
-          config.devices[i].io_value = value;
-          //Serial.print("## ");
-          //Serial.println(value);
-          mqtt_announce(config.devices[i]);
-
-          // This pin is also the enable pin for the configuration menu.
-          if(i == config.enable_io_pin){
-            configInterrupt();
-          }
-        }
-      }
-    }
-  }
-}
-
-void setupIo(){
-  for(int i=0; i < MAX_DEVICES; i++){
-    if (strlen(config.devices[i].address_segment[0].segment) > 0) {
-      if(config.devices[i].iotype == input){
-        config.devices[i].io_value = 1;
-        pinMode(config.devices[i].io_pin, INPUT_PULLUP);
-        attachInterrupt(digitalPinToInterrupt(config.devices[i].io_pin), inputCallback, CHANGE);
-      } else {
-        if (config.devices[i].io_default > 255 || config.devices[i].io_default < 0) {
-          config.devices[i].io_default = 0;
-        }
-        config.devices[i].io_value = config.devices[i].io_default;
-        set_state(config.devices[i]);
-      }
-    }
-  }
-  io_service_input = true;
-  inputSerice();
-}
-
-void change_state(Connected_device& device, String command){
-  command.toLowerCase();
-  device.io_value = command.toInt();
-  if(command == "on" || command == "true"){
-    device.io_value = 255;
-  } else if(command == "off" || command == "false"){
-    device.io_value = 0;
-  } else if (device.io_value > 255 || device.io_value < 0) {
-    device.io_value = 0;
-  }
-  set_state(device);
-}
-
-void set_state(const Connected_device& device){
-  if(device.iotype == onoff){
-    pinMode(device.io_pin, OUTPUT);
-    // If pin was previously set to Io_Type::pwm we need to switch off analogue output
-    // before using digital output.
-    analogWrite(device.io_pin, 0);
-    
-    digitalWrite(device.io_pin, device.inverted ? (device.io_value == 0) : device.io_value);
-  } else if(device.iotype == pwm){
-    pinMode(device.io_pin, OUTPUT);
-    analogWrite(device.io_pin, device.inverted ? (255 - device.io_value) : device.io_value);
-  } else if(device.iotype == test){
-    Serial.print("Switching pin: ");
-    Serial.print(device.io_pin);
-    Serial.print(" to value: ");
-    Serial.println(device.inverted ? (255 - device.io_value) : device.io_value);
-  } else if(device.iotype == input){
-  }
-	mqtt_announce(device);
-}
 
 
 // HTTP
@@ -472,6 +136,7 @@ void handleConfig() {
     --allow_config;
   }
   if(http_server.hasArg("enablepassphrase") &&
+      config.enable_passphrase != "" &&
       http_server.arg("enablepassphrase") == config.enable_passphrase){
     allow_config = 1;
   }
@@ -670,8 +335,8 @@ void handleSet() {
     Serial.println(message);
 
     // Force reconnect to MQTT so we subscribe to any new addresses.
-    mqtt_client.disconnect();
-    setupIo();
+    mqtt.forceDisconnect();
+    io.setup();
   }
   
   Persist_Data::Persistent<Config> persist_config(&config);
@@ -842,8 +507,10 @@ void setup(void) {
 
     pinMode(config.enable_io_pin, INPUT_PULLUP);
     attachInterrupt(digitalPinToInterrupt(config.enable_io_pin), configInterrupt, CHANGE);
+    io.registerCallback(ioCallbackWrapper);
+    io.setup();
 
-    setupIo();
+    mqtt.registerCallback(mqttCallback);
   }
 }
 
@@ -857,28 +524,28 @@ void loop(void) {
     pullFirmware();
   } else {
     http_server.handleClient();
-    mqtt_client.loop();
+    mqtt.loop();
 
     if(!my_mdns.Check()){
       //Serial.println("mDNS error.");
     }
 
-    if (!mqtt_client.connected()) {
+    if (!mqtt.connected()) {
       if(mqtt_connected){
         Serial.println("MQTT disconnected.");
         mqtt_connected = false;
       }
       Serial.print("-");
-      mqtt_connect();
+      mqtt.connect();
       delay(1000);
     } else {
       if(!mqtt_connected){
         // Serial.println("MQTT connected.");
         mqtt_connected = true;
       }
-      mqtt_subscribe_one();
+      mqtt.subscribeOne();
     }
 
-    inputSerice();
+    io.loop();
   }
 }

@@ -1,7 +1,10 @@
+#include "config.h"
 #include "devices.h"
+#include "mqtt.h"
 #include "host_attributes.h"
 
 
+extern void configInterrupt();
 extern Config config;
 
 // Ensure buffer contains only valid characters for a word in an MQTT topic.
@@ -87,3 +90,107 @@ void SetDevice(const unsigned int index, struct Connected_device& device) {
   }
 }
 
+
+void Io::setup(){
+  for(int i=0; i < MAX_DEVICES; i++){
+    if (strlen(config.devices[i].address_segment[0].segment) > 0) {
+      if(config.devices[i].iotype == input){
+        config.devices[i].io_value = 1;
+        pinMode(config.devices[i].io_pin, INPUT_PULLUP);
+        if(callback){
+          attachInterrupt(digitalPinToInterrupt(config.devices[i].io_pin),
+                          callback, CHANGE);
+        }
+      } else {
+        if (config.devices[i].io_default > 255 || config.devices[i].io_default < 0) {
+          config.devices[i].io_default = 0;
+        }
+        config.devices[i].io_value = config.devices[i].io_default;
+        setState(config.devices[i]);
+      }
+    }
+  }
+  dirty_inputs = true;
+  loop();
+}
+
+void Io::loop(){
+  if(!dirty_inputs){
+    return;
+  }
+  //Serial.println("inputSerice()");
+  dirty_inputs = false;
+  for(int i=0; i < MAX_DEVICES; i++){
+    if (strlen(config.devices[i].address_segment[0].segment) > 0) {
+      if(config.devices[i].iotype == input){
+        byte value = digitalRead(config.devices[i].io_pin);
+        value = (config.devices[i].inverted ? value == 0 : value);
+        if(value != config.devices[i].io_value){
+          config.devices[i].io_value = value;
+          //Serial.print("## ");
+          //Serial.println(value);
+          mqttAnnounce(config.devices[i]);
+
+          // This pin is also the enable pin for the configuration menu.
+          if(i == config.enable_io_pin){
+            configInterrupt();
+          }
+        }
+      }
+    }
+  }
+}
+
+void Io::changeState(Connected_device& device, String command){
+  command.toLowerCase();
+  device.io_value = command.toInt();
+  if(command == "on" || command == "true"){
+    device.io_value = 255;
+  } else if(command == "off" || command == "false"){
+    device.io_value = 0;
+  } else if (device.io_value > 255 || device.io_value < 0) {
+    device.io_value = 0;
+  }
+  setState(device);
+}
+
+void Io::setState(const Connected_device& device){
+  if(device.iotype == onoff){
+    pinMode(device.io_pin, OUTPUT);
+    // If pin was previously set to Io_Type::pwm we need to switch off analogue output
+    // before using digital output.
+    analogWrite(device.io_pin, 0);
+    
+    digitalWrite(device.io_pin, device.inverted ? (device.io_value == 0) : device.io_value);
+  } else if(device.iotype == pwm){
+    pinMode(device.io_pin, OUTPUT);
+    analogWrite(device.io_pin, device.inverted ? (255 - device.io_value) : device.io_value);
+  } else if(device.iotype == test){
+    Serial.print("Switching pin: ");
+    Serial.print(device.io_pin);
+    Serial.print(" to value: ");
+    Serial.println(device.inverted ? (255 - device.io_value) : device.io_value);
+  } else if(device.iotype == input){
+  }
+	mqttAnnounce(device);
+}
+
+void Io::inputCallback(){
+  dirty_inputs = true;
+}
+
+void Io::mqttAnnounce(const Connected_device& device){
+  String payload = "_state:";
+  payload += String(device.io_value);
+  
+  char target[11];
+  payload.toCharArray(target, 11);
+  
+  String topic = config.publish_prefix;
+  topic += "/";
+  topic += DeviceAddress(device);
+  char topic_char[MAX_TOPIC_LENGTH];
+  topic.toCharArray(topic_char, MAX_TOPIC_LENGTH);
+
+  mqtt->announce(topic, payload);
+}

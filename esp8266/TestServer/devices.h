@@ -2,8 +2,7 @@
 #define ESP8266__DEVICES_H
 
 #include <Arduino.h>  // String
-#include "config.h"
-//#include "host_attributes.h"
+#include "mqtt.h"
 
 
 enum Io_Type {
@@ -11,10 +10,6 @@ enum Io_Type {
   pwm,
   onoff,
   input
-};
-
-struct Address_Segment {
-  char segment[NAME_LEN];
 };
 
 struct Connected_device {
@@ -43,6 +38,20 @@ void SetPrefix(const char* new_prefix, char* dest_buffer);
 void SetDevice(const unsigned int index, Connected_device& device);
 
 
-
+class Io{
+ public:
+  Io(Mqtt* mqtt_) : mqtt(mqtt_){};
+  void setup();
+  void loop();
+  void changeState(Connected_device& device, String command);
+  void setState(const Connected_device& device);
+  void registerCallback(void(*callback_)()){ callback = callback_; }
+  void inputCallback();
+  void mqttAnnounce(const Connected_device& device);
+ private:
+  void (*callback)();
+  bool dirty_inputs;
+  Mqtt* mqtt;
+};
 
 #endif  // ESP8266__DEVICES_H
