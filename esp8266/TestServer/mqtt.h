@@ -42,7 +42,7 @@ class Mqtt{
 
   bool connected(){ return mqtt_client.connected(); }
   void forceDisconnect(){ mqtt_client.disconnect(); }
-  void loop(){ mqtt_client.loop(); }
+  void loop();
   void registerCallback(void (*registered_callback_)(const char* topic,
                                                      const byte* payload,
                                                      const unsigned int length)){ 
@@ -56,6 +56,7 @@ class Mqtt{
   int mqtt_subscribed_count;
   Brokers* brokers;
   void (*registered_callback)(const char* topic, const byte* payload, const unsigned int length);
+  bool was_connected;
 };
 
 

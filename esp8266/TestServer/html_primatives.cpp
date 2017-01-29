@@ -5,7 +5,10 @@ const String page(const char* style, const char* script,
                   const String& head, const String& body)
 {
   return "<!DOCTYPE html>\n"
-         "<html><head><style>" + String(style) + "</style>" +
+         "<html>"
+         "<meta http-equiv=\"Cache-Control\" "
+         "content=\"no-cache, no-store, must-revalidate\" />"
+         "<head><style>" + String(style) + "</style>" +
          "<script>" + String(script) + "</script>" +
          head + "</head>" +
          "<body>" + body + "</body>" +
@@ -25,6 +28,22 @@ const String textField(const String& name, const String& placeholder,
                        const String& value, const String& class_)
 {
   String return_value = "<input type=\"text\" name=\"";
+  return_value += String(name);
+  return_value += "\" class=\"";
+  return_value += class_;
+  return_value += "\" value=\"";
+  return_value += String(value);
+  return_value += "\" placeholder=\"";
+  return_value += String(placeholder);
+  return_value += "\">";
+  return return_value;
+}
+
+const String ipField(const String& name, const String& placeholder,
+                       const String& value, const String& class_)
+{
+  String return_value = "<input type=\"text\" ";
+  return_value += "pattern=\"\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}\" name=\"";
   return_value += String(name);
   return_value += "\" class=\"";
   return_value += class_;

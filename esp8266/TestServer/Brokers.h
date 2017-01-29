@@ -18,6 +18,7 @@ typedef struct Broker {
   int port;
   unsigned int service_valid_until;
   unsigned int host_valid_until;
+  unsigned int ipv4_valid_until;
   unsigned int fail_counter;
 } Broker;
 
@@ -28,14 +29,14 @@ class Brokers {
       service_type_(service_type),
       mdns_(mdns_instance), 
       itterator(0), 
-      last_mdns_question_time(0) {};
+      last_question_time(0) {};
   Brokers(const String service_type) :
       service_type_(service_type),
       itterator(0),
-      last_mdns_question_time(0) {};
+      last_question_time(0) {};
   void RegisterMDns(mdns::MDns* mdns_instance) { mdns_ = mdns_instance; }
   
-  void SendMDnsQuestion();
+  void SendQuestion();
   void ParseMDnsAnswer(const mdns::Answer* answer);
   Broker GetBroker();
   void RateBroker(bool sucess);
@@ -47,7 +48,7 @@ class Brokers {
   Broker brokers_[MAX_BROKERS];
   mdns::MDns* mdns_;
   unsigned int itterator;
-  unsigned int last_mdns_question_time;
+  unsigned int last_question_time;
 };
 
 

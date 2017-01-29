@@ -20,11 +20,13 @@
 
 Config config = {
   "",
+  {0,0,0,0},  // Null IP address means use DHCP.
+  {0,0,0,0},
+  {0,0,0,0},
+  {0,0,0,0},
   "homeautomation/+",
   "homeautomation/0",
   {},
-  {0,0,0,0},
-  {0,0,0,0},
   "http://192.168.192.54:8000/firmware.bin",
   "",
   0,
@@ -135,17 +137,46 @@ void handleConfig() {
   if(allow_config){
     --allow_config;
   }
-  if(http_server.hasArg("enablepassphrase") &&
+  if(allow_config <= 0 && http_server.hasArg("enablepassphrase") &&
       config.enable_passphrase != "" &&
       http_server.arg("enablepassphrase") == config.enable_passphrase){
     allow_config = 1;
   }
+  Serial.print("allow_config: ");
+  Serial.println(allow_config);
   
   if(allow_config){
     message += descriptionListItem("mac_address", mac_address);
+    
+    if(config.ip == IPAddress(0, 0, 0, 0)) {
+      message += descriptionListItem("IP address by DHCP",
+                                     String(ip_to_string(WiFi.localIP())));
+    }
     message += descriptionListItem("hostname", 
         textField("hostname", "hostname", config.hostname, "hostname") +
         submit("Save", "save_hostname" , "save('hostname')"));
+    message += descriptionListItem("&nbsp", "&nbsp");
+
+    message += descriptionListItem("IP address",
+        ipField("ip", ip_to_string(config.ip), ip_to_string(config.ip), "ip") +
+        submit("Save", "save_ip" , "save('ip')") +
+        String("(0.0.0.0 for DHCP. Static boots quicker.)"));
+    if(config.ip != IPAddress(0, 0, 0, 0)) {
+      message += descriptionListItem("Subnet mask",
+          ipField("subnet", ip_to_string(config.subnet), ip_to_string(config.subnet), "subnet") +
+          submit("Save", "save_subnet" , "save('subnet')"));
+      message += descriptionListItem("Gateway",
+          ipField("gateway", ip_to_string(config.gateway),
+            ip_to_string(config.gateway), "gateway") +
+          submit("Save", "save_gateway" , "save('gateway')"));
+    }
+    message += descriptionListItem("&nbsp", "&nbsp");
+
+    message += descriptionListItem("MQTT broker hint",
+        ipField("broker_ip", ip_to_string(config.broker_ip),
+                ip_to_string(config.broker_ip), "brokerip") +
+        submit("Save", "save_brokerip" , "save('brokerip')") +
+        String("(0.0.0.0 to only use auto discovery)"));
     message += descriptionListItem("MQTT subscription prefix",
         textField("subscribeprefix", "subscribeprefix", config.subscribe_prefix,
           "subscribeprefix") +
@@ -154,6 +185,8 @@ void handleConfig() {
         textField("publishprefix", "publishprefix", config.publish_prefix,
           "publishprefix") +
         submit("Save", "save_publishprefix" , "save('publishprefix')"));
+    message += descriptionListItem("&nbsp", "&nbsp");
+    
     message += descriptionListItem("HTTP Firmware URL",
         textField("firmware_server", "firmware_server", config.firmware_server,
           "firmwareserver") +
@@ -166,7 +199,6 @@ void handleConfig() {
         ioPin(config.enable_io_pin, "enableiopin") +
         submit("Save", "save_enableiopin" , "save('enableiopin')"));
 
-    message += descriptionListItem("IP address", String(ip_to_string(WiFi.localIP())));
 
     String rows = row(header("index") + header("Topic") + header("type") + 
         header("IO pin") + header("Default val") + header("Inverted") +
@@ -221,8 +253,10 @@ void handleConfig() {
       cells += cell("");
       rows += row(cells, "device_" + String(empty_device));
     }
-    message += table(rows);
+    message += descriptionListItem("&nbsp", table(rows));
     message += descriptionListItem("Pull firmware", link("go", "pullfirmware"));
+
+    message = descriptionList(message);
 
   } else {
     Serial.println("Not allowed to handleConfig()");
@@ -257,6 +291,18 @@ void handleSet() {
 
   if (http_server.hasArg("test_arg")) {
     message += "test_arg: " + http_server.arg("test_arg") + "\n";
+  } else if (http_server.hasArg("ip")) {
+    config.ip = string_to_ip(http_server.arg("ip"));
+    message += "ip: " + http_server.arg("ip") + "\n";
+  } else if (http_server.hasArg("gateway")) {
+    config.gateway = string_to_ip(http_server.arg("gateway"));
+    message += "gateway: " + http_server.arg("gateway") + "\n";
+  } else if (http_server.hasArg("subnet")) {
+    config.subnet = string_to_ip(http_server.arg("subnet"));
+    message += "subnet: " + http_server.arg("subnet") + "\n";
+  } else if (http_server.hasArg("brokerip")) {
+    config.broker_ip = string_to_ip(http_server.arg("brokerip"));
+    message += "broker_ip: " + http_server.arg("brokerip") + "\n";
   } else if (http_server.hasArg("hostname")) {
     char tmp_buffer[HOSTNAME_LEN];
     http_server.arg("hostname").toCharArray(tmp_buffer, HOSTNAME_LEN);
@@ -434,11 +480,9 @@ void setup_network(void) {
   WiFi.setAutoConnect(true);
   WiFi.setAutoReconnect(true);
  
-  /*IPAddress staticIP(192,168,192,200);
-  IPAddress gateway(192,168,192,1);
-  IPAddress subnet(255,255,255,0);
-
-  WiFi.config(staticIP, gateway, subnet);*/
+  if(config.ip != IPAddress(0,0,0,0) && config.subnet != IPAddress(0,0,0,0)){
+    WiFi.config(config.ip, config.gateway, config.subnet);
+  }
 
   // Wait for connection
   int timer = RESET_ON_CONNECT_FAIL * 10;
@@ -511,10 +555,11 @@ void setup(void) {
     io.setup();
 
     mqtt.registerCallback(mqttCallback);
+
+    allow_config = 0;
   }
 }
 
-bool mqtt_connected = true;
 void loop(void) {
   if (WiFi.status() != WL_CONNECTED) {
     setup_network();
@@ -525,27 +570,10 @@ void loop(void) {
   } else {
     http_server.handleClient();
     mqtt.loop();
-
+    io.loop();
     if(!my_mdns.Check()){
       //Serial.println("mDNS error.");
     }
 
-    if (!mqtt.connected()) {
-      if(mqtt_connected){
-        Serial.println("MQTT disconnected.");
-        mqtt_connected = false;
-      }
-      Serial.print("-");
-      mqtt.connect();
-      delay(1000);
-    } else {
-      if(!mqtt_connected){
-        // Serial.println("MQTT connected.");
-        mqtt_connected = true;
-      }
-      mqtt.subscribeOne();
-    }
-
-    io.loop();
   }
 }

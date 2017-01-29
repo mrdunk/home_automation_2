@@ -27,7 +27,9 @@ function save(label) {
     send(url);
   } else if(target === 'hostname' || target === 'publishprefix' ||
             target === 'subscribeprefix' || target === 'firmwareserver' ||
-            target === 'enablepassphrase' || target === 'enableiopin'){
+            target === 'enablepassphrase' || target === 'enableiopin' ||
+            target === 'ip' || target === 'subnet' || target === 'gateway' ||
+            target === 'brokerip'){
     var data = document.getElementsByClassName(target)[0].value;
     console.log(target);
     var url = 'http://' + window.location.host + '/set/?' + target + '=';
@@ -58,20 +60,23 @@ function del(label) {
 };
 )=====";
 
-const char style[] PROGMEM = R"=====(
-  dl {border: 3px double #ccc;}
-  dt {float: left; width: 15em; font-weight: bold; background: darkgrey}
-  dt:after {content: ':'; }
-  dd {margin-bottom: 1px; margin-left: 0; background: darkgrey;}
-  table {border-spacing: 1px; border: 1px solid grey;}
-  tr {background: darkgrey; padding: 3px;}
-  th {border: 1px solid grey;}
-  td {border: 1px solid grey;}
-  input, [type=text] {width: 20em;}
-  input, [type=number] {width: 3em;}
-  .highlight {background: lightgreen;}
-  .div-shrink{display: inline;}
-)=====";
+const char style[] =
+  "dl{border: 3px double #ccc; width: 100%;}"
+  "dl dt, dl dd {float: left; margin:1px 0 0 0; background: darkgrey;}"
+  "dl dt{clear: left; font-weight: bold; width:15em;}"
+  "dl dd{overflow: hidden; width: calc(100% - 15em);}"
+
+  "table {border-spacing: 1px; border: 1px solid grey;}"
+  "tr {background: darkgrey; padding: 3px;}"
+  "th {border: 1px solid grey;}"
+  "td {border: 1px solid grey;}"
+  "input, [type=text] {width: 20em;}"
+  "input, [type=number] {width: 3em;}"
+  ".highlight {background: lightgreen;}"
+  ".div-shrink{display: inline;}"
+  
+  "input:required:invalid, input:focus:invalid {background: red;}"
+  ;
 
 const String page(const char* style, const char* script,
                   const String& head, const String& body);
@@ -82,6 +87,9 @@ const String descriptionListItem(const String& key, const String& value);
 
 const String textField(const String& name, const String& placeholder,
                        const String& value, const String& class_);
+
+const String ipField(const String& name, const String& placeholder,
+                     const String& value, const String& class_);
 
 const String table(const String& rows);
 

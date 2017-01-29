@@ -2,6 +2,8 @@
 #include "devices.h"
 #include "host_attributes.h"
 
+// TODO. These externs are lazy.
+// I should really come up with a proper way of passing data between objects.
 extern Io io;
 extern Config config;
 
@@ -10,6 +12,26 @@ Mqtt::Mqtt(WiFiClient& wifi_client, Brokers* brokers_){
   brokers = brokers_;
   mqtt_subscription_count = 0;
   mqtt_subscribed_count = 0;
+  was_connected = false;
+}
+
+void Mqtt::loop(){
+  if (!connected()) {
+    if (was_connected){
+      Serial.println("MQTT disconnected.");
+      was_connected = false;
+    }
+    connect();
+    Serial.print("-");
+    delay(10);
+  } else {
+    if (!was_connected){
+      // Serial.println("MQTT connected.");
+      was_connected = true;
+    }
+    subscribeOne();
+    mqtt_client.loop();
+  }
 }
 
 void Mqtt::parse_topic(const char* topic, Address_Segment* address_segments){
@@ -209,10 +231,16 @@ void Mqtt::mqtt_clear_buffers(){
 // Called whenever we want to make sure we are subscribed to necessary topics.
 void Mqtt::connect() {
   Broker broker = brokers->GetBroker();
-  if(broker.address == IPAddress(0,0,0,0)){
-    return;
+  IPAddress ip = broker.address;
+  if(ip == IPAddress(0,0,0,0)){
+    if(config.ip == IPAddress(0,0,0,0)){
+      // Can't find a Broker being advertised by mDNS so use configured one.
+      ip = config.ip;
+    } else {
+      return;
+    } 
   }
-  mqtt_client.setServer(broker.address, 1883);
+  mqtt_client.setServer(ip, 1883);
   mqtt_client.setCallback(registered_callback);
 
   if (mqtt_client.connect(config.hostname)) {

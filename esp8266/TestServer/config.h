@@ -6,7 +6,7 @@
 #define RESET_ON_CONNECT_FAIL 60
 
 // Maximum size of an incoming mDNS packet. Make this as big as free RAM allows.
-#define MAX_MDNS_PACKET_SIZE 256
+#define MAX_MDNS_PACKET_SIZE 512
 
 // Increase this if any changes are made to "struct Config" or you need to reset
 // config to default values.

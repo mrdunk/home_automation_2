@@ -7,11 +7,13 @@
 
 struct Config {
   char hostname[HOSTNAME_LEN];
+  IPAddress ip;
+  IPAddress gateway;
+  IPAddress subnet;
+  IPAddress broker_ip;
   char subscribe_prefix[PREFIX_LEN];
   char publish_prefix[PREFIX_LEN];
   Connected_device devices[MAX_DEVICES];
-  IPAddress local_address;
-  IPAddress broker_address;
   char firmware_server[FIRMWARE_SERVER_LEN];
   char enable_passphrase[FIRMWARE_SERVER_LEN];
   int enable_io_pin;
