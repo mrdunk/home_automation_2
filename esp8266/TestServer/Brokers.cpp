@@ -280,5 +280,7 @@ String Brokers::Summary() {
       }
     }
   }
-  return table(rows);
+  
+  wrapInTable(rows);
+  return rows;
 }

@@ -4,7 +4,8 @@
 #include <ESP8266WiFi.h>
 
 
-const char javascript[] PROGMEM = R"=====(
+//const char javascript[] PROGMEM = R"=====(
+const char javascript[] = R"=====(
 function save(label) {
   console.log('save', label);
   var target = label.split('_')[0];
@@ -60,7 +61,7 @@ function del(label) {
 };
 )=====";
 
-const char style[] =
+const char style[] PROGMEM =
   "dl{border: 3px double #ccc; width: 100%;}"
   "dl dt, dl dd {float: left; margin:1px 0 0 0; background: darkgrey;}"
   "dl dt{clear: left; font-weight: bold; width:15em;}"
@@ -78,10 +79,21 @@ const char style[] =
   "input:required:invalid, input:focus:invalid {background: red;}"
   ;
 
-const String page(const char* style, const char* script,
-                  const String& head, const String& body);
+void wrapInPage(const char* style, const char* script, String& body);  // TODO remove me.
+const String pageHeader(const char* style, const char* script);
+const String pageFooter();
 
-const String descriptionList(const String& items);
+void wrapInList(String& items);  // TODO remove me
+const String listStart();
+const String listEnd();
+
+void wrapInTable(String& rows);  // TODO remove me
+const String tableStart();
+const String tableEnd();
+
+const String row(const String& cells, const String& class_name);  // TODO remove me
+const String rowStart(const String& class_name);
+const String rowEnd();
 
 const String descriptionListItem(const String& key, const String& value);
 
@@ -90,10 +102,6 @@ const String textField(const String& name, const String& placeholder,
 
 const String ipField(const String& name, const String& placeholder,
                      const String& value, const String& class_);
-
-const String table(const String& rows);
-
-const String row(const String& cells, const String& class_name);
 
 const String header(const String& content);
 

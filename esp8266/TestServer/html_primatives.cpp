@@ -1,22 +1,36 @@
 #include "html_primatives.h"
 
-
-const String page(const char* style, const char* script,
-                  const String& head, const String& body)
+void wrapInPage(const char* style, const char* script, String& body)
 {
-  return "<!DOCTYPE html>\n"
-         "<html>"
-         "<meta http-equiv=\"Cache-Control\" "
+  body = "<!DOCTYPE html>\n<html><meta http-equiv=\"Cache-Control\" "
          "content=\"no-cache, no-store, must-revalidate\" />"
-         "<head><style>" + String(style) + "</style>" +
-         "<script>" + String(script) + "</script>" +
-         head + "</head>" +
-         "<body>" + body + "</body>" +
-         "</html>";
+         "<head><style>" + String(style) + "</style>\n<script src=\"" + 
+         String(script) + "\"></script></head>\n<body>" + body;
+  body.concat("</body>\n</html>");
 }
 
-const String descriptionList(const String& items){
-  return "<dl>" + items + "</dl>";
+const String pageHeader(const char* style, const char* script){
+  return "<!DOCTYPE html>\n<html><meta http-equiv=\"Cache-Control\" "
+         "content=\"no-cache, no-store, must-revalidate\" />"
+         "<head><style>" + String(style) + "</style>\n<script src=\"" + 
+         String(script) + "\"></script></head>\n<body>";
+}
+
+const String pageFooter(){
+  return "</body>\n</html>";
+}
+
+void wrapInList(String& items){
+  items = "<dl>" + items;
+  items.concat("</dl>");
+}
+
+const String listStart(){
+  return "<dl>";
+}
+
+const String listEnd(){
+  return "</dl>";
 }
 
 const String descriptionListItem(const String& key, const String& value){
@@ -42,8 +56,8 @@ const String textField(const String& name, const String& placeholder,
 const String ipField(const String& name, const String& placeholder,
                        const String& value, const String& class_)
 {
-  String return_value = "<input type=\"text\" ";
-  return_value += "pattern=\"\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}\" name=\"";
+  String return_value = "<input type=\"text\" "
+                        "pattern=\"\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}\" name=\"";
   return_value += String(name);
   return_value += "\" class=\"";
   return_value += class_;
@@ -55,12 +69,29 @@ const String ipField(const String& name, const String& placeholder,
   return return_value;
 }
 
-const String table(const String& rows){
-  return "<table>" + rows + "</table>";
+void wrapInTable(String& rows){
+  rows = "<table>" + rows;
+  rows.concat("</table>");
+}
+
+const String tableStart(){
+  return "<table>";
+}
+
+const String tableEnd(){
+  return "</table>";
 }
 
 const String row(const String& cells, const String& class_name){
   return "<tr class=\"" + class_name + "\">" + cells + "</tr>";
+}
+
+const String rowStart(const String& class_name){
+  return "<tr class=\"" + class_name + "\">";
+}
+
+const String rowEnd(){
+  return "</tr>";
 }
 
 const String header(const String& content){

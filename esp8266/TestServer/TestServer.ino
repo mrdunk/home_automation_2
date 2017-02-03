@@ -13,9 +13,10 @@
 #include "persist_data.h"
 #include "persist_data.cpp"   // Template arguments confuse the linker so need to include .cpp .
 #include "Brokers.h"
-#include "html_primatives.h"
+#include "html_primatives.h"  // TODO remove?
 #include "host_attributes.h"
 #include "config.h"
+#include "http_server.h"
 
 
 Config config = {
@@ -35,7 +36,7 @@ Config config = {
 };
 
 String mac_address;
-int allow_config = 0;
+int allow_config;
 
 
 // mDNS
@@ -69,71 +70,72 @@ void ioCallbackWrapper(){
 
 
 // HTTP
-ESP8266WebServer http_server(80);
+/*ESP8266WebServer http_server(80);
+String message;
 
 void handleRoot() {
   Serial.println("handleRoot()");
-  String message = "";
-  String description_list ="";
-  description_list += descriptionListItem("MAC address", mac_address);
-  description_list += descriptionListItem("Hostname", config.hostname);
-  description_list += descriptionListItem("IP address", String(ip_to_string(WiFi.localIP())));
-  description_list += descriptionListItem("&nbsp", "&nbsp");
+  message.reserve(9000);
+  message = "";
+  message += descriptionListItem("MAC address", mac_address);
+  message += descriptionListItem("Hostname", config.hostname);
+  message += descriptionListItem("IP address", String(ip_to_string(WiFi.localIP())));
+  message += descriptionListItem("&nbsp", "&nbsp");
 
-  description_list += descriptionListItem("WiFI RSSI", String(WiFi.RSSI()));
+  message += descriptionListItem("WiFI RSSI", String(WiFi.RSSI()));
   // WiFi.BSSID() does not appear to work as expected.
   // MAC Address changes between a few set values. Possibly the addresses of other APs in range?
   //byte bssid[6];
   //WiFi.BSSID(*bssid);
-  //description_list += descriptionListItem("Router MAC address", macToStr(bssid));
+  //message += descriptionListItem("Router MAC address", macToStr(bssid));
   byte numSsid = WiFi.scanNetworks();
   for (int thisNet = 0; thisNet<numSsid; thisNet++) {
-    description_list += descriptionListItem("WiFi SSID", WiFi.SSID(thisNet) +
+    message += descriptionListItem("WiFi SSID", WiFi.SSID(thisNet) +
         "&nbsp&nbsp&nbsp(" + String(WiFi.RSSI(thisNet)) + ")");
   }
-  description_list += descriptionListItem("&nbsp", "&nbsp");
+  message += descriptionListItem("&nbsp", "&nbsp");
 
-  description_list += descriptionListItem("CPU frequency", String(ESP.getCpuFreqMHz()));
-  description_list += descriptionListItem("Flash size", String(ESP.getFlashChipSize()));
-  description_list += descriptionListItem("Flash space",
+  message += descriptionListItem("CPU frequency", String(ESP.getCpuFreqMHz()));
+  message += descriptionListItem("Flash size", String(ESP.getFlashChipSize()));
+  message += descriptionListItem("Flash space",
       String(int(100 * ESP.getFreeSketchSpace() / ESP.getFlashChipSize())) + "%");
-  description_list += descriptionListItem("Flash speed", String(ESP.getFlashChipSpeed()));
-  description_list += descriptionListItem("Free memory", String(ESP.getFreeHeap()));
-  description_list += descriptionListItem("SDK version", ESP.getSdkVersion());
-  description_list += descriptionListItem("Core version", ESP.getCoreVersion());
-  description_list += descriptionListItem("Config version", config.config_version);
-  description_list += descriptionListItem("&nbsp", "&nbsp");
-  description_list += descriptionListItem("Analogue in", String(analogRead(A0)));
-  description_list += descriptionListItem("System clock", String(millis() / 1000));
-  description_list += descriptionListItem("&nbsp", "&nbsp");
+  message += descriptionListItem("Flash speed", String(ESP.getFlashChipSpeed()));
+  message += descriptionListItem("Free memory", String(ESP.getFreeHeap()));
+  message += descriptionListItem("SDK version", ESP.getSdkVersion());
+  message += descriptionListItem("Core version", ESP.getCoreVersion());
+  message += descriptionListItem("Config version", config.config_version);
+  message += descriptionListItem("&nbsp", "&nbsp");
+  message += descriptionListItem("Analogue in", String(analogRead(A0)));
+  message += descriptionListItem("System clock", String(millis() / 1000));
+  message += descriptionListItem("&nbsp", "&nbsp");
   
-  description_list += descriptionListItem("Brokers", brokers.Summary());
+  message += descriptionListItem("Brokers", brokers.Summary());
  
 #ifdef DEBUG_STATISTICS
   if(my_mdns.packet_count != 0){
-    description_list += descriptionListItem("&nbsp", "&nbsp");
-    description_list += descriptionListItem("mDNS decode success rate",
+    message += descriptionListItem("&nbsp", "&nbsp");
+    message += descriptionListItem("mDNS decode success rate",
         String(my_mdns.packet_count - my_mdns.buffer_size_fail) + " / " + 
         String(my_mdns.packet_count) + "&nbsp&nbsp&nbsp" +
         String(100 - (100 * my_mdns.buffer_size_fail / my_mdns.packet_count)) + "%");
-    description_list += descriptionListItem("Largest mDNS packet size",
+    message += descriptionListItem("Largest mDNS packet size",
         String(my_mdns.largest_packet_seen) + " / " + 
         String(MAX_MDNS_PACKET_SIZE) + " bytes");
   }
 #endif
 
-  description_list += descriptionListItem("&nbsp", "&nbsp");
-  description_list += descriptionListItem("Configure", link("go", "configure"));
+  message += descriptionListItem("&nbsp", "&nbsp");
+  message += descriptionListItem("Configure", link("go", "configure"));
 
-  message += descriptionList(description_list);
+  wrapInList(message);
   
-  http_server.send(200, "text/html", page(style, javascript, "", message));
+  wrapInPage(style, javascript, message);
+  http_server.send(200, "text/html", message);
   Serial.println("handleRoot() -");
 }
 
 void handleConfig() {
   Serial.println("handleConfig()");
-  String message = "";
   if(allow_config){
     --allow_config;
   }
@@ -145,59 +147,61 @@ void handleConfig() {
   Serial.print("allow_config: ");
   Serial.println(allow_config);
   
+  message.reserve(9000);
+  message = "";
   if(allow_config){
-    message += descriptionListItem("mac_address", mac_address);
+    message.concat(descriptionListItem("mac_address", mac_address));
     
     if(config.ip == IPAddress(0, 0, 0, 0)) {
-      message += descriptionListItem("IP address by DHCP",
-                                     String(ip_to_string(WiFi.localIP())));
+      message.concat(descriptionListItem("IP address by DHCP",
+                                     String(ip_to_string(WiFi.localIP()))));
     }
-    message += descriptionListItem("hostname", 
+    message.concat(descriptionListItem("hostname", 
         textField("hostname", "hostname", config.hostname, "hostname") +
-        submit("Save", "save_hostname" , "save('hostname')"));
-    message += descriptionListItem("&nbsp", "&nbsp");
+        submit("Save", "save_hostname" , "save('hostname')")));
+    message.concat(descriptionListItem("&nbsp", "&nbsp"));
 
-    message += descriptionListItem("IP address",
+    message.concat(descriptionListItem("IP address",
         ipField("ip", ip_to_string(config.ip), ip_to_string(config.ip), "ip") +
         submit("Save", "save_ip" , "save('ip')") +
-        String("(0.0.0.0 for DHCP. Static boots quicker.)"));
+        String("(0.0.0.0 for DHCP. Static boots quicker.)")));
     if(config.ip != IPAddress(0, 0, 0, 0)) {
-      message += descriptionListItem("Subnet mask",
+      message.concat(descriptionListItem("Subnet mask",
           ipField("subnet", ip_to_string(config.subnet), ip_to_string(config.subnet), "subnet") +
-          submit("Save", "save_subnet" , "save('subnet')"));
-      message += descriptionListItem("Gateway",
+          submit("Save", "save_subnet" , "save('subnet')")));
+      message.concat(descriptionListItem("Gateway",
           ipField("gateway", ip_to_string(config.gateway),
             ip_to_string(config.gateway), "gateway") +
-          submit("Save", "save_gateway" , "save('gateway')"));
+          submit("Save", "save_gateway" , "save('gateway')")));
     }
-    message += descriptionListItem("&nbsp", "&nbsp");
+    message.concat(descriptionListItem("&nbsp", "&nbsp"));
 
-    message += descriptionListItem("MQTT broker hint",
+    message.concat(descriptionListItem("MQTT broker hint",
         ipField("broker_ip", ip_to_string(config.broker_ip),
                 ip_to_string(config.broker_ip), "brokerip") +
         submit("Save", "save_brokerip" , "save('brokerip')") +
-        String("(0.0.0.0 to only use auto discovery)"));
-    message += descriptionListItem("MQTT subscription prefix",
+        String("(0.0.0.0 to only use auto discovery)")));
+    message.concat(descriptionListItem("MQTT subscription prefix",
         textField("subscribeprefix", "subscribeprefix", config.subscribe_prefix,
           "subscribeprefix") +
-        submit("Save", "save_subscribeprefix" , "save('subscribeprefix')"));
-    message += descriptionListItem("MQTT publish prefix",
+        submit("Save", "save_subscribeprefix" , "save('subscribeprefix')")));
+    message.concat(descriptionListItem("MQTT publish prefix",
         textField("publishprefix", "publishprefix", config.publish_prefix,
           "publishprefix") +
-        submit("Save", "save_publishprefix" , "save('publishprefix')"));
-    message += descriptionListItem("&nbsp", "&nbsp");
+        submit("Save", "save_publishprefix" , "save('publishprefix')")));
+    message.concat(descriptionListItem("&nbsp", "&nbsp"));
     
-    message += descriptionListItem("HTTP Firmware URL",
+    message.concat(descriptionListItem("HTTP Firmware URL",
         textField("firmware_server", "firmware_server", config.firmware_server,
           "firmwareserver") +
-        submit("Save", "save_firmwareserver" , "save('firmwareserver')"));
-    message += descriptionListItem("Enable passphrase",
+        submit("Save", "save_firmwareserver" , "save('firmwareserver')")));
+    message.concat(descriptionListItem("Enable passphrase",
         textField("enable_passphrase", "enable_passphrase", config.enable_passphrase,
           "enablepassphrase") +
-        submit("Save", "save_enablepassphrase" , "save('enablepassphrase')"));
-    message += descriptionListItem("Enable IO pin",
+        submit("Save", "save_enablepassphrase" , "save('enablepassphrase')")));
+    message.concat(descriptionListItem("Enable IO pin",
         ioPin(config.enable_io_pin, "enableiopin") +
-        submit("Save", "save_enableiopin" , "save('enableiopin')"));
+        submit("Save", "save_enableiopin" , "save('enableiopin')")));
 
 
     String rows = row(header("index") + header("Topic") + header("type") + 
@@ -208,29 +212,31 @@ void handleConfig() {
       if (strlen(config.devices[i].address_segment[0].segment) > 0) {
         String cells = cell(String(i));
         String name = "topic_";
-        name += i;
-        cells += cell(config.subscribe_prefix + String("/") +
+        name.concat(i);
+        cells.concat(cell(config.subscribe_prefix + String("/") +
             textField(name, "some/topic", DeviceAddress(config.devices[i]),
-              "device_" + String(i) + "_topic"));
+              "device_" + String(i) + "_topic")));
         if (config.devices[i].iotype == Io_Type::pwm) {
-          cells += cell(outletType("pwm", "device_" + String(i) + "_iotype"));
+          cells.concat(cell(outletType("pwm", "device_" + String(i) + "_iotype")));
         } else if (config.devices[i].iotype == Io_Type::onoff) {
-          cells += cell(outletType("onoff", "device_" + String(i) + "_iotype"));
+          cells.concat(cell(outletType("onoff", "device_" + String(i) + "_iotype")));
         } else if (config.devices[i].iotype == Io_Type::input) {
-          cells += cell(outletType("input", "device_" + String(i) + "_iotype"));
+          cells.concat(cell(outletType("input", "device_" + String(i) + "_iotype")));
         } else {
-          cells += cell(outletType("test", "device_" + String(i) + "_iotype"));
+          cells.concat(cell(outletType("test", "device_" + String(i) + "_iotype")));
         }
-        cells += cell(ioPin(config.devices[i].io_pin,
-              "device_" + String(i) + "_io_pin"));
-        cells += cell(ioValue(config.devices[i].io_default,
-              "device_" + String(i) + "_io_default"));
-        cells += cell(ioInverted(config.devices[i].inverted,
-              "device_" + String(i) + "_inverted"));
+        cells.concat(cell(ioPin(config.devices[i].io_pin,
+              "device_" + String(i) + "_io_pin")));
+        cells.concat(cell(ioValue(config.devices[i].io_default,
+              "device_" + String(i) + "_io_default")));
+        cells.concat(cell(ioInverted(config.devices[i].inverted,
+              "device_" + String(i) + "_inverted")));
 
-        cells += cell(submit("Save", "save_" + String(i), "save('device_" + String(i) +"')"));
-        cells += cell(submit("Delete", "del_" + String(i), "del('device_" + String(i) +"')"));
-        rows += row(cells, "device_" + String(i));
+        cells.concat(cell(submit("Save", "save_" + String(i),
+                                 "save('device_" + String(i) +"')")));
+        cells.concat(cell(submit("Delete", "del_" + String(i),
+                                  "del('device_" + String(i) +"')")));
+        rows.concat(row(cells, "device_" + String(i)));
       } else if (empty_device < 0){
         empty_device = i;
       }
@@ -239,33 +245,38 @@ void handleConfig() {
       // An empty slot for new device.
       String cells = cell(String(empty_device));
       String name = "address_";
-      name += empty_device;
-      cells += cell(config.subscribe_prefix + String("/") +
-          textField(name, "new/topic", "", "device_" + String(empty_device) + "_topic"));
-      cells += cell(outletType("onoff", "device_" + String(empty_device) + "_iotype"));
+      name.concat(empty_device);
+      cells.concat(cell(config.subscribe_prefix + String("/") +
+          textField(name, "new/topic", "", "device_" + String(empty_device) + "_topic")));
+      cells.concat(cell(outletType("onoff", "device_" + String(empty_device) + "_iotype")));
       name = "pin_";
-      name += empty_device;
-      cells += cell(ioPin(0, "device_" + String(empty_device) + "_io_pin"));
-      cells += cell(ioValue(0, "device_" + String(empty_device) + "_io_default"));
-      cells += cell(ioInverted(false, "device_" + String(empty_device) + "_inverted"));
-      cells += cell(submit("Save", "save_" + String(empty_device),
-            "save('device_" + String(empty_device) + "')"));
-      cells += cell("");
-      rows += row(cells, "device_" + String(empty_device));
+      name.concat(empty_device);
+      cells.concat(cell(ioPin(0, "device_" + String(empty_device) + "_io_pin")));
+      cells.concat(cell(ioValue(0, "device_" + String(empty_device) + "_io_default")));
+      cells.concat(cell(ioInverted(false, "device_" + String(empty_device) + "_inverted")));
+      cells.concat(cell(submit("Save", "save_" + String(empty_device),
+            "save('device_" + String(empty_device) + "')")));
+      cells.concat(cell(""));
+      rows.concat(row(cells, "device_" + String(empty_device)));
     }
-    message += descriptionListItem("&nbsp", table(rows));
-    message += descriptionListItem("Pull firmware", link("go", "pullfirmware"));
+    wrapInTable(rows);
+    message.concat(descriptionListItem("&nbsp", rows));
 
-    message = descriptionList(message);
+    message.concat(descriptionListItem("Pull firmware", link("go", "pullfirmware")));
 
+    wrapInList(message);
   } else {
     Serial.println("Not allowed to handleConfig()");
-    message += "Configuration mode not enabled.\nPress button connected to IO ";
-    message += String(config.enable_io_pin);
-    message += " and reload.";
+    message.concat("Configuration mode not enabled.\nPress button connected to IO ");
+    message.concat(String(config.enable_io_pin));
+    message.concat(" and reload.");
   }
-  
-  http_server.send(200, "text/html", page(style, javascript, "", message));
+
+  Serial.println(message.length());
+  wrapInPage(style, javascript, message); 
+  Serial.println(message.length());
+  http_server.send(200, "text/html", message);
+  //Serial.println(message);
   Serial.println("handleConfig() -");
 }
 
@@ -398,7 +409,7 @@ void handleSet() {
 // next boot.
 void handlePullFirmware(){
   String message = "Pulling firmware\n";
-  http_server.send(404, "text/plain", message);
+  http_server.send(200, "text/plain", message);
   
   config.pull_firmware = true;
   Persist_Data::Persistent<Config> persist_config(&config);
@@ -449,7 +460,7 @@ void handleReset() {
   delay(100);
   ESP.reset();
 
-  http_server.send(404, "text/plain", "restarting host");
+  http_server.send(200, "text/plain", "restarting host");
 }
 
 void handleNotFound() {
@@ -467,7 +478,10 @@ void handleNotFound() {
   http_server.send(404, "text/plain", message);
 }
 
-
+void handleTest() {
+  http_server.send(200, "text/plain", "test string");
+}
+*/
 
 void setup_network(void) {
   //Serial.setDebugOutput(true);
@@ -502,6 +516,7 @@ void setup_network(void) {
   Serial.println(WiFi.localIP());
 
   if(!config.pull_firmware){
+    /*http_server.on("/test", handleTest);
     http_server.on("/", handleRoot);
     http_server.on("/configure", handleConfig);
     http_server.on("/configure/", handleConfig);
@@ -511,7 +526,7 @@ void setup_network(void) {
     http_server.onNotFound(handleNotFound);
 
     http_server.begin();
-    Serial.println("HTTP server started");
+    Serial.println("HTTP server started");*/
 
     brokers.RegisterMDns(&my_mdns);
   }
@@ -560,20 +575,24 @@ void setup(void) {
   }
 }
 
+char test_http_buffer[9000];
+HttpServer test_http(test_http_buffer, 9000, &config, &brokers, &my_mdns, &allow_config);
+
 void loop(void) {
   if (WiFi.status() != WL_CONNECTED) {
     setup_network();
   }
 
   if(config.pull_firmware){
-    pullFirmware();
+    //pullFirmware();
   } else {
-    http_server.handleClient();
+    //http_server.handleClient();
     mqtt.loop();
     io.loop();
     if(!my_mdns.Check()){
       //Serial.println("mDNS error.");
     }
 
+    test_http.loop();
   }
 }
