@@ -4,8 +4,7 @@
 #include <ESP8266WiFi.h>
 
 
-//const char javascript[] PROGMEM = R"=====(
-const char javascript[] = R"=====(
+const char javascript[] PROGMEM = R"=====(
 function save(label) {
   console.log('save', label);
   var target = label.split('_')[0];
@@ -62,36 +61,32 @@ function del(label) {
 )=====";
 
 const char style[] PROGMEM =
-  "dl{border: 3px double #ccc; width: 100%;}"
-  "dl dt, dl dd {float: left; margin:1px 0 0 0; background: darkgrey;}"
-  "dl dt{clear: left; font-weight: bold; width:15em;}"
-  "dl dd{overflow: hidden; width: calc(100% - 15em);}"
+  "dl{border: 3px double #ccc; width: 100%;}\n"
+  "dl dt, dl dd {float: left; margin:1px 0 0 0; background: darkgrey;}\n"
+  "dl dt{clear: left; font-weight: bold; width:15em;}\n"
+  "dl dd{overflow: hidden; width: calc(100% - 15em);}\n"
 
-  "table {border-spacing: 1px; border: 1px solid grey;}"
-  "tr {background: darkgrey; padding: 3px;}"
-  "th {border: 1px solid grey;}"
-  "td {border: 1px solid grey;}"
-  "input, [type=text] {width: 20em;}"
-  "input, [type=number] {width: 3em;}"
-  ".highlight {background: lightgreen;}"
-  ".div-shrink{display: inline;}"
+  "table {border-spacing: 1px; border: 1px solid grey;}\n"
+  "tr {background: darkgrey; padding: 3px;}\n"
+  "th {border: 1px solid grey;}\n"
+  "td {border: 1px solid grey;}\n"
+  "input, [type=text] {width: 20em;}\n"
+  "input, [type=number] {width: 3em;}\n"
+  ".highlight {background: lightgreen;}\n"
+  ".div-shrink{display: inline;}\n"
   
-  "input:required:invalid, input:focus:invalid {background: red;}"
+  "input:required:invalid, input:focus:invalid {background: red;}\n"
   ;
 
-void wrapInPage(const char* style, const char* script, String& body);  // TODO remove me.
 const String pageHeader(const char* style, const char* script);
 const String pageFooter();
 
-void wrapInList(String& items);  // TODO remove me
 const String listStart();
 const String listEnd();
 
-void wrapInTable(String& rows);  // TODO remove me
 const String tableStart();
 const String tableEnd();
 
-const String row(const String& cells, const String& class_name);  // TODO remove me
 const String rowStart(const String& class_name);
 const String rowEnd();
 

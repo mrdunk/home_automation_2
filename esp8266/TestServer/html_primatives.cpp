@@ -1,28 +1,16 @@
 #include "html_primatives.h"
 
-void wrapInPage(const char* style, const char* script, String& body)
-{
-  body = "<!DOCTYPE html>\n<html><meta http-equiv=\"Cache-Control\" "
-         "content=\"no-cache, no-store, must-revalidate\" />"
-         "<head><style>" + String(style) + "</style>\n<script src=\"" + 
-         String(script) + "\"></script></head>\n<body>" + body;
-  body.concat("</body>\n</html>");
-}
-
 const String pageHeader(const char* style, const char* script){
   return "<!DOCTYPE html>\n<html><meta http-equiv=\"Cache-Control\" "
          "content=\"no-cache, no-store, must-revalidate\" />"
-         "<head><style>" + String(style) + "</style>\n<script src=\"" + 
-         String(script) + "\"></script></head>\n<body>";
+         "<head>" 
+           "<link rel=\"stylesheet\" href=\"" + String(style) + "\">" +
+           "<script src=\"" + String(script) + "\"></script>" +
+         "</head>\n<body>";
 }
 
 const String pageFooter(){
   return "</body>\n</html>";
-}
-
-void wrapInList(String& items){
-  items = "<dl>" + items;
-  items.concat("</dl>");
 }
 
 const String listStart(){
@@ -69,21 +57,12 @@ const String ipField(const String& name, const String& placeholder,
   return return_value;
 }
 
-void wrapInTable(String& rows){
-  rows = "<table>" + rows;
-  rows.concat("</table>");
-}
-
 const String tableStart(){
   return "<table>";
 }
 
 const String tableEnd(){
   return "</table>";
-}
-
-const String row(const String& cells, const String& class_name){
-  return "<tr class=\"" + class_name + "\">" + cells + "</tr>";
 }
 
 const String rowStart(const String& class_name){

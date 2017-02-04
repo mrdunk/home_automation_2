@@ -251,36 +251,40 @@ void Brokers::RateBroker(bool sucess) {
 
 String Brokers::Summary() {
   GetBroker();
-  const String now = String(millis() / 1000);
-  String rows = row(header("") + header("") + header("service_name") + header("port") +
-                    header("hostname") + header("ip") + header("service valid until") +
-                    header("host valid until") + header("ipv4 valid until") +
-                    header("fail counter"), "");
+  String return_value = tableStart() + rowStart("");
+  return_value += header("") + header("") + header("service_name") + header("port") +
+                  header("hostname") + header("ip") + header("service valid until") +
+                  header("host valid until") + header("ipv4 valid until") +
+                  header("fail counter") +
+                  rowEnd();
   for (int i = 0; i < MAX_BROKERS; ++i) {
     if (brokers_[i].service_name != "") {
-      String cells = "";
-      cells += cell(String(i));
       if(i == itterator){
-        cells += cell(" active ");
+        return_value += rowStart("highlight");
       } else {
-        cells += cell(" ");
+        return_value += rowStart("");
       }
-      cells += cell(brokers_[i].service_name);
-      cells += cell(String(brokers_[i].port));
-      cells += cell(brokers_[i].host_name);
-      cells += cell(ip_to_string(brokers_[i].address));
-      cells += cell(String(brokers_[i].service_valid_until));
-      cells += cell(String(brokers_[i].host_valid_until));
-      cells += cell(String(brokers_[i].ipv4_valid_until));
-      cells += cell(String(brokers_[i].fail_counter));
+
+      return_value += cell(String(i));
       if(i == itterator){
-        rows += (row(cells, "highlight"));
+        return_value += cell(" active ");
       } else {
-        rows += row(cells, "");
+        return_value += cell(" ");
       }
+      return_value += cell(brokers_[i].service_name);
+      return_value += cell(String(brokers_[i].port));
+      return_value += cell(brokers_[i].host_name);
+      return_value += cell(ip_to_string(brokers_[i].address));
+      return_value += cell(String(brokers_[i].service_valid_until));
+      return_value += cell(String(brokers_[i].host_valid_until));
+      return_value += cell(String(brokers_[i].ipv4_valid_until));
+      return_value += cell(String(brokers_[i].fail_counter));
+
+      return_value += rowEnd();
     }
   }
+
+  return_value += tableEnd();
   
-  wrapInTable(rows);
-  return rows;
+  return return_value;
 }

@@ -5,26 +5,40 @@
 #include "http_server.h"
 #include "html_primatives.h"
 #include "ipv4_helpers.h"
+#include "persist_data.h"
+#include "persist_data.cpp"   // Template arguments confuse the linker so need to include .cpp .
+#include "config.h"
 
 HttpServer::HttpServer(char* _buffer,
                        const int _buffer_size,
                        Config* _config,
                        Brokers* _brokers,
                        mdns::MDns* _mdns,
+                       Mqtt* _mqtt,
+                       Io* _io,
                        int* _allow_config) : 
     buffer(_buffer),
     buffer_size(_buffer_size),
     config(_config),
     brokers(_brokers),
     mdns(_mdns),
+    mqtt(_mqtt),
+    io(_io),
     allow_config(_allow_config)
 {
   esp8266_http_server = ESP8266WebServer(HTTP_PORT);
   esp8266_http_server.on("/test", [&]() {onTest();});
   esp8266_http_server.on("/", [&]() {onRoot();});
   esp8266_http_server.on("/script.js", [&]() {onScript();});
+  esp8266_http_server.on("/style.css", [&]() {onStyle();});
   esp8266_http_server.on("/configure", [&]() {onConfig();});
   esp8266_http_server.on("/configure/", [&]() {onConfig();});
+  esp8266_http_server.on("/set", [&]() {onSet();});
+  esp8266_http_server.on("/set/", [&]() {onSet();});
+  esp8266_http_server.on("/pullfirmware", [&]() {onPullFirmware();});
+  esp8266_http_server.on("/pullfirmware/", [&]() {onPullFirmware();});
+  esp8266_http_server.on("/reset", [&]() {onReset();});
+  esp8266_http_server.on("/reset/", [&]() {onReset();});
 
   esp8266_http_server.begin();
 
@@ -95,7 +109,7 @@ void HttpServer::onRoot(){
   sucess &= bufferInsert(listStart());
   sucess &= bufferAppend(listEnd());
   
-  sucess &= bufferInsert(pageHeader(style, ""));
+  sucess &= bufferInsert(pageHeader("style.css", ""));
   sucess &= bufferAppend(pageFooter());
 
   Serial.println(sucess);
@@ -105,12 +119,22 @@ void HttpServer::onRoot(){
 
 void HttpServer::onScript(){
   Serial.println("onScript() +");
-  bufferClear();
-  bufferAppend(javascript);
+  // strncpy_P() to copy from program memory as javasctipt is PROGMEM.
+  strncpy_P(buffer, javascript, HTTP_BUFFER_SIZE);
+  buffer[HTTP_BUFFER_SIZE -1] = '\0';
   Serial.println(strlen(buffer));
   Serial.println("onScript() -");
   esp8266_http_server.send(200, "text/javascript", buffer);
-  //esp8266_http_server.send(200, "text/plain", buffer);
+}
+
+void HttpServer::onStyle(){
+  Serial.println("onStyle() +");
+  // strncpy_P() to copy from program memory as style is PROGMEM.
+  strncpy_P(buffer, style, HTTP_BUFFER_SIZE);
+  buffer[HTTP_BUFFER_SIZE -1] = '\0';
+  Serial.println(strlen(buffer));
+  Serial.println("onStyle() -");
+  esp8266_http_server.send(200, "text/css", buffer);
 }
 
 void HttpServer::onConfig(){
@@ -119,7 +143,7 @@ void HttpServer::onConfig(){
   bufferClear();
 
   if(*allow_config){
-    *allow_config--;
+    (*allow_config)--;
   }
   if(*allow_config <= 0 && esp8266_http_server.hasArg("enablepassphrase") &&
       config->enable_passphrase != "" &&
@@ -132,136 +156,143 @@ void HttpServer::onConfig(){
   if(*allow_config){
     uint8_t mac[6];
     WiFi.macAddress(mac);
-    bufferAppend(descriptionListItem("mac_address", macToStr(mac)));
+    sucess &= bufferAppend(descriptionListItem("mac_address", macToStr(mac)));
     
     if(config->ip == IPAddress(0, 0, 0, 0)) {
-      bufferAppend(descriptionListItem("IP address by DHCP",
+      sucess &= bufferAppend(descriptionListItem("IP address by DHCP",
                                      String(ip_to_string(WiFi.localIP()))));
     }
-    bufferAppend(descriptionListItem("hostname", 
+    sucess &= bufferAppend(descriptionListItem("hostname", 
         textField("hostname", "hostname", config->hostname, "hostname") +
         submit("Save", "save_hostname" , "save('hostname')")));
-    bufferAppend(descriptionListItem("&nbsp", "&nbsp"));
+    sucess &= bufferAppend(descriptionListItem("&nbsp", "&nbsp"));
 
-    bufferAppend(descriptionListItem("IP address",
+    sucess &= bufferAppend(descriptionListItem("IP address",
         ipField("ip", ip_to_string(config->ip), ip_to_string(config->ip), "ip") +
         submit("Save", "save_ip" , "save('ip')") +
         String("(0.0.0.0 for DHCP. Static boots quicker.)")));
     if(config->ip != IPAddress(0, 0, 0, 0)) {
-      bufferAppend(descriptionListItem("Subnet mask",
+      sucess &= bufferAppend(descriptionListItem("Subnet mask",
           ipField("subnet", ip_to_string(config->subnet), ip_to_string(config->subnet), "subnet") +
           submit("Save", "save_subnet" , "save('subnet')")));
-      bufferAppend(descriptionListItem("Gateway",
+      sucess &= bufferAppend(descriptionListItem("Gateway",
           ipField("gateway", ip_to_string(config->gateway),
             ip_to_string(config->gateway), "gateway") +
           submit("Save", "save_gateway" , "save('gateway')")));
     }
-    bufferAppend(descriptionListItem("&nbsp", "&nbsp"));
+    sucess &= bufferAppend(descriptionListItem("&nbsp", "&nbsp"));
 
-    bufferAppend(descriptionListItem("MQTT broker hint",
+    sucess &= bufferAppend(descriptionListItem("MQTT broker hint",
         ipField("broker_ip", ip_to_string(config->broker_ip),
                 ip_to_string(config->broker_ip), "brokerip") +
         submit("Save", "save_brokerip" , "save('brokerip')") +
-        String("(0.0.0.0 to only use auto discovery)")));
-    bufferAppend(descriptionListItem("MQTT subscription prefix",
+        String("(0.0.0.0 to use mDNS auto discovery)")));
+    sucess &= bufferAppend(descriptionListItem("MQTT subscription prefix",
         textField("subscribeprefix", "subscribeprefix", config->subscribe_prefix,
           "subscribeprefix") +
         submit("Save", "save_subscribeprefix" , "save('subscribeprefix')")));
-    bufferAppend(descriptionListItem("MQTT publish prefix",
+    sucess &= bufferAppend(descriptionListItem("MQTT publish prefix",
         textField("publishprefix", "publishprefix", config->publish_prefix,
           "publishprefix") +
         submit("Save", "save_publishprefix" , "save('publishprefix')")));
-    bufferAppend(descriptionListItem("&nbsp", "&nbsp"));
+    sucess &= bufferAppend(descriptionListItem("&nbsp", "&nbsp"));
     
-    bufferAppend(descriptionListItem("HTTP Firmware URL",
+    sucess &= bufferAppend(descriptionListItem("HTTP Firmware URL",
         textField("firmware_server", "firmware_server", config->firmware_server,
           "firmwareserver") +
         submit("Save", "save_firmwareserver" , "save('firmwareserver')")));
-    bufferAppend(descriptionListItem("Enable passphrase",
+    sucess &= bufferAppend(descriptionListItem("Config enable passphrase",
         textField("enable_passphrase", "enable_passphrase", config->enable_passphrase,
           "enablepassphrase") +
         submit("Save", "save_enablepassphrase" , "save('enablepassphrase')")));
-    bufferAppend(descriptionListItem("Enable IO pin",
+    sucess &= bufferAppend(descriptionListItem("Config enable IO pin",
         ioPin(config->enable_io_pin, "enableiopin") +
         submit("Save", "save_enableiopin" , "save('enableiopin')")));
 
 
-    bufferAppend(tableStart());
+    sucess &= bufferAppend(tableStart());
 
-    bufferAppend(row(header("index") + header("Topic") + header("type") + 
+    sucess &= bufferAppend(rowStart("") + header("index") + header("Topic") + header("type") + 
         header("IO pin") + header("Default val") + header("Inverted") +
-        header("") + header(""), ""));
+        header("") + header("") + rowEnd());
 
     int empty_device = -1;
     for (int i = 0; i < MAX_DEVICES; ++i) {
       if (strlen(config->devices[i].address_segment[0].segment) > 0) {
-        bufferAppend(rowStart("device_" + String(i)));
-        bufferAppend(cell(String(i)));
+        sucess &= bufferAppend(rowStart("device_" + String(i)));
+        sucess &= bufferAppend(cell(String(i)));
         String name = "topic_";
         name.concat(i);
-        bufferAppend(cell(config->subscribe_prefix + String("/") +
+        sucess &= bufferAppend(cell(config->subscribe_prefix + String("/") +
             textField(name, "some/topic", DeviceAddress(config->devices[i]),
               "device_" + String(i) + "_topic")));
         if (config->devices[i].iotype == Io_Type::pwm) {
-          bufferAppend(cell(outletType("pwm", "device_" + String(i) + "_iotype")));
+          sucess &= bufferAppend(cell(outletType("pwm", "device_" + String(i) + "_iotype")));
         } else if (config->devices[i].iotype == Io_Type::onoff) {
-          bufferAppend(cell(outletType("onoff", "device_" + String(i) + "_iotype")));
+          sucess &= bufferAppend(cell(outletType("onoff", "device_" + String(i) + "_iotype")));
         } else if (config->devices[i].iotype == Io_Type::input) {
-          bufferAppend(cell(outletType("input", "device_" + String(i) + "_iotype")));
+          sucess &= bufferAppend(cell(outletType("input", "device_" + String(i) + "_iotype")));
         } else {
-          bufferAppend(cell(outletType("test", "device_" + String(i) + "_iotype")));
+          sucess &= bufferAppend(cell(outletType("test", "device_" + String(i) + "_iotype")));
         }
-        bufferAppend(cell(ioPin(config->devices[i].io_pin,
+        sucess &= bufferAppend(cell(ioPin(config->devices[i].io_pin,
               "device_" + String(i) + "_io_pin")));
-        bufferAppend(cell(ioValue(config->devices[i].io_default,
+        sucess &= bufferAppend(cell(ioValue(config->devices[i].io_default,
               "device_" + String(i) + "_io_default")));
-        bufferAppend(cell(ioInverted(config->devices[i].inverted,
+        sucess &= bufferAppend(cell(ioInverted(config->devices[i].inverted,
               "device_" + String(i) + "_inverted")));
 
-        bufferAppend(cell(submit("Save", "save_" + String(i),
+        sucess &= bufferAppend(cell(submit("Save", "save_" + String(i),
                                  "save('device_" + String(i) +"')")));
-        bufferAppend(cell(submit("Delete", "del_" + String(i),
+        sucess &= bufferAppend(cell(submit("Delete", "del_" + String(i),
                                   "del('device_" + String(i) +"')")));
-        bufferAppend(rowEnd());
+        sucess &= bufferAppend(rowEnd());
       } else if (empty_device < 0){
         empty_device = i;
       }
     }
     if (empty_device >= 0){
       // An empty slot for new device.
-      bufferAppend(rowStart("device_" + String(empty_device)));
-      bufferAppend(cell(String(empty_device)));
+      sucess &= bufferAppend(rowStart("device_" + String(empty_device)));
+      sucess &= bufferAppend(cell(String(empty_device)));
       String name = "address_";
       name.concat(empty_device);
-      bufferAppend(cell(config->subscribe_prefix + String("/") +
+      sucess &= bufferAppend(cell(config->subscribe_prefix + String("/") +
           textField(name, "new/topic", "", "device_" + String(empty_device) + "_topic")));
-      bufferAppend(cell(outletType("onoff", "device_" + String(empty_device) + "_iotype")));
+      sucess &= bufferAppend(cell(outletType("onoff", "device_" +
+                                              String(empty_device) + "_iotype")));
       name = "pin_";
       name.concat(empty_device);
-      bufferAppend(cell(ioPin(0, "device_" + String(empty_device) + "_io_pin")));
-      bufferAppend(cell(ioValue(0, "device_" + String(empty_device) + "_io_default")));
-      bufferAppend(cell(ioInverted(false, "device_" + String(empty_device) + "_inverted")));
-      bufferAppend(cell(submit("Save", "save_" + String(empty_device),
+      sucess &= bufferAppend(cell(ioPin(0, "device_" + String(empty_device) + "_io_pin")));
+      sucess &= bufferAppend(cell(ioValue(0, "device_" + String(empty_device) + "_io_default")));
+      sucess &= bufferAppend(cell(ioInverted(false, "device_" +
+                                             String(empty_device) + "_inverted")));
+      sucess &= bufferAppend(cell(submit("Save", "save_" + String(empty_device),
             "save('device_" + String(empty_device) + "')")));
-      bufferAppend(cell(""));
-      bufferAppend(rowEnd());
+      sucess &= bufferAppend(cell(""));
+      sucess &= bufferAppend(rowEnd());
     }
     
-    bufferAppend(tableEnd());
+    sucess &= bufferAppend(tableEnd());
 
-    bufferAppend(descriptionListItem("Pull firmware", link("go", "pullfirmware")));
+    sucess &= bufferAppend(descriptionListItem("Pull firmware", link("go", "pullfirmware")));
   
     sucess &= bufferInsert(listStart());
-    sucess &= bufferAppend(listEnd());
+    sucess &= sucess &= bufferAppend(listEnd());
   } else {
-    Serial.println("Not allowed to handleConfig()");
-    bufferAppend("Configuration mode not enabled.<br>Press button connected to IO ");
-    bufferAppend(String(config->enable_io_pin));
-    bufferAppend("<br>or append \"?enablepassphrase=PASSWORD\" to this URL<br>and reload.");
+    Serial.println("Not allowed to onConfig()");
+    sucess &= bufferAppend("Configuration mode not enabled.<br>Press button connected to IO ");
+    sucess &= bufferAppend(String(config->enable_io_pin));
+    sucess &= bufferAppend(
+        "<br>or append \"?enablepassphrase=PASSWORD\" to this URL<br>and reload.");
+    sucess &= bufferInsert(pageHeader("", ""));
+    sucess &= bufferAppend(pageFooter());
+    esp8266_http_server.send(401, "text/html", buffer);
+    return;
   }
 
   
-  sucess &= bufferInsert(pageHeader(style, "script.js"));
+  sucess &= bufferInsert(pageHeader("style.css", "script.js"));
   sucess &= bufferAppend(pageFooter());
 
 
@@ -269,6 +300,152 @@ void HttpServer::onConfig(){
   Serial.println(strlen(buffer));
   Serial.println("onConfig() -");
   esp8266_http_server.send((sucess ? 200 : 500), "text/html", buffer);
+}
+
+void HttpServer::onSet(){
+  Serial.println("onSet() +");
+  bool sucess = true;
+  bufferClear();
+
+  if(*allow_config <= 0){
+    Serial.println("Not allowed to onSet()");
+    esp8266_http_server.send(401, "text/html", "Not allowed to onSet()");
+    return;
+  }
+
+  const unsigned int now = millis() / 1000;
+
+  for(int i = 0; i < esp8266_http_server.args(); i++){
+    sucess &= bufferInsert(esp8266_http_server.argName(i));
+    sucess &= bufferInsert("\t");
+    sucess &= bufferInsert(esp8266_http_server.arg(i));
+    sucess &= bufferInsert("\n");
+  }
+  sucess &= bufferInsert("\n");
+
+  if (esp8266_http_server.hasArg("test_arg")) {
+    sucess &= bufferInsert("test_arg: " + esp8266_http_server.arg("test_arg") + "\n");
+  } else if (esp8266_http_server.hasArg("ip")) {
+    config->ip = string_to_ip(esp8266_http_server.arg("ip"));
+    sucess &= bufferInsert("ip: " + esp8266_http_server.arg("ip") + "\n");
+  } else if (esp8266_http_server.hasArg("gateway")) {
+    config->gateway = string_to_ip(esp8266_http_server.arg("gateway"));
+    sucess &= bufferInsert("gateway: " + esp8266_http_server.arg("gateway") + "\n");
+  } else if (esp8266_http_server.hasArg("subnet")) {
+    config->subnet = string_to_ip(esp8266_http_server.arg("subnet"));
+    sucess &= bufferInsert("subnet: " + esp8266_http_server.arg("subnet") + "\n");
+  } else if (esp8266_http_server.hasArg("brokerip")) {
+    config->broker_ip = string_to_ip(esp8266_http_server.arg("brokerip"));
+    sucess &= bufferInsert("broker_ip: " + esp8266_http_server.arg("brokerip") + "\n");
+  } else if (esp8266_http_server.hasArg("hostname")) {
+    char tmp_buffer[HOSTNAME_LEN];
+    esp8266_http_server.arg("hostname").toCharArray(tmp_buffer, HOSTNAME_LEN);
+    SetHostname(tmp_buffer);
+    sucess &= bufferInsert("hostname: " + esp8266_http_server.arg("hostname") + "\n");
+  } else if (esp8266_http_server.hasArg("publishprefix")) {
+    char tmp_buffer[PREFIX_LEN];
+    esp8266_http_server.arg("publishprefix").toCharArray(tmp_buffer, PREFIX_LEN);
+    SetPrefix(tmp_buffer, config->publish_prefix);
+    sucess &= bufferInsert("publishprefix: " + esp8266_http_server.arg("publishprefix") + "\n");
+  } else if (esp8266_http_server.hasArg("subscribeprefix")) {
+    char tmp_buffer[PREFIX_LEN];
+    esp8266_http_server.arg("subscribeprefix").toCharArray(tmp_buffer, PREFIX_LEN);
+    SetPrefix(tmp_buffer, config->subscribe_prefix);
+    sucess &= bufferInsert("subscribeprefix: " + esp8266_http_server.arg("subscribeprefix") + "\n");
+  } else if (esp8266_http_server.hasArg("firmwareserver")) {
+    char tmp_buffer[FIRMWARE_SERVER_LEN];
+    esp8266_http_server.arg("firmwareserver").toCharArray(tmp_buffer, FIRMWARE_SERVER_LEN);
+    SetFirmwareServer(tmp_buffer, config->firmware_server);
+    sucess &= bufferInsert("firmwareserver: " + esp8266_http_server.arg("firmwareserver") + "\n");
+  } else if (esp8266_http_server.hasArg("enablepassphrase")) {
+    esp8266_http_server.arg("enablepassphrase").toCharArray(config->enable_passphrase, NAME_LEN);
+    sucess &= bufferInsert("enablepassphrase: " + esp8266_http_server.arg("enablepassphrase") + "\n");
+  } else if (esp8266_http_server.hasArg("enableiopin")) {
+    config->enable_io_pin = esp8266_http_server.arg("enableiopin").toInt();
+    sucess &= bufferInsert("enableiopin: " + esp8266_http_server.arg("enableiopin") + "\n");
+  } else if (esp8266_http_server.hasArg("device") and esp8266_http_server.hasArg("address_segment") and
+      esp8266_http_server.hasArg("iotype") and esp8266_http_server.hasArg("io_pin")) {
+    unsigned int index = esp8266_http_server.arg("device").toInt();
+    Connected_device device;
+
+    int segment_counter = 0;
+    for(int i = 0; i < esp8266_http_server.args(); i++){
+      if(esp8266_http_server.argName(i) == "address_segment" && segment_counter < ADDRESS_SEGMENTS){
+        esp8266_http_server.arg(i).toCharArray(device.address_segment[segment_counter].segment, NAME_LEN);
+        sanitizeTopicSection(device.address_segment[segment_counter].segment);
+        segment_counter++;
+      }
+    }
+    for(int i = segment_counter; i < ADDRESS_SEGMENTS; i++){
+      device.address_segment[segment_counter++].segment[0] = '\0';
+    }
+
+    if(esp8266_http_server.hasArg("iotype")){
+      if (esp8266_http_server.arg("iotype") == "pwm") {
+        device.iotype = Io_Type::pwm;
+      } else if (esp8266_http_server.arg("iotype") == "onoff") {
+        device.iotype = Io_Type::onoff;
+      } else if (esp8266_http_server.arg("iotype") == "input") {
+        device.iotype = Io_Type::input;
+      } else {
+        device.iotype = Io_Type::test;
+      }
+    }
+
+    if(esp8266_http_server.hasArg("io_pin")){
+      device.io_pin = esp8266_http_server.arg("io_pin").toInt();
+    }
+    if(esp8266_http_server.hasArg("io_default")){
+      device.io_default = esp8266_http_server.arg("io_default").toInt();
+    }
+    if(esp8266_http_server.hasArg("inverted")){
+      if(esp8266_http_server.arg("inverted") == "true"){
+        device.inverted = true;
+      } else if(esp8266_http_server.arg("inverted") == "false"){
+        device.inverted = false;
+      } else {
+        device.inverted = esp8266_http_server.arg("inverted").toInt();
+      }
+    }
+
+    SetDevice(index, device);
+
+    sucess &= bufferInsert("device: " + esp8266_http_server.arg("device") + "\n");
+
+    // Force reconnect to MQTT so we subscribe to any new addresses.
+    mqtt->forceDisconnect();
+    io->setup();
+  }
+  
+  Persist_Data::Persistent<Config> persist_config(config);
+  persist_config.writeConfig();
+
+  Serial.println(buffer);
+
+  Serial.println("onSet() -");
+  esp8266_http_server.send((sucess ? 200 : 500), "text/plain", buffer);
+}
+
+// Set the config->pull_firmware bit in flash and reboot so we pull new firmware on
+// next boot.
+void HttpServer::onPullFirmware(){
+  String message = "Pulling firmware\n";
+  esp8266_http_server.send(200, "text/plain", message);
+  
+  config->pull_firmware = true;
+  Persist_Data::Persistent<Config> persist_config(config);
+  persist_config.writeConfig();
+  
+  delay(100);
+  ESP.reset();
+}
+
+void HttpServer::onReset() {
+  Serial.println("restarting host");
+  delay(100);
+  ESP.reset();
+
+  esp8266_http_server.send(200, "text/plain", "restarting host");
 }
 
 void HttpServer::bufferClear(){

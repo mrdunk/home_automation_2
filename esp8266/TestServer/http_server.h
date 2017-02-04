@@ -5,8 +5,6 @@
 #include "host_attributes.h"
 #include "Brokers.h"
 
-#define HTTP_PORT 82
-
 class HttpServer{
  public:
   HttpServer(char* _buffer, 
@@ -14,6 +12,8 @@ class HttpServer{
              Config* _config,
              Brokers* _brokers,
              mdns::MDns* _mdns,
+             Mqtt* _mqtt,
+             Io* _io,
              int* _allow_config);
   void loop();
  private:
@@ -21,12 +21,18 @@ class HttpServer{
   void onTest();
   void onRoot();
   void onScript();
+  void onStyle();
   void onConfig();
+  void onSet();
+  void onPullFirmware();
+  void onReset();
   char* buffer;
   const int buffer_size;
   Config* config;
   Brokers* brokers;
   mdns::MDns* mdns;
+  Mqtt* mqtt;
+  Io* io;
   int* allow_config;
   void bufferClear();
   bool bufferAppend(const String& to_add);

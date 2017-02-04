@@ -6,7 +6,7 @@
 #define RESET_ON_CONNECT_FAIL 60
 
 // Maximum size of an incoming mDNS packet. Make this as big as free RAM allows.
-#define MAX_MDNS_PACKET_SIZE 256
+#define MAX_MDNS_PACKET_SIZE 1024
 
 // Increase this if any changes are made to "struct Config" or you need to reset
 // config to default values.
@@ -40,6 +40,12 @@
 
 // IO Pin that will enable configuration web page.
 #define CONFIGURE_PIN 0
+
+// Port for web interface.
+#define HTTP_PORT 80
+
+// Web interface buffer size.
+#define HTTP_BUFFER_SIZE 10000
 
 // Maximum length of a MQTT topic.
 #define MAX_TOPIC_LENGTH  (PREFIX_LEN + ((NAME_LEN +1) * ADDRESS_SEGMENTS) +1)
