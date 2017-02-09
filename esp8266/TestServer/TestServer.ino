@@ -1,3 +1,24 @@
+/* Copyright <YEAR> <COPYRIGHT HOLDER>
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy
+ * of this software and associated documentation files (the "Software"), to deal
+ * in the Software without restriction, including without limitation the rights
+ * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ * copies of the Software, and to permit persons to whom the Software is
+ * furnished to do so, subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in all
+ * copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+ * SOFTWARE.
+ */
+
 #include <ESP8266WiFi.h>
 #include <ESP8266WebServer.h>
 #include <EEPROM.h>
@@ -12,8 +33,7 @@
 #include "secrets.h"
 #include "persist_data.h"
 #include "persist_data.cpp"   // Template arguments confuse the linker so need to include .cpp .
-#include "Brokers.h"
-#include "html_primatives.h"  // TODO remove?
+#include "mdns_actions.h"
 #include "host_attributes.h"
 #include "config.h"
 #include "http_server.h"
@@ -35,32 +55,33 @@ Config config = {
   CONFIG_VERSION
 };
 
-String mac_address;
+// Global to track whether access to configuration WebPages should be allowed.
 int allow_config;
 
+// Large buffer to be used by MDns and HttpServer.
+byte buffer[BUFFER_SIZE];
 
 // mDNS
-
-Brokers brokers(QUESTION_SERVICE);
+MdnsLookup brokers(QUESTION_SERVICE);
 mdns::MDns my_mdns(NULL,
                    NULL,
                    [](const mdns::Answer* answer){brokers.ParseMDnsAnswer(answer);},
-                   MAX_MDNS_PACKET_SIZE);
-
+                   buffer,
+                   BUFFER_SIZE);
 
 // MQTT
-
 WiFiClient wifiClient;
 Mqtt mqtt(wifiClient, &brokers);
-
 void mqttCallback(const char* topic, const byte* payload, const unsigned int length){
   mqtt.callback(topic, payload, length);
 }
 
-
 // IO
 Io io(&mqtt);
 
+// Web page configuration interface.
+HttpServer http_server((char*)buffer, BUFFER_SIZE, &config, &brokers,
+                       &my_mdns, &mqtt, &io, &allow_config);
 
 
 // If we boot with the config.pull_firmware bit set in flash we should pull new firmware
@@ -115,10 +136,12 @@ void setup_network(void) {
   }
 
   // Wait for connection
-  int timer = RESET_ON_CONNECT_FAIL * 10;
+  int timer = RESET_ON_CONNECT_FAIL * 100;
   while (WiFi.status() != WL_CONNECTED){
-    delay(100);
-    Serial.print(".");
+    delay(10);
+    if(timer % 100 == 0){
+      Serial.print(".");
+    }
     if(timer-- == 0){
       timer = RESET_ON_CONNECT_FAIL;
       ESP.reset();
@@ -143,7 +166,7 @@ void configInterrupt(){
 
 void setup(void) {
   Serial.begin(115200);
-  delay(100);
+  delay(10);
   Serial.println();
   Serial.println("Reset.");
   Serial.println();
@@ -151,37 +174,28 @@ void setup(void) {
   Persist_Data::Persistent<Config> persist_config(&config);
   persist_config.readConfig();
 
-  Serial.println("");
-  
   if(config.pull_firmware){
     Serial.println("Pull Firmware mode!!");
   } else {
-    uint8_t mac[6];
-    WiFi.macAddress(mac);
-    mac_address = macToStr(mac);
-
-    if (strlen(config.hostname) == 0){
-      String hostname = "esp8266_";
-      hostname += mac_address;
-      char hostname_arr[HOSTNAME_LEN];
-      hostname.toCharArray(hostname_arr, HOSTNAME_LEN);
-      SetHostname(hostname_arr);
-    }
-
     pinMode(config.enable_io_pin, INPUT_PULLUP);
     attachInterrupt(digitalPinToInterrupt(config.enable_io_pin), configInterrupt, CHANGE);
     io.registerCallback([]() {io.inputCallback();});  // Inline callback function.
     io.setup();
+
+    if (strlen(config.hostname) == 0){
+      uint8_t mac[6];
+      WiFi.macAddress(mac);
+      String hostname = "esp8266_" + macToStr(mac);
+      char hostname_arr[HOSTNAME_LEN];
+      hostname.toCharArray(hostname_arr, HOSTNAME_LEN);
+      SetHostname(hostname_arr);
+    }
 
     mqtt.registerCallback(mqttCallback);
 
     allow_config = 0;
   }
 }
-
-char test_http_buffer[HTTP_BUFFER_SIZE];
-HttpServer http_server(test_http_buffer, HTTP_BUFFER_SIZE, &config, &brokers,
-                       &my_mdns, &mqtt, &io, &allow_config);
 
 void loop(void) {
   if (WiFi.status() != WL_CONNECTED) {
@@ -193,10 +207,7 @@ void loop(void) {
   } else {
     mqtt.loop();
     io.loop();
-    if(!my_mdns.Check()){
-      //Serial.println("mDNS error.");
-    }
-
+    my_mdns.loop();
     http_server.loop();
   }
 }

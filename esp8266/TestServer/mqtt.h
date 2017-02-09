@@ -1,3 +1,24 @@
+/* Copyright <YEAR> <COPYRIGHT HOLDER>
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy
+ * of this software and associated documentation files (the "Software"), to deal
+ * in the Software without restriction, including without limitation the rights
+ * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ * copies of the Software, and to permit persons to whom the Software is
+ * furnished to do so, subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in all
+ * copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+ * SOFTWARE.
+ */
+
 #ifndef ESP8266__MQTT_H
 #define ESP8266__MQTT_H
 
@@ -5,7 +26,7 @@
 #include <PubSubClient.h>      // Include "PubSubClient" library.
 
 #include "ipv4_helpers.h"
-#include "Brokers.h"
+#include "mdns_actions.h"
 #include "config.h"
 
 struct Address_Segment {
@@ -14,7 +35,7 @@ struct Address_Segment {
 
 class Mqtt{
  public:
-  Mqtt(WiFiClient& wifi_client, Brokers* brokers_);
+  Mqtt(WiFiClient& wifi_client, MdnsLookup* brokers_);
 
   void parse_topic(const char* topic, Address_Segment* address_segments);
   bool compare_addresses(const Address_Segment* address_1, const Address_Segment* address_2);
@@ -54,9 +75,10 @@ class Mqtt{
   char mqtt_subscriptions[MAX_TOPIC_LENGTH * MAX_SUBSCRIPTIONS];
   int mqtt_subscription_count;
   int mqtt_subscribed_count;
-  Brokers* brokers;
+  MdnsLookup* brokers;
   void (*registered_callback)(const char* topic, const byte* payload, const unsigned int length);
   bool was_connected;
+  unsigned int count_loop;
 };
 
 

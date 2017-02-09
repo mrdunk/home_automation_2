@@ -1,3 +1,23 @@
+/* Copyright <YEAR> <COPYRIGHT HOLDER>
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy
+ * of this software and associated documentation files (the "Software"), to deal
+ * in the Software without restriction, including without limitation the rights
+ * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ * copies of the Software, and to permit persons to whom the Software is
+ * furnished to do so, subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in all
+ * copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+ * SOFTWARE.
+ */
 
 
 #include <ESP8266WebServer.h>
@@ -12,7 +32,7 @@
 HttpServer::HttpServer(char* _buffer,
                        const int _buffer_size,
                        Config* _config,
-                       Brokers* _brokers,
+                       MdnsLookup* _brokers,
                        mdns::MDns* _mdns,
                        Mqtt* _mqtt,
                        Io* _io,
@@ -88,7 +108,35 @@ void HttpServer::onRoot(){
   sucess &= bufferAppend(descriptionListItem("System clock", String(millis() / 1000)));
   sucess &= bufferAppend(descriptionListItem("&nbsp", "&nbsp"));
   
-  sucess &= bufferAppend(descriptionListItem("Brokers", brokers->Summary()));
+  String table = tableStart() + rowStart("") +
+                 header("") + header("service_name") + header("port") +
+                 header("hostname") + header("ip") + header("service valid until") +
+                 header("host valid until") + header("ipv4 valid until") +
+                 header("fail counter") +
+                 rowEnd();
+  Host* phost;
+  bool active;
+  while(brokers->IterateHosts(&phost, &active)){
+    if(active){
+      table += rowStart("highlight");
+      table += cell("active");
+    } else {
+      table += rowStart("");
+      table += cell("");
+    }
+    table += cell(phost->service_name);
+    table += cell(String(phost->port));
+    table += cell(phost->host_name);
+    table += cell(ip_to_string(phost->address));
+    table += cell(String(phost->service_valid_until));
+    table += cell(String(phost->host_valid_until));
+    table += cell(String(phost->ipv4_valid_until));
+    table += cell(String(phost->fail_counter));
+
+    table += rowEnd();
+  }
+  table += tableEnd();
+  sucess &= bufferAppend(descriptionListItem("Brokers", table));
   
 #ifdef DEBUG_STATISTICS
   if(mdns->packet_count != 0){
@@ -99,7 +147,7 @@ void HttpServer::onRoot(){
         String(100 - (100 * mdns->buffer_size_fail / mdns->packet_count)) + "%"));
     sucess &= bufferAppend(descriptionListItem("Largest mDNS packet size",
         String(mdns->largest_packet_seen) + " / " + 
-        String(MAX_MDNS_PACKET_SIZE) + " bytes"));
+        String(BUFFER_SIZE) + " bytes"));
   }
 #endif
 
@@ -120,8 +168,8 @@ void HttpServer::onRoot(){
 void HttpServer::onScript(){
   Serial.println("onScript() +");
   // strncpy_P() to copy from program memory as javasctipt is PROGMEM.
-  strncpy_P(buffer, javascript, HTTP_BUFFER_SIZE);
-  buffer[HTTP_BUFFER_SIZE -1] = '\0';
+  strncpy_P(buffer, javascript, BUFFER_SIZE);
+  buffer[BUFFER_SIZE -1] = '\0';
   Serial.println(strlen(buffer));
   Serial.println("onScript() -");
   esp8266_http_server.send(200, "text/javascript", buffer);
@@ -130,8 +178,8 @@ void HttpServer::onScript(){
 void HttpServer::onStyle(){
   Serial.println("onStyle() +");
   // strncpy_P() to copy from program memory as style is PROGMEM.
-  strncpy_P(buffer, style, HTTP_BUFFER_SIZE);
-  buffer[HTTP_BUFFER_SIZE -1] = '\0';
+  strncpy_P(buffer, style, BUFFER_SIZE);
+  buffer[BUFFER_SIZE -1] = '\0';
   Serial.println(strlen(buffer));
   Serial.println("onStyle() -");
   esp8266_http_server.send(200, "text/css", buffer);

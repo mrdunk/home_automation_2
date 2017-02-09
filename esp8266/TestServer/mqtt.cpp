@@ -1,3 +1,24 @@
+/* Copyright <YEAR> <COPYRIGHT HOLDER>
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy
+ * of this software and associated documentation files (the "Software"), to deal
+ * in the Software without restriction, including without limitation the rights
+ * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ * copies of the Software, and to permit persons to whom the Software is
+ * furnished to do so, subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in all
+ * copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+ * SOFTWARE.
+ */
+
 #include "mqtt.h"
 #include "devices.h"
 #include "host_attributes.h"
@@ -7,12 +28,15 @@
 extern Io io;
 extern Config config;
 
-Mqtt::Mqtt(WiFiClient& wifi_client, Brokers* brokers_){
+// TODO. Make use of config.broker_ip .
+
+Mqtt::Mqtt(WiFiClient& wifi_client, MdnsLookup* brokers_){
   mqtt_client = PubSubClient(wifi_client);
   brokers = brokers_;
   mqtt_subscription_count = 0;
   mqtt_subscribed_count = 0;
   was_connected = false;
+  count_loop = 0;
 }
 
 void Mqtt::loop(){
@@ -22,7 +46,9 @@ void Mqtt::loop(){
       was_connected = false;
     }
     connect();
-    Serial.print("-");
+    if(count_loop++ % 10 == 0){
+      Serial.print("-");
+    }
     delay(10);
   } else {
     if (!was_connected){
@@ -230,7 +256,7 @@ void Mqtt::mqtt_clear_buffers(){
 
 // Called whenever we want to make sure we are subscribed to necessary topics.
 void Mqtt::connect() {
-  Broker broker = brokers->GetBroker();
+  Host broker = brokers->GetHost();
   IPAddress ip = broker.address;
   if(ip == IPAddress(0,0,0,0)){
     if(config.ip == IPAddress(0,0,0,0)){
@@ -287,7 +313,7 @@ void Mqtt::connect() {
       }
     }
   }
-  brokers->RateBroker(mqtt_client.connected());
+  brokers->RateHost(mqtt_client.connected());
   if (mqtt_client.connected()) {
     Serial.print("MQTT connected to: ");
     Serial.println(broker.address);
