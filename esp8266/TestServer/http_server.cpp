@@ -112,7 +112,7 @@ void HttpServer::onRoot(){
                  header("") + header("service_name") + header("port") +
                  header("hostname") + header("ip") + header("service valid until") +
                  header("host valid until") + header("ipv4 valid until") +
-                 header("fail counter") +
+                 header("success rate") +
                  rowEnd();
   Host* phost;
   bool active;
@@ -131,7 +131,8 @@ void HttpServer::onRoot(){
     table += cell(String(phost->service_valid_until));
     table += cell(String(phost->host_valid_until));
     table += cell(String(phost->ipv4_valid_until));
-    table += cell(String(phost->fail_counter));
+    table += cell(String(phost->sucess_counter) + " / " +
+                  String(phost->sucess_counter + phost->fail_counter));
 
     table += rowEnd();
   }

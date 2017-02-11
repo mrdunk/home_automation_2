@@ -23,8 +23,8 @@
 #define ESP8266__HOST_ATTRIBUTES_H
 
 #include <ESP8266WiFi.h>
-#include "devices.h"
 #include "config.h"
+#include "devices.h"
 
 struct Config {
   char hostname[HOSTNAME_LEN];
@@ -32,6 +32,7 @@ struct Config {
   IPAddress gateway;
   IPAddress subnet;
   IPAddress broker_ip;
+  //int broker_port;
   char subscribe_prefix[PREFIX_LEN];
   char publish_prefix[PREFIX_LEN];
   Connected_device devices[MAX_DEVICES];

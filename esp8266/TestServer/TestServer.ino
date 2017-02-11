@@ -155,6 +155,7 @@ void setup_network(void) {
   Serial.println(WiFi.localIP());
 
   if(!config.pull_firmware){
+    brokers.InsertManual("broker_hint", config.broker_ip, 1883);  // TODO: Use port from config.
     brokers.RegisterMDns(&my_mdns);
   }
 }

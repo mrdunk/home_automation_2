@@ -22,6 +22,27 @@
 #include "mdns_actions.h"
 
 
+void MdnsLookup::InsertManual(String host_name, IPAddress address, int port) {
+  for (int i = 0; i < HOSTS_BUFFER_SIZE; ++i) {
+    if (hosts[i].service_name == "" and
+        hosts[i].host_name == "" and
+        hosts[i].address == IPAddress(0, 0, 0, 0) and
+        hosts[i].port == 0 and
+        hosts[i].service_valid_until == 0 and
+        hosts[i].host_valid_until == 0 and
+        hosts[i].ipv4_valid_until == 0 and
+        hosts[i].fail_counter == 0)
+    {
+      // Empty slot so populate.
+      hosts[i].service_name = String(MANUAL_SERVICE_NAME);
+      hosts[i].host_name = String(host_name);
+      hosts[i].address = address;
+      hosts[i].port = port;
+      break;
+    }
+  }
+}
+
 void MdnsLookup::SendQuestion() {
   const unsigned int now = millis();
   if (last_question_time > 0 && 
@@ -54,17 +75,26 @@ void MdnsLookup::ParseMDnsAnswer(const mdns::Answer* answer) {
 
   // A typical PTR record matches service to a human readable name.
   // eg:
-  //  service: _mqtt._tcp.local
-  //  name:    Mosquitto MQTT server on twinkle.local
+  //  name_buffer:  _mqtt._tcp.local
+  //  rdata_buffer: Mosquitto MQTT server on twinkle.local
   char service_type_char[service_type.length() +1];
   service_type.toCharArray(service_type_char, service_type.length());
-  if (answer->rrtype == MDNS_TYPE_PTR and strstr(answer->name_buffer, service_type_char) != NULL) {
+  if(answer->rrtype == MDNS_TYPE_PTR and 
+      service_type == String(answer->name_buffer))
+  {
+    if(strncmp(answer->rdata_buffer, MANUAL_SERVICE_NAME, strlen(MANUAL_SERVICE_NAME) == 0)){
+      // MANUAL_SERVICE_NAME should never appear via mDNS query.
+      Serial.print("WARNING: mDNS query arrived with reserved service name: ");
+      Serial.println(MANUAL_SERVICE_NAME);
+      return;
+    }
     unsigned int i = 0;
     bool found = false;
-    for (; i < MAX_BROKERS; ++i) {
+    for (; i < HOSTS_BUFFER_SIZE; ++i) {
       if (hosts[i].service_name == String(answer->rdata_buffer)) {
         // Already in hosts[].
-        // Note that there may be more than one match. (Same host, different IP.)
+        // Note that there may be more than one match.
+        // (Same service, different IP or different host.)
         if (now + answer->rrttl > hosts[i].service_valid_until) {
           hosts[i].service_valid_until = now + answer->rrttl;
         }
@@ -73,8 +103,7 @@ void MdnsLookup::ParseMDnsAnswer(const mdns::Answer* answer) {
     }
     if(!found){
       // Didn't find any matching entries so insert it in a blank space.
-      i = 0;
-      for (; i < MAX_BROKERS; ++i) {
+      for (i = 0; i < HOSTS_BUFFER_SIZE; ++i) {
         if (hosts[i].service_name == "") {
           // This hosts[][] entry is still empty.
           hosts[i].service_name = answer->rdata_buffer;
@@ -84,8 +113,8 @@ void MdnsLookup::ParseMDnsAnswer(const mdns::Answer* answer) {
           break;
         }
       }
-      if (i == MAX_BROKERS) {
-        Serial.print(" ** ERROR ** No space in buffer for ");
+      if (i == HOSTS_BUFFER_SIZE) {
+        Serial.print("No space in buffer for ");
         Serial.print('"');
         Serial.print(answer->name_buffer);
         Serial.print('"');
@@ -93,6 +122,8 @@ void MdnsLookup::ParseMDnsAnswer(const mdns::Answer* answer) {
         Serial.print('"');
         Serial.println(answer->rdata_buffer);
         Serial.print('"');
+
+        CleanBuffer();
       }
     }
   }
@@ -103,7 +134,7 @@ void MdnsLookup::ParseMDnsAnswer(const mdns::Answer* answer) {
   //  data:    p=0;w=0;port=1883;host=twinkle.local
   if (answer->rrtype == MDNS_TYPE_SRV) {
     bool exists = false;
-    for (int i = 0; i < MAX_BROKERS; ++i) {
+    for (int i = 0; i < HOSTS_BUFFER_SIZE; ++i) {
       if (hosts[i].service_name == String(answer->name_buffer)) {
         // This brokers entry matches the name of the host we are looking for
         // so parse data for port and hostname.
@@ -133,11 +164,11 @@ void MdnsLookup::ParseMDnsAnswer(const mdns::Answer* answer) {
       }
     }
     if (!exists) {
-      /*Serial.print(" SRV.  Did not find ");
-      Serial.print('"');
-      Serial.print(answer->name_buffer);
-      Serial.print('"');
-      Serial.println(" in brokers buffer.");*/
+      //Serial.print(" SRV.  Did not find ");
+      //Serial.print('"');
+      //Serial.print(answer->name_buffer);
+      //Serial.print('"');
+      //Serial.println(" in brokers buffer.");
     }
   }
 
@@ -148,7 +179,7 @@ void MdnsLookup::ParseMDnsAnswer(const mdns::Answer* answer) {
   if (answer->rrtype == MDNS_TYPE_A) {
     bool exists = false;
     int empty_slot = -1;
-    for (int i = 0; i < MAX_BROKERS; ++i) {
+    for (int i = 0; i < HOSTS_BUFFER_SIZE; ++i) {
       if (hosts[i].host_name == String(answer->name_buffer)) {
         // Hostname matches.
         if (hosts[i].address == string_to_ip(answer->rdata_buffer)) {
@@ -173,7 +204,7 @@ void MdnsLookup::ParseMDnsAnswer(const mdns::Answer* answer) {
           // The hostname matches but the address does not.
           // This is probably a host with more than one IP address.
           // Check for a match elsewhere in the buffer:
-          for (int j = 0; j < MAX_BROKERS; ++j) {
+          for (int j = 0; j < HOSTS_BUFFER_SIZE; ++j) {
             if(i != j &&
                 hosts[j].host_name == String(answer->name_buffer) &&
                 hosts[j].address == string_to_ip(answer->rdata_buffer))
@@ -204,11 +235,13 @@ void MdnsLookup::ParseMDnsAnswer(const mdns::Answer* answer) {
               exists = true;
               break;
             } else {
-              Serial.print(" ** ERROR ** No space in buffer for "
+              Serial.print("No space in buffer for "
                   "duplicate ipv4 address: ");
               Serial.print(answer->rdata_buffer);
               Serial.print("  hosname: ");
               Serial.println(answer->name_buffer);
+
+              CleanBuffer();
             }
           }
         }
@@ -220,67 +253,135 @@ void MdnsLookup::ParseMDnsAnswer(const mdns::Answer* answer) {
       }
     }
     if (!exists) {
-      /*Serial.print(" A.    Did not find ");
-      Serial.print('"');
-      Serial.print(answer->name_buffer);
-      Serial.print('"');
-      Serial.println(" in brokers buffer.");*/
+      //Serial.print(" A.    Did not find ");
+      //Serial.print('"');
+      //Serial.print(answer->name_buffer);
+      //Serial.print('"');
+      //Serial.println(" in brokers buffer.");
     }
   }
 
 }
 
-// Remove expired or failed entries.
 void MdnsLookup::CleanBuffer(){
   const unsigned int now = millis() / 1000;
-  for (int i = 0; i < MAX_BROKERS; ++i) {
-    if ((hosts[i].service_valid_until < now and hosts[i].service_valid_until > 0) or 
-        (hosts[i].host_valid_until < now and hosts[i].host_valid_until > 0) or
-        (hosts[i].ipv4_valid_until < now and hosts[i].ipv4_valid_until > 0) or
-        hosts[i].fail_counter > MAX_BROKER_FAILURES)
+  int worst_result = -1;
+  float worst_ratio = 0;
+  int total_samples;
+ 
+  // Get worst expired result.
+  for (int i = 0; i < HOSTS_BUFFER_SIZE; ++i) {
+    total_samples = hosts[i].sucess_counter + hosts[i].fail_counter;
+    if(total_samples == 0){
+      // Prevent division by zero;
+      total_samples++;
+    }
+    if((hosts[i].service_name != String(MANUAL_SERVICE_NAME)) and
+        ((float)hosts[i].sucess_counter / total_samples <= worst_ratio) and
+        (i != active_host) and
+        !HostNotTImedOut(hosts[i]))
     {
-      hosts[i].service_name = "";
-      hosts[i].host_name = "";
-      hosts[i].address = IPAddress(0, 0, 0, 0);
-      hosts[i].port = 0;
-      hosts[i].service_valid_until = 0;
-      hosts[i].host_valid_until = 0;
-      hosts[i].ipv4_valid_until = 0;
-      hosts[i].fail_counter = 0;
+      worst_ratio = (float)hosts[i].sucess_counter / total_samples;
+      worst_result = i;
     }
   }
+
+  if(worst_result < 0){
+    // Since no entries have expired, just scrap the worst result.
+    for (int i = 0; i < HOSTS_BUFFER_SIZE; ++i) {
+      total_samples = hosts[i].sucess_counter + hosts[i].fail_counter;
+      if(total_samples == 0){
+        // Prevent division by zero;
+        total_samples++;
+      }
+      if((hosts[i].service_name != String(MANUAL_SERVICE_NAME)) and
+          ((float)hosts[i].sucess_counter / total_samples <= worst_ratio) and
+          (i != active_host))
+      {
+        worst_ratio = (float)hosts[i].sucess_counter / total_samples;
+        worst_result = i;
+      }
+    }
+  }
+
+  if(worst_result < 0 or 
+      worst_ratio > MIN_SUCESS_RATIO or
+      worst_ratio == 0){
+    // None bad enough to scrap.
+    return;
+  }
+
+  Serial.println("deleting entry from hosts buffer.");
+  hosts[worst_result].service_name = "";
+  hosts[worst_result].host_name = "";
+  hosts[worst_result].address = IPAddress(0, 0, 0, 0);
+  hosts[worst_result].port = 0;
+  hosts[worst_result].service_valid_until = 0;
+  hosts[worst_result].host_valid_until = 0;
+  hosts[worst_result].ipv4_valid_until = 0;
+  hosts[worst_result].fail_counter = 0;
+}
+
+bool MdnsLookup::HostValid(Host& host){
+  return (host.address != IPAddress(0, 0, 0, 0)) and
+         (host.port != 0);
+}
+
+bool MdnsLookup::HostNotTImedOut(Host& host){
+  const unsigned int now = millis() / 1000;
+  return ((host.service_valid_until >= now) and
+          (host.host_valid_until >= now) and
+          (host.ipv4_valid_until >= now));
 }
 
 Host MdnsLookup::GetHost() {
-  // Remove any brokers that have a high number of failures or have timed out.
-  CleanBuffer();
-
   const unsigned int now = millis() / 1000;
-  const unsigned int starting_active_host = active_host;
-  while (hosts[active_host].address == IPAddress(0, 0, 0, 0)){
-    if (++active_host == MAX_BROKERS) {
-      active_host = 0;
-    }
-    if(active_host == starting_active_host){
-      // Haven't found a valid broker so try querying mDNS for the address of some.
-      SendQuestion();
-      return Host{};
+  int total_samples;
+  int best_host = -1;
+  float best_ratio = 0;
+
+  // TODO: Check for buffer expiring..
+  for (int i = 0; i < HOSTS_BUFFER_SIZE; ++i) {
+    total_samples = hosts[i].sucess_counter + hosts[i].fail_counter;
+    if(HostValid(hosts[i]) and HostNotTImedOut(hosts[i]) and
+        ((total_samples == 0) or 
+        ((float)hosts[i].sucess_counter / total_samples > best_ratio))){
+      best_host = i;
+      best_ratio = (float)hosts[i].sucess_counter / total_samples;
     }
   }
-  retransmit_in = MDNS_QUESTION_INTERVAL;
-  return hosts[active_host];
+
+  if(best_host < 0){
+    // Haven't found a host that has not timed out so let's ignore the timeouts.
+    for (int i = 0; i < HOSTS_BUFFER_SIZE; ++i) {
+      total_samples = hosts[i].sucess_counter + hosts[i].fail_counter;
+      if(HostValid(hosts[i]) and
+          ((total_samples == 0) or 
+           ((float)hosts[i].sucess_counter / total_samples > best_ratio))){
+        best_host = i;
+        best_ratio = (float)hosts[i].sucess_counter / total_samples;
+      }
+    }
+  }
+
+  if(best_host < 0){
+    // Didn't find one.
+    return Host{};
+  }
+  active_host = best_host;
+  return hosts[best_host];
 }
 
 void MdnsLookup::RateHost(bool sucess) {
   if (sucess) {
-    hosts[active_host].fail_counter = 0;
+    hosts[active_host].sucess_counter++;
     return;
   }
   hosts[active_host].fail_counter++;
 }
 
 bool MdnsLookup::IterateHosts(Host** host, bool* active){
-  while(iterator < MAX_BROKERS){
+  while(iterator < HOSTS_BUFFER_SIZE){
     *active = (iterator == active_host);
     if(hosts[iterator].service_name != "") {
       *host = &(hosts[iterator]);

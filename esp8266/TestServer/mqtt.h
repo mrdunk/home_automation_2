@@ -25,9 +25,9 @@
 #include <ESP8266WiFi.h>
 #include <PubSubClient.h>      // Include "PubSubClient" library.
 
-#include "ipv4_helpers.h"
-#include "mdns_actions.h"
+
 #include "config.h"
+#include "mdns_actions.h"
 
 struct Address_Segment {
   char segment[NAME_LEN];
@@ -35,7 +35,13 @@ struct Address_Segment {
 
 class Mqtt{
  public:
-  Mqtt(WiFiClient& wifi_client, MdnsLookup* brokers_);
+  Mqtt(WiFiClient& wifi_client, MdnsLookup* brokers_) : 
+      mqtt_client(PubSubClient(wifi_client)),
+      brokers(brokers_),
+      mqtt_subscription_count(0),
+      mqtt_subscribed_count(0),
+      was_connected(false),
+      count_loop(0) {};
 
   void parse_topic(const char* topic, Address_Segment* address_segments);
   bool compare_addresses(const Address_Segment* address_1, const Address_Segment* address_2);
@@ -72,10 +78,10 @@ class Mqtt{
 
  private:
   PubSubClient mqtt_client;
+  MdnsLookup* brokers;
   char mqtt_subscriptions[MAX_TOPIC_LENGTH * MAX_SUBSCRIPTIONS];
   int mqtt_subscription_count;
   int mqtt_subscribed_count;
-  MdnsLookup* brokers;
   void (*registered_callback)(const char* topic, const byte* payload, const unsigned int length);
   bool was_connected;
   unsigned int count_loop;

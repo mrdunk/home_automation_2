@@ -21,7 +21,6 @@
 
 #include "config.h"
 #include "devices.h"
-#include "mqtt.h"
 #include "host_attributes.h"
 
 

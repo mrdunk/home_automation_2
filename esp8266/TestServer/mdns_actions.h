@@ -32,9 +32,15 @@
 #include "ipv4_helpers.h"
 
 
-#define MAX_BROKERS 4
-#define MAX_BROKER_FAILURES 3
+// The maximum number of entries found via mDNS that we can store.
+#define HOSTS_BUFFER_SIZE 6
+
+#define MIN_SUCESS_RATIO (9/10)
+
+// Time between unsuccessful retries doubles up to a maximum of 60 seconds.
 #define MDNS_QUESTION_INTERVAL 2
+
+#define MANUAL_SERVICE_NAME "##manually_added##"
 
 struct Host {
   String service_name;
@@ -44,6 +50,7 @@ struct Host {
   unsigned int service_valid_until;
   unsigned int host_valid_until;
   unsigned int ipv4_valid_until;
+  unsigned int sucess_counter;
   unsigned int fail_counter;
 };
 
@@ -56,30 +63,33 @@ class MdnsLookup {
       active_host(0), 
       iterator(0), 
       last_question_time(0),
-      retransmit_in(MDNS_QUESTION_INTERVAL) {};
+      retransmit_in(MDNS_QUESTION_INTERVAL) {}
   MdnsLookup(const String service_type) :
       service_type(service_type),
       active_host(0),
       iterator(0), 
       last_question_time(0),
-      retransmit_in(MDNS_QUESTION_INTERVAL) {};
-  
+      retransmit_in(MDNS_QUESTION_INTERVAL) {}
+ 
   // If MDns instance was not passed to the constructor it can be passed using this.
   void RegisterMDns(mdns::MDns* mdns_instance) { mdns = mdns_instance; }
-  
+ 
+  // Insert a manually configured entry into the buffer.
+  void InsertManual(String host_name, IPAddress address, int port);
+
   // Send an mDNS query requesting service_type.
   void SendQuestion();
 
   // Populate hosts from provided mDNS answer.
-  // Will try to join different Queries into a single hosts entry.
+  // Will try to join different Queries into a single hosts[] entry.
   void ParseMDnsAnswer(const mdns::Answer* answer);
 
-  // Get a host with a Host.fail_counter <= MAX_BROKER_FAILURES from buffer.
+  // Get a host from buffer.
   Host GetHost();
   
-  // Track reliability of Host in the Host.fail_counter.
-  // If Host.fail_counter > MAX_BROKER_FAILURES it will be removed next time ClearBuffer()
-  // is called.
+  // Track reliability of Host using the Host.success_counter and Host.fail_counter.
+  // Call this with the success/failure of using the device found so CleanBuffer()
+  // knows which entries to purge if more entries than buffer space arrive.
   void RateHost(bool sucess);
 
   // Iterate through hosts.
@@ -89,8 +99,10 @@ class MdnsLookup {
 
  private:
   void CleanBuffer();
+  bool HostValid(Host& host);
+  bool HostNotTImedOut(Host& host);
   const String service_type;
-  Host hosts[MAX_BROKERS];
+  Host hosts[HOSTS_BUFFER_SIZE];
   mdns::MDns* mdns;
   unsigned int active_host;
   unsigned int iterator;

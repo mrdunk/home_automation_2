@@ -19,25 +19,18 @@
  * SOFTWARE.
  */
 
-#include "mqtt.h"
-#include "devices.h"
 #include "host_attributes.h"
+#include "devices.h"
+#include "mqtt.h"
 
 // TODO. These externs are lazy.
-// I should really come up with a proper way of passing data between objects.
+// Io depends on Mqtt. Mqtt depends on Io.
+// Ideally we would decouple these.
 extern Io io;
 extern Config config;
 
 // TODO. Make use of config.broker_ip .
 
-Mqtt::Mqtt(WiFiClient& wifi_client, MdnsLookup* brokers_){
-  mqtt_client = PubSubClient(wifi_client);
-  brokers = brokers_;
-  mqtt_subscription_count = 0;
-  mqtt_subscribed_count = 0;
-  was_connected = false;
-  count_loop = 0;
-}
 
 void Mqtt::loop(){
   if (!connected()) {
@@ -170,18 +163,18 @@ void Mqtt::callback(const char* topic, const byte* payload, const unsigned int l
   }
 
   for (int i = 0; i < MAX_DEVICES; ++i) {
-      if(compare_addresses(address_segments, config.devices[i].address_segment)){
-          //Serial.print("Matches: ");
-          //Serial.println(i);
+		if(compare_addresses(address_segments, config.devices[i].address_segment)){
+			//Serial.print("Matches: ");
+			//Serial.println(i);
 
-          if(command == ""){
-            // pass
-          } else if(command == "solicit"){
-            io.mqttAnnounce(config.devices[i]);
-          } else {
-            io.changeState(config.devices[i], command);
-          }          
-      }
+			if(command == ""){
+				// pass
+			} else if(command == "solicit"){
+				io.mqttAnnounce(config.devices[i]);
+			} else {
+				io.changeState(config.devices[i], command);
+			}          
+		}
   }
 }
 
