@@ -45,6 +45,7 @@ void SetHostname(const char* new_hostname) {
   strncpy(config.hostname, new_hostname, HOSTNAME_LEN -1);
   config.hostname[HOSTNAME_LEN -1] = '\0';
   sanitizeHostname(config.hostname);
+  WiFi.hostname(config.hostname);
 }
 
 

@@ -203,14 +203,9 @@ void Io::mqttAnnounce(const Connected_device& device){
   String payload = "_state:";
   payload += String(device.io_value);
   
-  char target[11];
-  payload.toCharArray(target, 11);
-  
   String topic = config.publish_prefix;
   topic += "/";
   topic += DeviceAddress(device);
-  char topic_char[MAX_TOPIC_LENGTH];
-  topic.toCharArray(topic_char, MAX_TOPIC_LENGTH);
 
   mqtt->announce(topic, payload);
 }

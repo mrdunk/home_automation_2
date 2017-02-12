@@ -77,8 +77,6 @@ void MdnsLookup::ParseMDnsAnswer(const mdns::Answer* answer) {
   // eg:
   //  name_buffer:  _mqtt._tcp.local
   //  rdata_buffer: Mosquitto MQTT server on twinkle.local
-  char service_type_char[service_type.length() +1];
-  service_type.toCharArray(service_type_char, service_type.length());
   if(answer->rrtype == MDNS_TYPE_PTR and 
       service_type == String(answer->name_buffer))
   {

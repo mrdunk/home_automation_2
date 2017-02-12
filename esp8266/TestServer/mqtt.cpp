@@ -191,25 +191,15 @@ void Mqtt::mqtt_announce_host(){
   announce += config.hostname;
   announce += ", _ip:";
   announce += ip_to_string(WiFi.localIP());
-  char host[60 + HOSTNAME_LEN];  // eg: "_subject:AA_BB_CC_DD_EE_FF, _hostname:somehost, ip:123.123.123.123"
-  announce.toCharArray(host, 60 + HOSTNAME_LEN);
 
-  String address_string = config.publish_prefix;
-  address_string += "/hosts/_announce";
-  char address_char[PREFIX_LEN + 17];  // eg: "pre/fix/hosts/_announce"
-  address_string.toCharArray(address_char, PREFIX_LEN + 17);
+  String address = config.publish_prefix;
+  address += "/hosts/_announce";
 
-  mqtt_client.publish(address_char, host);
+  mqtt_client.publish(address.c_str(), announce.c_str());
 }
 
 void Mqtt::announce(const String topic, const String payload){
-  char topic_char[topic.length() +1];
-  topic.toCharArray(topic_char, topic.length() +1);
-
-  char payload_char[payload.length() +1];
-  payload.toCharArray(payload_char, payload.length() +1);
-
-  mqtt_client.publish(topic_char, payload_char);
+  mqtt_client.publish(topic.c_str(), payload.c_str());
 }
 
 void Mqtt::queue_mqtt_subscription(const char* path){
@@ -251,15 +241,12 @@ void Mqtt::mqtt_clear_buffers(){
 void Mqtt::connect() {
   Host broker = brokers->GetHost();
   IPAddress ip = broker.address;
-  if(ip == IPAddress(0,0,0,0)){
-    if(config.ip == IPAddress(0,0,0,0)){
-      // Can't find a Broker being advertised by mDNS so use configured one.
-      ip = config.ip;
-    } else {
-      return;
-    } 
+  int port = broker.port;
+  if(ip == IPAddress(0,0,0,0) || port == 0){
+    // No valid broker.
+    return;
   }
-  mqtt_client.setServer(ip, 1883);
+  mqtt_client.setServer(ip, port);
   mqtt_client.setCallback(registered_callback);
 
   if (mqtt_client.connect(config.hostname)) {

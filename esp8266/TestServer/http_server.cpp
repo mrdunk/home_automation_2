@@ -231,11 +231,14 @@ void HttpServer::onConfig(){
     }
     sucess &= bufferAppend(descriptionListItem("&nbsp", "&nbsp"));
 
-    sucess &= bufferAppend(descriptionListItem("MQTT broker hint",
+    sucess &= bufferAppend(descriptionListItem("Static MQTT broker ip",
         ipField("broker_ip", ip_to_string(config->broker_ip),
                 ip_to_string(config->broker_ip), "brokerip") +
         submit("Save", "save_brokerip" , "save('brokerip')") +
         String("(0.0.0.0 to use mDNS auto discovery)")));
+    sucess &= bufferAppend(descriptionListItem("Static MQTT broker port",
+        portValue(config->broker_port, "brokerport") +
+        submit("Save", "save_brokerport" , "save('brokerport')")));
     sucess &= bufferAppend(descriptionListItem("MQTT subscription prefix",
         textField("subscribeprefix", "subscribeprefix", config->subscribe_prefix,
           "subscribeprefix") +
@@ -386,25 +389,20 @@ void HttpServer::onSet(){
   } else if (esp8266_http_server.hasArg("brokerip")) {
     config->broker_ip = string_to_ip(esp8266_http_server.arg("brokerip"));
     sucess &= bufferInsert("broker_ip: " + esp8266_http_server.arg("brokerip") + "\n");
+  } else if (esp8266_http_server.hasArg("brokerport")) {
+    config->broker_port = esp8266_http_server.arg("brokerport").toInt();
+    sucess &= bufferInsert("broker_port: " + esp8266_http_server.arg("brokerport") + "\n");
   } else if (esp8266_http_server.hasArg("hostname")) {
-    char tmp_buffer[HOSTNAME_LEN];
-    esp8266_http_server.arg("hostname").toCharArray(tmp_buffer, HOSTNAME_LEN);
-    SetHostname(tmp_buffer);
+    SetHostname(esp8266_http_server.arg("hostname").c_str());
     sucess &= bufferInsert("hostname: " + esp8266_http_server.arg("hostname") + "\n");
   } else if (esp8266_http_server.hasArg("publishprefix")) {
-    char tmp_buffer[PREFIX_LEN];
-    esp8266_http_server.arg("publishprefix").toCharArray(tmp_buffer, PREFIX_LEN);
-    SetPrefix(tmp_buffer, config->publish_prefix);
+    SetPrefix(esp8266_http_server.arg("publishprefix").c_str(), config->publish_prefix);
     sucess &= bufferInsert("publishprefix: " + esp8266_http_server.arg("publishprefix") + "\n");
   } else if (esp8266_http_server.hasArg("subscribeprefix")) {
-    char tmp_buffer[PREFIX_LEN];
-    esp8266_http_server.arg("subscribeprefix").toCharArray(tmp_buffer, PREFIX_LEN);
-    SetPrefix(tmp_buffer, config->subscribe_prefix);
+    SetPrefix(esp8266_http_server.arg("subscribeprefix").c_str(), config->publish_prefix);
     sucess &= bufferInsert("subscribeprefix: " + esp8266_http_server.arg("subscribeprefix") + "\n");
   } else if (esp8266_http_server.hasArg("firmwareserver")) {
-    char tmp_buffer[FIRMWARE_SERVER_LEN];
-    esp8266_http_server.arg("firmwareserver").toCharArray(tmp_buffer, FIRMWARE_SERVER_LEN);
-    SetFirmwareServer(tmp_buffer, config->firmware_server);
+    SetFirmwareServer(esp8266_http_server.arg("firmwareserver").c_str(), config->firmware_server);
     sucess &= bufferInsert("firmwareserver: " + esp8266_http_server.arg("firmwareserver") + "\n");
   } else if (esp8266_http_server.hasArg("enablepassphrase")) {
     esp8266_http_server.arg("enablepassphrase").toCharArray(config->enable_passphrase, NAME_LEN);
@@ -502,9 +500,7 @@ void HttpServer::bufferClear(){
 }
 
 bool HttpServer::bufferAppend(const String& to_add){
-  char char_array[to_add.length() +1];
-  to_add.toCharArray(char_array, to_add.length() +1);
-  return bufferAppend(char_array);
+  return bufferAppend(to_add.c_str());
 }
 
 bool HttpServer::bufferAppend(const char* to_add){
@@ -513,9 +509,7 @@ bool HttpServer::bufferAppend(const char* to_add){
 }
 
 bool HttpServer::bufferInsert(const String& to_insert){
-  char char_array[to_insert.length() +1];
-  to_insert.toCharArray(char_array, to_insert.length() +1);
-  return bufferInsert(char_array);
+  return bufferInsert(to_insert.c_str());
 }
 
 bool HttpServer::bufferInsert(const char* to_insert){

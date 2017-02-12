@@ -29,7 +29,7 @@ function save(label) {
             target === 'subscribeprefix' || target === 'firmwareserver' ||
             target === 'enablepassphrase' || target === 'enableiopin' ||
             target === 'ip' || target === 'subnet' || target === 'gateway' ||
-            target === 'brokerip'){
+            target === 'brokerip' || target === 'brokerport'){
     var data = document.getElementsByClassName(target)[0].value;
     console.log(target);
     var url = 'http://' + window.location.host + '/set/?' + target + '=';
@@ -71,7 +71,7 @@ const char style[] PROGMEM =
   "th {border: 1px solid grey;}\n"
   "td {border: 1px solid grey;}\n"
   "input, [type=text] {width: 20em;}\n"
-  "input, [type=number] {width: 3em;}\n"
+  "input, [type=number] {width: 4em;}\n"
   ".highlight {background: lightgreen;}\n"
   ".div-shrink{display: inline;}\n"
   
@@ -107,6 +107,8 @@ const String option(const String& type, const String& selected);
 const String outletType(const String& type, const String& class_name);
 
 const String ioPin(const int value, const String& class_name);
+
+const String portValue(const int value, const String& class_name);
 
 const String ioValue(const int value, const String& class_name);
 

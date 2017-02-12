@@ -129,6 +129,15 @@ const String ioPin(const int value, const String& class_name){
   return return_value;
 }
 
+const String portValue(const int value, const String& class_name){
+  String return_value = "<input type=\"number\" class=\"";
+  return_value += class_name;
+  return_value += "\" value=\"";
+  return_value += String(value);
+  return_value += "\"></input>";
+  return return_value;
+}
+
 const String ioValue(const int value, const String& class_name){
   String return_value = "<input type=\"number\" max=\"255\" min=\"0\" class=\"";
   return_value += class_name;

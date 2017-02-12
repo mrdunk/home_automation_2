@@ -45,6 +45,7 @@ Config config = {
   {0,0,0,0},
   {0,0,0,0},
   {0,0,0,0},
+  1883,
   "homeautomation/+",
   "homeautomation/0",
   {},
@@ -155,7 +156,7 @@ void setup_network(void) {
   Serial.println(WiFi.localIP());
 
   if(!config.pull_firmware){
-    brokers.InsertManual("broker_hint", config.broker_ip, 1883);  // TODO: Use port from config.
+    brokers.InsertManual("broker_hint", config.broker_ip, config.broker_port);
     brokers.RegisterMDns(&my_mdns);
   }
 }
@@ -187,9 +188,7 @@ void setup(void) {
       uint8_t mac[6];
       WiFi.macAddress(mac);
       String hostname = "esp8266_" + macToStr(mac);
-      char hostname_arr[HOSTNAME_LEN];
-      hostname.toCharArray(hostname_arr, HOSTNAME_LEN);
-      SetHostname(hostname_arr);
+      SetHostname(hostname.c_str());
     }
 
     mqtt.registerCallback(mqttCallback);

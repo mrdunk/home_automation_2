@@ -32,7 +32,7 @@ struct Config {
   IPAddress gateway;
   IPAddress subnet;
   IPAddress broker_ip;
-  //int broker_port;
+  int broker_port;
   char subscribe_prefix[PREFIX_LEN];
   char publish_prefix[PREFIX_LEN];
   Connected_device devices[MAX_DEVICES];
