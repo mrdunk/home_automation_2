@@ -22,7 +22,6 @@
 #ifndef ESP8266__HOST_ATTRIBUTES_H
 #define ESP8266__HOST_ATTRIBUTES_H
 
-#include <ESP8266WiFi.h>
 #include "config.h"
 #include "devices.h"
 
@@ -36,12 +35,18 @@ struct Config {
   char subscribe_prefix[PREFIX_LEN];
   char publish_prefix[PREFIX_LEN];
   Connected_device devices[MAX_DEVICES];
-  char firmware_server[FIRMWARE_SERVER_LEN];
-  char enable_passphrase[FIRMWARE_SERVER_LEN];
+  char firmware_host[STRING_LEN];
+  char firmware_directory[STRING_LEN];
+  int firmware_port;
+  char enable_passphrase[STRING_LEN];
   int enable_io_pin;
   bool pull_firmware;
-  // TODO: add WFI ssid and password.
+  char wifi_ssid[STRING_LEN];
+  char wifi_passwd[STRING_LEN];
   char config_version[4];
+
+  bool save();
+  bool load(const String& filename="/config.cfg", bool test=false);
 }; 
 
 
@@ -53,5 +58,8 @@ void SetHostname(const char* new_hostname);
 // The URL to an HTTP server where firmware can be pulled from.
 void SetFirmwareServer(const char* new_fws, char* dest_buffer);
 
+//bool pullFile(const String& filename);
+bool enterSubSet(String& input, int& level);
+bool getKeyValue(String& input, String& key, String& value);
 
 #endif  // ESP8266__HOST_ATTRIBUTES_H

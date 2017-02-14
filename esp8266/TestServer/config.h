@@ -51,10 +51,10 @@
 #define PREFIX_LEN 32
 
 // How many times to retry to upload firmware on failure.
-#define UPLOAD_FIRMWARE_RETRIES 10
+#define UPLOAD_FIRMWARE_RETRIES 3
 
-// Length of Firmware server URL.
-#define FIRMWARE_SERVER_LEN 64
+// Maximum length of any other string the user might configure.
+#define STRING_LEN 64
 
 // IO Pin that will enable configuration web page.
 #define CONFIGURE_PIN 0

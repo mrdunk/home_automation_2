@@ -19,49 +19,15 @@
  * SOFTWARE.
  */
 
-#ifndef ESP8266__HTTP_SERVER__H
-#define ESP8266__HTTP_SERVER__H
-
-#include "html_primatives.h"
-#include "host_attributes.h"
-#include "mdns_actions.h"
-
-class HttpServer{
- public:
-  HttpServer(char* _buffer, 
-             const int _buffer_size,
-             Config* _config,
-             MdnsLookup* _brokers,
-             mdns::MDns* _mdns,
-             Mqtt* _mqtt,
-             Io* _io,
-             int* _allow_config);
-  void loop();
- private:
-  ESP8266WebServer esp8266_http_server;
-  void onTest();
-  void onRoot();
-  void onScript();
-  void onStyle();
-  void onConfig();
-  void onSet();
-  void onPullFirmware();
-  void onReset();
-  void readAndTransmitFile(const String& filename);
-  char* buffer;
-  const int buffer_size;
-  Config* config;
-  MdnsLookup* brokers;
-  mdns::MDns* mdns;
-  Mqtt* mqtt;
-  Io* io;
-  int* allow_config;
-  void bufferClear();
-  bool bufferAppend(const String& to_add);
-  bool bufferAppend(const char* to_add);
-  bool bufferInsert(const String& to_insert);
-  bool bufferInsert(const char* to_insert);
-};
+#ifndef ESP8266__SERVE_FILES_H
+#define ESP8266__SERVE_FILES_H
 
 
-#endif  // ESP8266__HTTP_SERVER__H
+#define HTTP_OK 200
+
+// Perform an HTTP GET request to a remote page
+bool getPage(const String& filename, File& file, const Config& config);
+
+bool pullFile(const String& filename, const Config& config);
+
+#endif  // ESP8266__SERVE_FILES_H

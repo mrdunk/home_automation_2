@@ -1,0 +1,16 @@
+dl{border: 3px double #ccc; width: 100%;}
+dl dt, dl dd {float: left; margin:1px 0 0 0; background: darkgrey;}
+dl dt{clear: left; font-weight: bold; width:15em;}
+dl dd{overflow: hidden; width: calc(100% - 15em);}
+
+table {border-spacing: 1px; border: 1px solid grey;}
+tr {background: darkgrey; padding: 3px;}
+th {border: 1px solid grey;}
+td {border: 1px solid grey;}
+input, [type=text] {width: 20em;}
+input, [type=number] {width: 4em;}
+.highlight {background: lightgreen;}
+.div-shrink{display: inline;}
+  
+input:required:invalid, input:focus:invalid {background: red;}
+

@@ -26,6 +26,7 @@
 #include <mdns.h>              // Include "esp8266_mdns" library.
 
 #include "ESP8266httpUpdate.h"
+#include "FS.h"
 
 #include "devices.h"
 #include "mqtt.h"
@@ -37,6 +38,7 @@
 #include "host_attributes.h"
 #include "config.h"
 #include "http_server.h"
+#include "serve_files.h"
 
 
 Config config = {
@@ -49,7 +51,9 @@ Config config = {
   "homeautomation/+",
   "homeautomation/0",
   {},
-  "http://192.168.192.54:8000/firmware.bin",
+  "192.168.192.54",
+  "/",
+  8000,
   "",
   0,
   false,
@@ -87,19 +91,21 @@ HttpServer http_server((char*)buffer, BUFFER_SIZE, &config, &brokers,
 
 // If we boot with the config.pull_firmware bit set in flash we should pull new firmware
 // from an HTTP server.
-void pullFirmware(){
+bool pullFirmware(){
   config.pull_firmware = false;
   Persist_Data::Persistent<Config> persist_config(&config);
   persist_config.writeConfig();
 
   for(int tries = 0; tries < UPLOAD_FIRMWARE_RETRIES; tries++){
     ESPhttpUpdate.rebootOnUpdate(false);
-    t_httpUpdate_return ret = ESPhttpUpdate.update(config.firmware_server);
-    //t_httpUpdate_return  ret = ESPhttpUpdate.update("https://server/file.bin");
+    const String uri(String(config.firmware_directory) + String("firmware.bin"));
+    t_httpUpdate_return ret = ESPhttpUpdate.update(config.firmware_host,
+                                                   config.firmware_port,
+                                                   uri);
 
     switch(ret) {
       case HTTP_UPDATE_FAILED:
-        Serial.printf("HTTP_UPDATE_FAILD Error (%d): %s", 
+        Serial.printf("HTTP_UPDATE_FAILED Error (%d): %s", 
             ESPhttpUpdate.getLastError(),
             ESPhttpUpdate.getLastErrorString().c_str());
         Serial.println();
@@ -112,14 +118,15 @@ void pullFirmware(){
       case HTTP_UPDATE_OK:
         Serial.println("HTTP_UPDATE_OK");
         delay(100);
-        ESP.reset();
-        return;
+        return true;
     }
     Serial.println("Retry...");
     delay(1000);
   }
   Serial.println("Giving up firmware pull.");
+  return false;
 }
+
 
 void setup_network(void) {
   //Serial.setDebugOutput(true);
@@ -203,7 +210,14 @@ void loop(void) {
   }
 
   if(config.pull_firmware){
-    pullFirmware();
+    bool result = pullFirmware();
+	  result &= pullFile("style.css", config);
+	  result &= pullFile("script.js", config);
+	  result &= pullFile("config.cfg", config);
+    if(result){
+			Serial.println("Upgrade successful.");
+    }
+		ESP.reset();
   } else {
     mqtt.loop();
     io.loop();

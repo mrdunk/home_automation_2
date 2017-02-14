@@ -21,6 +21,7 @@
 
 
 #include <ESP8266WebServer.h>
+#include "FS.h"
 
 #include "http_server.h"
 #include "html_primatives.h"
@@ -28,6 +29,7 @@
 #include "persist_data.h"
 #include "persist_data.cpp"   // Template arguments confuse the linker so need to include .cpp .
 #include "config.h"
+#include "serve_files.h"
 
 HttpServer::HttpServer(char* _buffer,
                        const int _buffer_size,
@@ -47,7 +49,7 @@ HttpServer::HttpServer(char* _buffer,
     allow_config(_allow_config)
 {
   esp8266_http_server = ESP8266WebServer(HTTP_PORT);
-  esp8266_http_server.on("/test", [&]() {onTest();});
+  //esp8266_http_server.on("/test", [&]() {onTest();});
   esp8266_http_server.on("/", [&]() {onRoot();});
   esp8266_http_server.on("/script.js", [&]() {onScript();});
   esp8266_http_server.on("/style.css", [&]() {onStyle();});
@@ -59,6 +61,7 @@ HttpServer::HttpServer(char* _buffer,
   esp8266_http_server.on("/pullfirmware/", [&]() {onPullFirmware();});
   esp8266_http_server.on("/reset", [&]() {onReset();});
   esp8266_http_server.on("/reset/", [&]() {onReset();});
+  esp8266_http_server.on("/test", [&]() {pullFile("config.cfg", *config); config->load(); onTest();});
 
   esp8266_http_server.begin();
 
@@ -166,24 +169,51 @@ void HttpServer::onRoot(){
   esp8266_http_server.send((sucess ? 200 : 500), "text/html", buffer);
 }
 
+void HttpServer::readAndTransmitFile(const String& filename){
+	bool result = SPIFFS.begin();
+  if(!result){
+		Serial.println("Unable to use SPIFFS.");
+    esp8266_http_server.send(404, "text/html", "Unable to use SPIFFS.");
+    return;
+  }
+
+	// this opens the file "f.txt" in read-mode
+	File file = SPIFFS.open("/" + filename, "r");
+
+	if (!file) {
+		Serial.println("File doesn't exist.");
+    esp8266_http_server.send(404, "text/html", "File doesn't exist.");
+    return;
+  }
+
+  buffer[0] = '\0';
+  
+  while(file.available()) {
+    //Lets read line by line from the file
+    String line = file.readStringUntil('\n');
+    strncat(buffer, line.c_str(), BUFFER_SIZE - strlen(buffer) -1);
+  }
+
+	file.close();
+
+  String mime = "text/plain";
+  if(filename.endsWith(".css")){
+    mime = "text/css";
+  } else if(filename.endsWith(".js")){
+    mime = "application/javascript";
+  }
+
+  esp8266_http_server.send(200, mime, buffer);
+}
+
 void HttpServer::onScript(){
   Serial.println("onScript() +");
-  // strncpy_P() to copy from program memory as javasctipt is PROGMEM.
-  strncpy_P(buffer, javascript, BUFFER_SIZE);
-  buffer[BUFFER_SIZE -1] = '\0';
-  Serial.println(strlen(buffer));
-  Serial.println("onScript() -");
-  esp8266_http_server.send(200, "text/javascript", buffer);
+  readAndTransmitFile("script.js");
 }
 
 void HttpServer::onStyle(){
   Serial.println("onStyle() +");
-  // strncpy_P() to copy from program memory as style is PROGMEM.
-  strncpy_P(buffer, style, BUFFER_SIZE);
-  buffer[BUFFER_SIZE -1] = '\0';
-  Serial.println(strlen(buffer));
-  Serial.println("onStyle() -");
-  esp8266_http_server.send(200, "text/css", buffer);
+  readAndTransmitFile("style.css");
 }
 
 void HttpServer::onConfig(){
@@ -249,10 +279,17 @@ void HttpServer::onConfig(){
         submit("Save", "save_publishprefix" , "save('publishprefix')")));
     sucess &= bufferAppend(descriptionListItem("&nbsp", "&nbsp"));
     
-    sucess &= bufferAppend(descriptionListItem("HTTP Firmware URL",
-        textField("firmware_server", "firmware_server", config->firmware_server,
-          "firmwareserver") +
-        submit("Save", "save_firmwareserver" , "save('firmwareserver')")));
+    sucess &= bufferAppend(descriptionListItem("HTTP Firmware host",
+        textField("firmware_host", "firmware_host", config->firmware_host,
+          "firmwarehost") +
+        submit("Save", "save_firmwarehost" , "save('firmwarehost')")));
+    sucess &= bufferAppend(descriptionListItem("HTTP Firmware directory",
+        textField("firmware_directory", "firmware_directory", config->firmware_directory,
+          "firmwaredirectory") +
+        submit("Save", "save_firmwaredirectory" , "save('firmwaredirectory')")));
+    sucess &= bufferAppend(descriptionListItem("HTTP Firmware port",
+        portValue(config->firmware_port, "firmwareport") +
+        submit("Save", "save_firmwareport" , "save('firmwareport')")));
     sucess &= bufferAppend(descriptionListItem("Config enable passphrase",
         textField("enable_passphrase", "enable_passphrase", config->enable_passphrase,
           "enablepassphrase") +
@@ -399,13 +436,22 @@ void HttpServer::onSet(){
     SetPrefix(esp8266_http_server.arg("publishprefix").c_str(), config->publish_prefix);
     sucess &= bufferInsert("publishprefix: " + esp8266_http_server.arg("publishprefix") + "\n");
   } else if (esp8266_http_server.hasArg("subscribeprefix")) {
-    SetPrefix(esp8266_http_server.arg("subscribeprefix").c_str(), config->publish_prefix);
+    SetPrefix(esp8266_http_server.arg("subscribeprefix").c_str(), config->subscribe_prefix);
     sucess &= bufferInsert("subscribeprefix: " + esp8266_http_server.arg("subscribeprefix") + "\n");
-  } else if (esp8266_http_server.hasArg("firmwareserver")) {
-    SetFirmwareServer(esp8266_http_server.arg("firmwareserver").c_str(), config->firmware_server);
-    sucess &= bufferInsert("firmwareserver: " + esp8266_http_server.arg("firmwareserver") + "\n");
+  } else if (esp8266_http_server.hasArg("firmwarehost")) {
+    SetFirmwareServer(esp8266_http_server.arg("firmwarehost").c_str(), config->firmware_host);
+    sucess &= bufferInsert("firmwarehost: " + esp8266_http_server.arg("firmwarehost") + "\n");
+  } else if (esp8266_http_server.hasArg("firmwaredirectory")) {
+    SetFirmwareServer(esp8266_http_server.arg("firmwaredirectory").c_str(),
+                      config->firmware_directory);
+    sucess &= bufferInsert("firmwaredirectory: " + 
+                           esp8266_http_server.arg("firmwaredirectory") + "\n");
+  } else if (esp8266_http_server.hasArg("firmwareport")) {
+    config->firmware_port = esp8266_http_server.arg("firmwareport").toInt();
+    sucess &= bufferInsert("firmwareport: " + esp8266_http_server.arg("firmwareport") + "\n");
   } else if (esp8266_http_server.hasArg("enablepassphrase")) {
-    esp8266_http_server.arg("enablepassphrase").toCharArray(config->enable_passphrase, NAME_LEN);
+    esp8266_http_server.arg("enablepassphrase").toCharArray(config->enable_passphrase,
+                                                            STRING_LEN);
     sucess &= bufferInsert("enablepassphrase: " + esp8266_http_server.arg("enablepassphrase") + "\n");
   } else if (esp8266_http_server.hasArg("enableiopin")) {
     config->enable_io_pin = esp8266_http_server.arg("enableiopin").toInt();
