@@ -1,4 +1,4 @@
-/* Copyright <YEAR> <COPYRIGHT HOLDER>
+/* Copyright 2017 Duncan Law (mrdunk@gmail.com)
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -28,6 +28,7 @@
 // Perform an HTTP GET request to a remote page
 bool getPage(const String& filename, File& file, const Config& config);
 
+// Get file from remote server and save to flash memory.
 bool pullFile(const String& filename, const Config& config);
 
 #endif  // ESP8266__SERVE_FILES_H

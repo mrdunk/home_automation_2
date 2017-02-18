@@ -1,4 +1,4 @@
-/* Copyright <YEAR> <COPYRIGHT HOLDER>
+/* Copyright 2017 Duncan Law (mrdunk@gmail.com)
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -77,6 +77,8 @@ bool Config::load(const String& filename, bool test){
   int line_num = 0;
   String line = "";
   int level = 0;
+  int list_index = 0;
+  bool inside_list = false;
   String parent = "root";
   String key = "";
   String value = "";
@@ -84,29 +86,21 @@ bool Config::load(const String& filename, bool test){
   while(file.available() || line != "") {
     // Remove any preceding "," which are left from previous iterations.
     line.trim();
-    if(line.startsWith(",")){
-      line.remove(0, 1);
-      line.trim();
-    }
 
     //Lets read line by line from the file
-    if(line == ""){
+    if(line == "" || line == ":"){
       line_num++;
-      line = file.readStringUntil('\n');
+      line += file.readStringUntil('\n');
     }
-    
-    enterSubSet(line, level);
-
+  
     if(line.startsWith("#")){
       // Rest of line is a comment so ignore it.
       line = "";
-    }
-
-    if(level == 1){  // and parent == "root"){
-      if(getKeyValue(line, key, value)){
-        Serial.printf("%i %s : %s\n", level, key.c_str(), value.c_str());
-        key.toLowerCase();
-        if(!test){
+    } else if(getKeyValue(line, key, value)){
+      key.toLowerCase();
+      if(!test){
+        if(parent == "root"){
+          Serial.printf("%i:%s  %s : %s\n", level, parent.c_str(), key.c_str(), value.c_str());
           if(key == "hostname"){
             SetHostname(value.c_str());
           } else if(key == "ip"){
@@ -137,48 +131,35 @@ bool Config::load(const String& filename, bool test){
             // TODO
           } else if(key == "wifi_passwd"){
             // TODO
+          } else if(key == "brokers"){
+            parent = key;
+            key = "";
           }
+        } else if(parent == "brokers"){
+          Serial.printf("%i:%s  %s : %s\n", level, parent.c_str(), key.c_str(), value.c_str());
         }
-        key = "";
-        value = "";
-      } else if(key != "") {
-        if(key == "brokers"){
-          parent = key;
-          key = "";
-        }
-      } else if(line.startsWith(",")) {
-        // pass
-      } else if(key == "" && line =="") {
-        //blank line
-      } else {
-        Serial.printf("1. Problem in file: %s  on line: %i\n", filename.c_str(), line_num);
-        Serial.printf("  near: \"%s\"\n", line.c_str());
-        return false;
       }
-    } else if(level == 2 and parent == "brokers"){
-      if(getKeyValue(line, key, value)){
-        Serial.printf("%i %s : %s\n", level, key.c_str(), value.c_str());
-        key.toLowerCase();
-        if(!test){
-        }
-        key = "";
-      } else if(enterSubSet(line, level)) {
-        if(level == 1){
-          parent = "root";
-        }
-      } else if(line.startsWith(",")) {
-        // pass
-      } else if(key == "" && line =="") {
-        //blank line
-      } else {
-        Serial.printf("2. Problem in file: %s  on line: %i\n", filename.c_str(), line_num);
-        Serial.printf("  near: \"%s\"\n", line.c_str());
-        return false;
+      key = "";
+    } else if((key != "") && (value != "error")) {
+      // Pass.
+    } else if(enterSubSet(line, level) or enterList(line, inside_list, list_index, level)) {
+      if(level == 1 and !inside_list){
+        parent = "root";
       }
+    } else if(line.startsWith(",")) {
+      // pass
+    } else if((key == "") && (line == "")) {
+      //blank line
+    } else {
+      Serial.println(level);
+      Serial.println(line);
+      Serial.printf("Problem in file: %s  on line: %i\n", filename.c_str(), line_num);
+      Serial.printf("  near: \"%s\"\n", line.c_str());
+      return false;
     }
   }
 
-	file.close();
+  file.close();
   return true;
 }
 
@@ -199,7 +180,40 @@ bool enterSubSet(String& input, int& level){
   return false;
 }
 
+// Note: Recursive lists do not work. No lists inside lists.
+bool enterList(String& input, bool& inside_list, int& list_index,
+               int& current_level){
+  static int list_level;
+  input.trim();
+  if(!inside_list and input.startsWith("[")){
+    list_level = current_level;
+    list_index = 0;
+    inside_list = true;
+    input.remove(0, 1);
+    input.trim();
+    return true;
+  } else if(inside_list and input.startsWith("]")){
+    inside_list = false;
+    input.remove(0, 1);
+    input.trim();
+    
+    if(input.startsWith(",")){
+      input.remove(0, 1);
+    }
+    return true;
+  } else if(inside_list and input.startsWith(",") and current_level == list_level){
+    list_index++;
+    Serial.print("list_index: ");
+    Serial.println(list_index);
+    input.remove(0, 1);
+    input.trim();
+    return true;
+  }
+  return false;
+}
+
 bool getKeyValue(String& input, String& key, String& value){
+  value = "";
   if(key == ""){
     input.trim();
     if(!input.startsWith("\"") || input.indexOf("\"", 1) < 0){
@@ -212,41 +226,53 @@ bool getKeyValue(String& input, String& key, String& value){
 
   input.trim();
   if(!input.startsWith(":")){
+    if(input.length() > 0){
+      value = "error";
+    }
     return false;
   }
   input = input.substring(1);
   input.trim();
 
   if(input.length() == 0){
+    input = ":";
     return false;
   } else if(input.startsWith("[")){
-    return false;
+    // value is a collection. We deal with those in the upper loop.
+    return true;
   } else if(input.startsWith("{")){
-    return false;
+    // value is a collection. We deal with those in the upper loop.
+    return true;
   } else if(input.startsWith("\"")){
-    if(!input.indexOf("\"", 1) < 0){
+    if(input.indexOf("\"", 1) < 0){
+      value = "error";
       return false;
     }
     value = input.substring(1, input.indexOf("\"", 1));
     input = input.substring(input.indexOf("\"", 1) +1);
+
+    input.trim();
+    if(input.startsWith(",")){
+      input.remove(0, 1);
+    }
     return true;
   } else {
     // Presumably a number.
-    if(input.indexOf(",") > 0){
-      value = input.substring(0, input.indexOf(",") -1);
-      input = input.substring(input.indexOf(","));
-    } else if(input.indexOf("]") > 0){
-      value = input.substring(0, input.indexOf("]") -1);
-      input = input.substring(input.indexOf("]"));
-    } else if(input.indexOf("}") > 0){
-      value = input.substring(0, input.indexOf("}") -1);
-      input = input.substring(input.indexOf("}"));
-    } else {
-      value = input;
-      input = "";
+    while(input.length()){  
+      if(input.c_str()[0] < '0' || input.c_str()[0] > '9'){
+        break;
+      }
+      value += input.c_str()[0];
+      input.remove(0, 1);
     }
+
+
+    input.trim();
+    if(input.startsWith(",")){
+      input.remove(0, 1);
+    }
+    return true;
   }
   return false;
 }
-
 

@@ -1,4 +1,4 @@
-/* Copyright <YEAR> <COPYRIGHT HOLDER>
+/* Copyright 2017 Duncan Law (mrdunk@gmail.com)
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -30,12 +30,13 @@ enum Io_Type {
   test,
   pwm,
   onoff,
+  input_pullup,
   input
 };
 
 struct Connected_device {
   Address_Segment address_segment[ADDRESS_SEGMENTS];
-  Io_Type iotype;
+  Io_Type io_type;
   int io_pin;
   int io_value;
   int io_default;

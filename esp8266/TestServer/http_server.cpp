@@ -1,4 +1,4 @@
-/* Copyright <YEAR> <COPYRIGHT HOLDER>
+/* Copyright 2017 Duncan Law (mrdunk@gmail.com)
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -315,11 +315,13 @@ void HttpServer::onConfig(){
         sucess &= bufferAppend(cell(config->subscribe_prefix + String("/") +
             textField(name, "some/topic", DeviceAddress(config->devices[i]),
               "device_" + String(i) + "_topic")));
-        if (config->devices[i].iotype == Io_Type::pwm) {
+        if (config->devices[i].io_type == Io_Type::pwm) {
           sucess &= bufferAppend(cell(outletType("pwm", "device_" + String(i) + "_iotype")));
-        } else if (config->devices[i].iotype == Io_Type::onoff) {
+        } else if (config->devices[i].io_type == Io_Type::onoff) {
           sucess &= bufferAppend(cell(outletType("onoff", "device_" + String(i) + "_iotype")));
-        } else if (config->devices[i].iotype == Io_Type::input) {
+        } else if (config->devices[i].io_type == Io_Type::input_pullup) {
+          sucess &= bufferAppend(cell(outletType("inputPullUp", "device_" + String(i) + "_iotype")));
+        } else if (config->devices[i].io_type == Io_Type::input) {
           sucess &= bufferAppend(cell(outletType("input", "device_" + String(i) + "_iotype")));
         } else {
           sucess &= bufferAppend(cell(outletType("test", "device_" + String(i) + "_iotype")));
@@ -395,6 +397,9 @@ void HttpServer::onSet(){
   Serial.println("onSet() +");
   bool sucess = true;
   bufferClear();
+  
+  Serial.print("allow_config: ");
+  Serial.println(*allow_config);
 
   if(*allow_config <= 0){
     Serial.println("Not allowed to onSet()");
@@ -475,13 +480,15 @@ void HttpServer::onSet(){
 
     if(esp8266_http_server.hasArg("iotype")){
       if (esp8266_http_server.arg("iotype") == "pwm") {
-        device.iotype = Io_Type::pwm;
+        device.io_type = Io_Type::pwm;
       } else if (esp8266_http_server.arg("iotype") == "onoff") {
-        device.iotype = Io_Type::onoff;
+        device.io_type = Io_Type::onoff;
       } else if (esp8266_http_server.arg("iotype") == "input") {
-        device.iotype = Io_Type::input;
+        device.io_type = Io_Type::input;
+      } else if (esp8266_http_server.arg("iotype") == "inputPullUp") {
+        device.io_type = Io_Type::input_pullup;
       } else {
-        device.iotype = Io_Type::test;
+        device.io_type = Io_Type::test;
       }
     }
 

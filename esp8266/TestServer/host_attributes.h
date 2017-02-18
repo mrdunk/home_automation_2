@@ -1,4 +1,4 @@
-/* Copyright <YEAR> <COPYRIGHT HOLDER>
+/* Copyright 2017 Duncan Law (mrdunk@gmail.com)
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -59,6 +59,8 @@ void SetHostname(const char* new_hostname);
 void SetFirmwareServer(const char* new_fws, char* dest_buffer);
 
 //bool pullFile(const String& filename);
+bool enterList(String& input, bool& inside_list, int& list_index,
+               int& current_level);
 bool enterSubSet(String& input, int& level);
 bool getKeyValue(String& input, String& key, String& value);
 
