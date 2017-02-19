@@ -31,7 +31,8 @@ enum Io_Type {
   pwm,
   onoff,
   input_pullup,
-  input
+  input,
+  timer
 };
 
 struct Connected_device {
@@ -66,7 +67,7 @@ class Io{
   void setup();
   void loop();
   void changeState(Connected_device& device, String command);
-  void setState(const Connected_device& device);
+  void setState(Connected_device& device);
   void registerCallback(void(*callback_)()){ callback = callback_; }
   void inputCallback();
   void mqttAnnounce(const Connected_device& device);
@@ -74,6 +75,7 @@ class Io{
   void (*callback)();
   bool dirty_inputs;
   Mqtt* mqtt;
+  unsigned int last_update;
 };
 
 #endif  // ESP8266__DEVICES_H

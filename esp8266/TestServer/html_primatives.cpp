@@ -116,6 +116,7 @@ const String outletType(const String& type, const String& class_name){
   return_value += option("pwm", type);
   return_value += option("inputPullUp", type);
   return_value += option("input", type);
+  return_value += option("timer", type);
   return_value += "</select>";
   return return_value;
 }

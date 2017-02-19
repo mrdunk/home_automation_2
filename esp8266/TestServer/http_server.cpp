@@ -51,8 +51,9 @@ HttpServer::HttpServer(char* _buffer,
   esp8266_http_server = ESP8266WebServer(HTTP_PORT);
   //esp8266_http_server.on("/test", [&]() {onTest();});
   esp8266_http_server.on("/", [&]() {onRoot();});
-  esp8266_http_server.on("/script.js", [&]() {onScript();});
-  esp8266_http_server.on("/style.css", [&]() {onStyle();});
+  esp8266_http_server.on("/script.js", [&]() {onGetFile("script.js");});
+  esp8266_http_server.on("/style.css", [&]() {onGetFile("style.css");});
+  esp8266_http_server.on("/config.cfg", [&]() {onGetFile("config.cfg");});
   esp8266_http_server.on("/configure", [&]() {onConfig();});
   esp8266_http_server.on("/configure/", [&]() {onConfig();});
   esp8266_http_server.on("/set", [&]() {onSet();});
@@ -177,7 +178,7 @@ void HttpServer::readAndTransmitFile(const String& filename){
     return;
   }
 
-	// this opens the file "f.txt" in read-mode
+	// this opens the file in read-mode
 	File file = SPIFFS.open("/" + filename, "r");
 
 	if (!file) {
@@ -201,19 +202,16 @@ void HttpServer::readAndTransmitFile(const String& filename){
     mime = "text/css";
   } else if(filename.endsWith(".js")){
     mime = "application/javascript";
+  } else {
+    mime = "text/plain";
   }
 
   esp8266_http_server.send(200, mime, buffer);
 }
 
-void HttpServer::onScript(){
-  Serial.println("onScript() +");
-  readAndTransmitFile("script.js");
-}
-
-void HttpServer::onStyle(){
-  Serial.println("onStyle() +");
-  readAndTransmitFile("style.css");
+void HttpServer::onGetFile(const String& filename){
+  Serial.println("onGetFile() +");
+  readAndTransmitFile(filename);
 }
 
 void HttpServer::onConfig(){
@@ -319,6 +317,8 @@ void HttpServer::onConfig(){
           sucess &= bufferAppend(cell(outletType("pwm", "device_" + String(i) + "_iotype")));
         } else if (config->devices[i].io_type == Io_Type::onoff) {
           sucess &= bufferAppend(cell(outletType("onoff", "device_" + String(i) + "_iotype")));
+        } else if (config->devices[i].io_type == Io_Type::timer) {
+          sucess &= bufferAppend(cell(outletType("timer", "device_" + String(i) + "_iotype")));
         } else if (config->devices[i].io_type == Io_Type::input_pullup) {
           sucess &= bufferAppend(cell(outletType("inputPullUp", "device_" + String(i) + "_iotype")));
         } else if (config->devices[i].io_type == Io_Type::input) {
@@ -487,6 +487,8 @@ void HttpServer::onSet(){
         device.io_type = Io_Type::input;
       } else if (esp8266_http_server.arg("iotype") == "inputPullUp") {
         device.io_type = Io_Type::input_pullup;
+      } else if (esp8266_http_server.arg("iotype") == "timer") {
+        device.io_type = Io_Type::timer;
       } else {
         device.io_type = Io_Type::test;
       }

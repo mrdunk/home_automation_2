@@ -142,27 +142,33 @@ void Io::setup(){
 }
 
 void Io::loop(){
-  if(!dirty_inputs){
-    return;
-  }
-  //Serial.println("inputSerice()");
-  dirty_inputs = false;
-  for(int i=0; i < MAX_DEVICES; i++){
-    if (strlen(config.devices[i].address_segment[0].segment) > 0) {
-      if(config.devices[i].io_type == input || config.devices[i].io_type == input_pullup){
-        byte value = digitalRead(config.devices[i].io_pin);
-        value = (config.devices[i].inverted ? value == 0 : value);
-        if(value != config.devices[i].io_value){
-          config.devices[i].io_value = value;
-          //Serial.print("## ");
-          //Serial.println(value);
-          mqttAnnounce(config.devices[i]);
+  const unsigned int now = millis() / 1000;
 
-          // This pin is also the enable pin for the configuration menu.
-          if(i == config.enable_io_pin){
-            configInterrupt();
+  if(dirty_inputs){
+    dirty_inputs = false;
+    for(int i=0; i < MAX_DEVICES; i++){
+      if (strlen(config.devices[i].address_segment[0].segment) > 0) {
+        if(config.devices[i].io_type == input || config.devices[i].io_type == input_pullup){
+          byte value = digitalRead(config.devices[i].io_pin);
+          value = (config.devices[i].inverted ? value == 0 : value);
+          if(value != config.devices[i].io_value){
+            config.devices[i].io_value = value;
+            mqttAnnounce(config.devices[i]);
+
+            // This pin is also the enable pin for the configuration menu.
+            if(i == config.enable_io_pin){
+              configInterrupt();
+            }
           }
         }
+      }
+    }
+  }
+  if(last_update != now){
+    last_update = now;
+    for(int i=0; i < MAX_DEVICES; i++){
+      if(config.devices[i].io_type == timer){
+        setState(config.devices[i]);
       }
     }
   }
@@ -181,7 +187,7 @@ void Io::changeState(Connected_device& device, String command){
   setState(device);
 }
 
-void Io::setState(const Connected_device& device){
+void Io::setState(Connected_device& device){
   if(device.io_type == onoff){
     pinMode(device.io_pin, OUTPUT);
     // If pin was previously set to Io_Type::pwm we need to switch off analogue output
@@ -199,7 +205,23 @@ void Io::setState(const Connected_device& device){
     Serial.println(device.inverted ? (255 - device.io_value) : device.io_value);
   } else if(device.io_type == input){
   } else if(device.io_type == input_pullup){
+  } else if(device.io_type == timer){
+    const unsigned int now = millis() / 1000;
+    pinMode(device.io_pin, OUTPUT);
+    // If pin was previously set to Io_Type::pwm we need to switch off analogue output
+    // before using digital output.
+    analogWrite(device.io_pin, 0);
+
+    device.io_value = ((now % device.io_default) != 0);
+
+    digitalWrite(device.io_pin, device.inverted ? (device.io_value == 0) : 
+                                                  device.io_value);
+    if(((now % device.io_default) != 0) && ((now % device.io_default) != 1)){
+      // Avoid excessive MQTT announcements.
+      return;
+    }
   }
+
 	mqttAnnounce(device);
 }
 

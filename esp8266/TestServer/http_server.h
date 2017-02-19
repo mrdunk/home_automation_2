@@ -41,8 +41,7 @@ class HttpServer{
   ESP8266WebServer esp8266_http_server;
   void onTest();
   void onRoot();
-  void onScript();
-  void onStyle();
+  void onGetFile(const String& filename);
   void onConfig();
   void onSet();
   void onPullFirmware();
