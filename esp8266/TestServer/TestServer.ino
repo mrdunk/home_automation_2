@@ -57,6 +57,8 @@ Config config = {
   "",
   0,
   false,
+  "",
+  "",
   CONFIG_VERSION
 };
 
@@ -213,7 +215,6 @@ void loop(void) {
     bool result = pullFirmware();
 	  result &= pullFile("style.css", config);
 	  result &= pullFile("script.js", config);
-	  result &= pullFile("config.cfg", config);
     if(result){
 			Serial.println("Upgrade successful.");
     }

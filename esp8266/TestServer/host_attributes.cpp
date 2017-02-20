@@ -59,18 +59,169 @@ void SetFirmwareServer(const char* new_fws, char* dest_buffer) {
   dest_buffer[STRING_LEN -1] = '\0';
 }
 
+
+void Config::clear(){
+  hostname[0] = '\0';
+  ip = IPAddress(0,0,0,0);
+  gateway = IPAddress(0,0,0,0);
+  subnet = IPAddress(255,255,255,0);
+  broker_ip = IPAddress(0,0,0,0);
+  broker_port = 1883;
+  subscribe_prefix[0] = '\0';
+  publish_prefix[0] = '\0';
+  for(int i = 0; i < MAX_DEVICES; i++){
+    devices[i] = (const Connected_device){0};
+  }
+  firmware_host[0] = '\0';
+  firmware_directory[0] = '\0';
+  firmware_port = 0;
+  enable_passphrase[0] = '\0';
+  enable_io_pin = 0;
+  wifi_ssid[0] = '\0';
+  wifi_passwd[0] = '\0';
+}
+
+
+
+bool Config::testValue(const String& parent,
+                       const String& key,
+                       const String& value)
+{
+  if(parent == "root"){
+    if(key == "hostname" ||
+       key == "ip" ||
+       key == "gateway" ||
+       key == "subnet" ||
+       key == "broker_ip" ||
+       key == "broker_port" ||
+       key == "subscribe_prefix" ||
+       key == "publish_prefix" ||
+       key == "firmware_host" ||
+       key == "firmware_directory" ||
+       key == "firmware_port" ||
+       key == "enable_passphrase" ||
+       key == "enable_io_pin" ||
+       key == "wifi_ssid" ||
+       key == "wifi_passwd")
+    {
+      return true;
+    }
+  } else if(parent == "brokers"){
+    if(key == "address" ||
+        key == "io_type" ||
+        key == "io_pin" ||
+        key == "io_default" ||
+        key == "inverted")
+    {
+      return true;
+    }
+  }
+  return false;
+}
+
+bool Config::setValue(const String& parent,
+                      const String& key,
+                      const String& value,
+                      Connected_device& device)
+{
+  if(parent == "root"){
+    if(key == "hostname"){
+      SetHostname(value.c_str());
+      return true;
+    } else if(key == "ip"){
+      ip = string_to_ip(value);
+      return true;
+    } else if(key == "gateway"){
+      gateway = string_to_ip(value);
+      return true;
+    } else if(key == "subnet"){
+      subnet = string_to_ip(value);
+      return true;
+    } else if(key == "broker_ip"){
+      broker_ip = string_to_ip(value);
+      return true;
+    } else if(key == "broker_port"){
+      broker_port = value.toInt();
+      return true;
+    } else if(key == "subscribe_prefix"){
+      SetPrefix(value.c_str(), subscribe_prefix);
+      return true;
+    } else if(key == "publish_prefix"){
+      SetPrefix(value.c_str(), publish_prefix);
+      return true;
+    } else if(key == "firmware_host"){
+      SetFirmwareServer(value.c_str(), firmware_host);
+      return true;
+    } else if(key == "firmware_directory"){
+      SetFirmwareServer(value.c_str(), firmware_directory);
+      return true;
+    } else if(key == "firmware_port"){
+      firmware_port = value.toInt();
+      return true;
+    } else if(key == "enable_passphrase"){
+      value.toCharArray(enable_passphrase, STRING_LEN);
+      return true;
+    } else if(key == "enable_io_pin"){
+      enable_io_pin = value.toInt();
+      return true;
+    } else if(key == "wifi_ssid"){
+      // TODO
+      return true;
+    } else if(key == "wifi_passwd"){
+      // TODO
+      return true;
+    } else if(key == "brokers"){
+      return true;
+    }
+  } else if(parent == "brokers"){
+    if(key == "address"){
+      int index = 0;
+      int previous_index = 0;
+      String section = "";
+      int segment_counter = 0;
+      while(index > -1){
+        index = value.indexOf("/", index +1);
+        section = value.substring(previous_index, index);
+
+        section.toCharArray(
+            device.address_segment[segment_counter].segment, NAME_LEN);
+        sanitizeTopicSection(device.address_segment[segment_counter].segment);
+
+        previous_index = index +1;
+        segment_counter++;
+      }
+      return true;
+    } else if(key == "io_type"){
+      device.setType(value);
+      return true;
+    } else if(key == "io_pin"){
+      device.io_pin = value.toInt();
+      return true;
+    } else if(key == "io_default"){
+      device.io_default = value.toInt();
+      return true;
+    } else if(key == "inverted"){
+      device.setInverted(value);
+      return true;
+    }
+  }
+  return false;
+}
+
 bool Config::load(const String& filename, bool test){
-	bool result = SPIFFS.begin();
+  clear();
+
+  bool result = SPIFFS.begin();
   if(!result){
-		Serial.println("Unable to use SPIFFS.");
+    Serial.println("Unable to use SPIFFS.");
     return false;
   }
 
-	// this opens the file in read-mode
-	File file = SPIFFS.open(filename, "r");
+  // this opens the file in read-mode
+  File file = SPIFFS.open(filename, "r");
 
-	if (!file) {
-		Serial.println("File doesn't exist.");
+  if (!file) {
+    Serial.println("File doesn't exist.");
     return false;
   }
 
@@ -78,10 +229,12 @@ bool Config::load(const String& filename, bool test){
   String line = "";
   int level = 0;
   int list_index = 0;
+  int previous_list_index = 0;
   bool inside_list = false;
   String parent = "root";
   String key = "";
   String value = "";
+  Connected_device device = (const Connected_device){0};
 
   while(file.available() || line != "") {
     // Remove any preceding "," which are left from previous iterations.
@@ -98,61 +251,46 @@ bool Config::load(const String& filename, bool test){
       line = "";
     } else if(getKeyValue(line, key, value)){
       key.toLowerCase();
-      if(!test){
-        if(parent == "root"){
-          Serial.printf("%i:%s  %s : %s\n", level, parent.c_str(), key.c_str(), value.c_str());
-          if(key == "hostname"){
-            SetHostname(value.c_str());
-          } else if(key == "ip"){
-            ip = string_to_ip(value);
-          } else if(key == "gateway"){
-            gateway = string_to_ip(value);
-          } else if(key == "subnet"){
-            subnet = string_to_ip(value);
-          } else if(key == "broker_ip"){
-            broker_ip = string_to_ip(value);
-          } else if(key == "broker_port"){
-            broker_port = value.toInt();
-          } else if(key == "subscribe_prefix"){
-            SetPrefix(value.c_str(), subscribe_prefix);
-          } else if(key == "publish_prefix"){
-            SetPrefix(value.c_str(), publish_prefix);
-          } else if(key == "firmware_host"){
-            SetFirmwareServer(value.c_str(), firmware_host);
-          } else if(key == "firmware_directory"){
-            SetFirmwareServer(value.c_str(), firmware_directory);
-          } else if(key == "firmware_port"){
-            firmware_port = value.toInt();
-          } else if(key == "enable_passphrase"){
-            value.toCharArray(enable_passphrase, STRING_LEN);
-          } else if(key == "enable_io_pin"){
-            enable_io_pin = value.toInt();
-          } else if(key == "wifi_ssid"){
-            // TODO
-          } else if(key == "wifi_passwd"){
-            // TODO
-          } else if(key == "brokers"){
-            parent = key;
-            key = "";
-          }
-        } else if(parent == "brokers"){
-          Serial.printf("%i:%s  %s : %s\n", level, parent.c_str(), key.c_str(), value.c_str());
+      if(test){
+        if(!testValue(parent, key, value)){
+          Serial.printf("Problem in file: %s  on line: %i\n", filename.c_str(), line_num);
+          Serial.printf("  near: \"%s\"\n", line.c_str());
+        }
+      } else {
+        Serial.printf("%i:%s  %s : %s\n", level, parent.c_str(), key.c_str(), value.c_str());
+        if(!setValue(parent, key, value, device)){
+          Serial.printf("Problem in file: %s  on line: %i\n", filename.c_str(), line_num);
+          Serial.printf("  near: \"%s\"\n", line.c_str());
+        }
+        if(key == "brokers"){
+          parent = key;
+          key = "";
         }
       }
       key = "";
     } else if((key != "") && (value != "error")) {
       // Pass.
-    } else if(enterSubSet(line, level) or enterList(line, inside_list, list_index, level)) {
+    } else if(enterSubSet(line, level)){
       if(level == 1 and !inside_list){
         parent = "root";
+      }
+    } else if(enterList(line, inside_list, list_index, level)) {
+      if(list_index != previous_list_index){
+        insertDevice(device);
+        device = (const Connected_device){0};
+        previous_list_index = list_index;
+      }
+          
+      if(level == 1 and !inside_list){
+        parent = "root";
+        list_index = 0;
+        previous_list_index = 0;
       }
     } else if(line.startsWith(",")) {
       // pass
     } else if((key == "") && (line == "")) {
       //blank line
     } else {
-      Serial.println(level);
-      Serial.println(line);
       Serial.printf("Problem in file: %s  on line: %i\n", filename.c_str(), line_num);
       Serial.printf("  near: \"%s\"\n", line.c_str());
       return false;
@@ -162,6 +300,23 @@ bool Config::load(const String& filename, bool test){
   file.close();
   return true;
 }
+
+void Config::insertDevice(Connected_device device){
+  Serial.println("insertDevice");
+  if(device.address_segment[0].segment[0] == '\0'){
+    // Not a populated device.
+    Serial.println("Not a populated device.");
+    return;
+  }
+  for(int i = 0; i < MAX_DEVICES; i++){
+    if(devices[i].address_segment[0].segment[0] == '\0'){
+      Serial.println(i);
+      memcpy(&(devices[i]), &device, sizeof(device));
+      return;
+    }
+  }
+}
+
 
 bool enterSubSet(String& input, int& level){
   input.trim();

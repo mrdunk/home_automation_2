@@ -45,8 +45,17 @@ struct Config {
   char wifi_passwd[STRING_LEN];
   char config_version[4];
 
+  bool setValue(const String& parent,
+                const String& key,
+                const String& value,
+                Connected_device& device);
+ bool testValue(const String& parent,
+                        const String& key,
+                        const String& value);
+  void clear();
   bool save();
   bool load(const String& filename="/config.cfg", bool test=false);
+  void insertDevice(Connected_device device);
 }; 
 
 

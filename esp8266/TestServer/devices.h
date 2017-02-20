@@ -42,6 +42,9 @@ struct Connected_device {
   int io_value;
   int io_default;
   bool inverted;
+
+  void setType(const String& type);
+  void setInverted(const String& value);
 };
 
 

@@ -461,15 +461,19 @@ void HttpServer::onSet(){
   } else if (esp8266_http_server.hasArg("enableiopin")) {
     config->enable_io_pin = esp8266_http_server.arg("enableiopin").toInt();
     sucess &= bufferInsert("enableiopin: " + esp8266_http_server.arg("enableiopin") + "\n");
-  } else if (esp8266_http_server.hasArg("device") and esp8266_http_server.hasArg("address_segment") and
-      esp8266_http_server.hasArg("iotype") and esp8266_http_server.hasArg("io_pin")) {
+  } else if (esp8266_http_server.hasArg("device") and
+             esp8266_http_server.hasArg("address_segment") and
+             esp8266_http_server.hasArg("iotype") and esp8266_http_server.hasArg("io_pin")) {
     unsigned int index = esp8266_http_server.arg("device").toInt();
     Connected_device device;
 
     int segment_counter = 0;
     for(int i = 0; i < esp8266_http_server.args(); i++){
-      if(esp8266_http_server.argName(i) == "address_segment" && segment_counter < ADDRESS_SEGMENTS){
-        esp8266_http_server.arg(i).toCharArray(device.address_segment[segment_counter].segment, NAME_LEN);
+      if(esp8266_http_server.argName(i) == "address_segment" &&
+          segment_counter < ADDRESS_SEGMENTS)
+      {
+        esp8266_http_server.arg(i).toCharArray(
+            device.address_segment[segment_counter].segment, NAME_LEN);
         sanitizeTopicSection(device.address_segment[segment_counter].segment);
         segment_counter++;
       }
@@ -479,19 +483,7 @@ void HttpServer::onSet(){
     }
 
     if(esp8266_http_server.hasArg("iotype")){
-      if (esp8266_http_server.arg("iotype") == "pwm") {
-        device.io_type = Io_Type::pwm;
-      } else if (esp8266_http_server.arg("iotype") == "onoff") {
-        device.io_type = Io_Type::onoff;
-      } else if (esp8266_http_server.arg("iotype") == "input") {
-        device.io_type = Io_Type::input;
-      } else if (esp8266_http_server.arg("iotype") == "inputPullUp") {
-        device.io_type = Io_Type::input_pullup;
-      } else if (esp8266_http_server.arg("iotype") == "timer") {
-        device.io_type = Io_Type::timer;
-      } else {
-        device.io_type = Io_Type::test;
-      }
+      device.setType(esp8266_http_server.arg("iotype"));
     }
 
     if(esp8266_http_server.hasArg("io_pin")){
@@ -501,13 +493,7 @@ void HttpServer::onSet(){
       device.io_default = esp8266_http_server.arg("io_default").toInt();
     }
     if(esp8266_http_server.hasArg("inverted")){
-      if(esp8266_http_server.arg("inverted") == "true"){
-        device.inverted = true;
-      } else if(esp8266_http_server.arg("inverted") == "false"){
-        device.inverted = false;
-      } else {
-        device.inverted = esp8266_http_server.arg("inverted").toInt();
-      }
+      device.setInverted(esp8266_http_server.arg("inverted"));
     }
 
     SetDevice(index, device);

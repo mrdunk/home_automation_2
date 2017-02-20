@@ -27,6 +27,32 @@
 extern void configInterrupt();
 extern Config config;
 
+void Connected_device::setType(const String& type){
+  if (type == "pwm") {
+    io_type = Io_Type::pwm;
+  } else if (type == "onoff") {
+    io_type = Io_Type::onoff;
+  } else if (type == "input") {
+    io_type = Io_Type::input;
+  } else if (type == "inputPullUp") {
+    io_type = Io_Type::input_pullup;
+  } else if (type == "timer") {
+    io_type = Io_Type::timer;
+  } else {
+    io_type = Io_Type::test;
+  }
+}
+
+void Connected_device::setInverted(const String& value){
+  if(value == "true"){
+    inverted = true;
+  } else if(value == "false"){
+    inverted = false;
+  } else {
+    inverted = value.toInt();
+  }
+}
+
 // Ensure buffer contains only valid characters for a word in an MQTT topic.
 void sanitizeTopicSection(char* buffer){
   bool wildcard_found = false;
