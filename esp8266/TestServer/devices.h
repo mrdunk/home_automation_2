@@ -81,4 +81,6 @@ class Io{
   unsigned int last_update;
 };
 
+const String TypeToString(Io_Type type);
+
 #endif  // ESP8266__DEVICES_H

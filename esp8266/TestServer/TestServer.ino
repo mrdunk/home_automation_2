@@ -213,8 +213,8 @@ void loop(void) {
 
   if(config.pull_firmware){
     bool result = pullFirmware();
-	  result &= pullFile("style.css", config);
-	  result &= pullFile("script.js", config);
+	  //result &= pullFile("style.css", config);
+	  //result &= pullFile("script.js", config);
     if(result){
 			Serial.println("Upgrade successful.");
     }

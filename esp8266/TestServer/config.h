@@ -28,7 +28,7 @@
 
 // Increase this if any changes are made to "struct Config" or you need to reset
 // config to default values.
-#define CONFIG_VERSION "013"
+#define CONFIG_VERSION "014"
 
 // Maximum number of devices connected to IO pins.
 #define MAX_DEVICES 4

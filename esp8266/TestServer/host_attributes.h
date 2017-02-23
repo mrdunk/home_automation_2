@@ -53,8 +53,8 @@ struct Config {
                         const String& key,
                         const String& value);
   void clear();
-  bool save();
   bool load(const String& filename="/config.cfg", bool test=false);
+  bool save(const String& filename="/config.cfg");
   void insertDevice(Connected_device device);
 }; 
 

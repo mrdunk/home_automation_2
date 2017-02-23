@@ -209,7 +209,9 @@ bool Config::setValue(const String& parent,
 }
 
 bool Config::load(const String& filename, bool test){
-  clear();
+  if(!test){
+    clear();
+  }
 
   bool result = SPIFFS.begin();
   if(!result){
@@ -225,6 +227,7 @@ bool Config::load(const String& filename, bool test){
     return false;
   }
 
+  bool error = false;
   int line_num = 0;
   String line = "";
   int level = 0;
@@ -253,12 +256,14 @@ bool Config::load(const String& filename, bool test){
       key.toLowerCase();
       if(test){
         if(!testValue(parent, key, value)){
+          error = true;
           Serial.printf("Problem in file: %s  on line: %i\n", filename.c_str(), line_num);
           Serial.printf("  near: \"%s\"\n", line.c_str());
         }
       } else {
         Serial.printf("%i:%s  %s : %s\n", level, parent.c_str(), key.c_str(), value.c_str());
         if(!setValue(parent, key, value, device)){
+          error = true;
           Serial.printf("Problem in file: %s  on line: %i\n", filename.c_str(), line_num);
           Serial.printf("  near: \"%s\"\n", line.c_str());
         }
@@ -275,7 +280,7 @@ bool Config::load(const String& filename, bool test){
         parent = "root";
       }
     } else if(enterList(line, inside_list, list_index, level)) {
-      if(list_index != previous_list_index){
+      if(!test && list_index != previous_list_index){
         insertDevice(device);
         device = (const Connected_device){0};
         previous_list_index = list_index;
@@ -298,14 +303,136 @@ bool Config::load(const String& filename, bool test){
   }
 
   file.close();
+  return !error;
+}
+
+bool Config::save(const String& filename){
+	bool result = SPIFFS.begin();
+  if(!result){
+		Serial.println("Unable to use SPIFFS.");
+    return false;
+  }
+
+	// this opens the file in read-mode
+	File file = SPIFFS.open(filename, "r");
+
+	if (!file) {
+		Serial.print("File doesn't exist yet. Creating it: ");
+	} else {
+		Serial.print("Overwriting file: ");
+	}
+  Serial.println(filename);
+  file.close();
+
+	// open the file in write mode
+	file = SPIFFS.open(filename, "w");
+	if (!file) {
+		Serial.println("file creation failed");
+		return false;
+	}
+
+	file.println("{");
+
+  file.print("  \"hostname\": \"");
+  file.print(hostname);
+  file.println("\",");
+
+	file.print("  \"ip\": \"");
+  file.print(ip_to_string(ip));
+  file.println("\",");
+
+	file.print("  \"gateway\": \"");
+  file.print(ip_to_string(gateway));
+  file.println("\",");
+
+	file.print("  \"subnet\": \"");
+  file.print(ip_to_string(subnet));
+  file.println("\",");
+
+	file.print("  \"broker_ip\": \"");
+  file.print(ip_to_string(broker_ip));
+  file.println("\",");
+
+	file.print("  \"broker_port\": \"");
+  file.print(broker_port);
+  file.println("\",");
+
+	file.print("  \"subscribe_prefix\": \"");
+  file.print(subscribe_prefix);
+  file.println("\",");
+
+	file.print("  \"publish_prefix\": \"");
+  file.print(publish_prefix);
+  file.println("\",");
+
+	file.print("  \"firmware_host\": \"");
+  file.print(firmware_host);
+  file.println("\",");
+
+	file.print("  \"firmware_directory\": \"");
+  file.print(firmware_directory);
+  file.println("\",");
+
+	file.print("  \"firmware_port\": \"");
+  file.print(firmware_port);
+  file.println("\",");
+
+	file.print("  \"enable_passphrase\": \"");
+  file.print(enable_passphrase);
+  file.println("\",");
+
+	file.print("  \"enable_io_pin\": \"");
+  file.print(enable_io_pin);
+  file.println("\",");
+
+	file.print("  \"wifi_ssid\": \"");
+  file.print(wifi_ssid);
+  file.println("\",");
+
+	file.print("  \"wifi_passwd\": \"");
+  file.print(wifi_passwd);
+  file.println("\",");
+
+  file.println("  \"brokers\": [");
+  for(int i = 0; i < MAX_DEVICES; i++){
+    if(strlen(config.devices[i].address_segment[0].segment) > 0){
+      file.print("    {\"address\": \"");
+      file.print(DeviceAddress(config.devices[i]));
+      file.println("\",");
+
+      file.print("     \"io_type\": \"");
+      file.print(TypeToString(config.devices[i].io_type));
+      file.println("\",");
+
+      file.print("     \"io_pin\": \"");
+      file.print(config.devices[i].io_pin);
+      file.println("\",");
+
+      file.print("     \"io_value\": \"");
+      file.print(config.devices[i].io_value);
+      file.println("\",");
+
+      file.print("     \"io_default\": \"");
+      file.print(config.devices[i].io_default);
+      file.println("\",");
+
+      file.print("     \"inverted\": \"");
+      file.print(config.devices[i].inverted);
+      file.println("\"},");
+    }
+  }
+  file.println("  ]");
+  file.println("}");
+
+  file.close();
+  Serial.println("Done saving config file.");
+
   return true;
 }
 
 void Config::insertDevice(Connected_device device){
-  Serial.println("insertDevice");
   if(device.address_segment[0].segment[0] == '\0'){
     // Not a populated device.
-    Serial.println("Not a populated device.");
     return;
   }
   for(int i = 0; i < MAX_DEVICES; i++){

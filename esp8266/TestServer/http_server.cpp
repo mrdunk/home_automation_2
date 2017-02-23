@@ -51,23 +51,27 @@ HttpServer::HttpServer(char* _buffer,
   esp8266_http_server = ESP8266WebServer(HTTP_PORT);
   //esp8266_http_server.on("/test", [&]() {onTest();});
   esp8266_http_server.on("/", [&]() {onRoot();});
-  esp8266_http_server.on("/script.js", [&]() {onGetFile("script.js");});
-  esp8266_http_server.on("/style.css", [&]() {onGetFile("style.css");});
-  esp8266_http_server.on("/config.cfg", [&]() {onGetFile("config.cfg");});
+  esp8266_http_server.on("/get/config.cfg", [&]() {pullFile("config.cfg", *config);
+                                                  if(config->load("/config.cfg", true)){
+                                                    config->load(); 
+                                                  }
+                                                  onTest();});
+  esp8266_http_server.on("/save/config.cfg", [&]() { config->save(); 
+                                                     onTest();});
   esp8266_http_server.on("/configure", [&]() {onConfig();});
   esp8266_http_server.on("/configure/", [&]() {onConfig();});
   esp8266_http_server.on("/set", [&]() {onSet();});
   esp8266_http_server.on("/set/", [&]() {onSet();});
-  esp8266_http_server.on("/pullfirmware", [&]() {onPullFirmware();});
-  esp8266_http_server.on("/pullfirmware/", [&]() {onPullFirmware();});
   esp8266_http_server.on("/reset", [&]() {onReset();});
   esp8266_http_server.on("/reset/", [&]() {onReset();});
   esp8266_http_server.on("/test", [&]() {pullFile("config.cfg", *config); config->load(); onTest();});
+  esp8266_http_server.on("/get", [&]() {onFileOperations();});
+  esp8266_http_server.onNotFound([&]() {handleNotFound();});
 
   esp8266_http_server.begin();
-
   bufferClear();
 }
+
 
 void HttpServer::loop(){
   esp8266_http_server.handleClient();
@@ -75,6 +79,79 @@ void HttpServer::loop(){
 
 void HttpServer::onTest(){
   bufferAppend("testing");
+  esp8266_http_server.send(200, "text/plain", buffer);
+}
+
+void HttpServer::handleNotFound(){
+  String filename = esp8266_http_server.uri();
+  filename.remove(0, 1); // Leading "/" character.
+  onFileOperations(filename);
+}
+
+void HttpServer::onFileOperations(const String& _filename){
+  bufferClear();
+
+  String filename = "";
+  if(_filename.length()){
+    filename = _filename;
+  } else  if(esp8266_http_server.hasArg("filename")){
+    filename = esp8266_http_server.arg("filename");
+  }
+
+  if(filename.length()){
+    if(esp8266_http_server.hasArg("action") and 
+          esp8266_http_server.arg("action") == "pull"){
+      // Pull file from server.
+      bufferAppend("Pulling firmware from " +
+          String(config->firmware_host) + ":" + String(config->firmware_port) +
+          String(config->firmware_directory) + filename + "\n");
+      if(filename == "firmware.bin"){
+        esp8266_http_server.send(200, "text/plain", buffer);
+        // Set the config->pull_firmware bit in flash and reboot so we pull new firmware on
+        // next boot.
+        config->pull_firmware = true;
+        Persist_Data::Persistent<Config> persist_config(config);
+        persist_config.writeConfig();
+
+        delay(100);
+        ESP.reset();
+      } else {
+        if(!pullFile(filename, *config)){
+          bufferAppend("Problem getting file from server.\n");
+          esp8266_http_server.send(404, "text/plain", buffer);
+          return;
+        }
+        bufferAppend("Successfully got file from server.\n");
+        esp8266_http_server.send(200, "text/plain", buffer);
+        return;
+      }
+    } else {
+      // Display file in esp8266 flash.
+      String mime;
+      if(!readFile(filename, mime)){
+        esp8266_http_server.send(404, "text/plain", buffer);
+        return;
+      }
+      esp8266_http_server.send(200, mime, buffer);
+      return;
+    }
+  } else {
+    bool result = SPIFFS.begin();
+    Dir dir = SPIFFS.openDir("/");
+    while(dir.next()){
+      String filename = dir.fileName();
+      filename.remove(0, 1);
+      
+      File file = dir.openFile("r");
+      String size(file.size());
+      file.close();
+      
+      bufferAppend(link(filename, "get?filename=" + filename) + "\t" + size + "\n");
+    }
+    esp8266_http_server.send(200, "text/html", buffer);
+    return;
+  }
+
   esp8266_http_server.send(200, "text/plain", buffer);
 }
 
@@ -170,25 +247,25 @@ void HttpServer::onRoot(){
   esp8266_http_server.send((sucess ? 200 : 500), "text/html", buffer);
 }
 
-void HttpServer::readAndTransmitFile(const String& filename){
+bool HttpServer::readFile(const String& filename, String& mime){
 	bool result = SPIFFS.begin();
   if(!result){
 		Serial.println("Unable to use SPIFFS.");
-    esp8266_http_server.send(404, "text/html", "Unable to use SPIFFS.");
-    return;
+    bufferAppend("Unable to use SPIFFS.");
+    return false;
   }
 
 	// this opens the file in read-mode
 	File file = SPIFFS.open("/" + filename, "r");
 
 	if (!file) {
-		Serial.println("File doesn't exist.");
-    esp8266_http_server.send(404, "text/html", "File doesn't exist.");
-    return;
+		Serial.print("File doesn't exist: ");
+    Serial.println(filename);
+    bufferAppend("File doesn't exist: " + filename);
+
+    return false;
   }
 
-  buffer[0] = '\0';
-  
   while(file.available()) {
     //Lets read line by line from the file
     String line = file.readStringUntil('\n');
@@ -197,7 +274,7 @@ void HttpServer::readAndTransmitFile(const String& filename){
 
 	file.close();
 
-  String mime = "text/plain";
+  mime = "text/plain";
   if(filename.endsWith(".css")){
     mime = "text/css";
   } else if(filename.endsWith(".js")){
@@ -206,12 +283,7 @@ void HttpServer::readAndTransmitFile(const String& filename){
     mime = "text/plain";
   }
 
-  esp8266_http_server.send(200, mime, buffer);
-}
-
-void HttpServer::onGetFile(const String& filename){
-  Serial.println("onGetFile() +");
-  readAndTransmitFile(filename);
+  return true;
 }
 
 void HttpServer::onConfig(){
@@ -313,19 +385,8 @@ void HttpServer::onConfig(){
         sucess &= bufferAppend(cell(config->subscribe_prefix + String("/") +
             textField(name, "some/topic", DeviceAddress(config->devices[i]),
               "device_" + String(i) + "_topic")));
-        if (config->devices[i].io_type == Io_Type::pwm) {
-          sucess &= bufferAppend(cell(outletType("pwm", "device_" + String(i) + "_iotype")));
-        } else if (config->devices[i].io_type == Io_Type::onoff) {
-          sucess &= bufferAppend(cell(outletType("onoff", "device_" + String(i) + "_iotype")));
-        } else if (config->devices[i].io_type == Io_Type::timer) {
-          sucess &= bufferAppend(cell(outletType("timer", "device_" + String(i) + "_iotype")));
-        } else if (config->devices[i].io_type == Io_Type::input_pullup) {
-          sucess &= bufferAppend(cell(outletType("inputPullUp", "device_" + String(i) + "_iotype")));
-        } else if (config->devices[i].io_type == Io_Type::input) {
-          sucess &= bufferAppend(cell(outletType("input", "device_" + String(i) + "_iotype")));
-        } else {
-          sucess &= bufferAppend(cell(outletType("test", "device_" + String(i) + "_iotype")));
-        }
+        sucess &= bufferAppend(cell(outletType(TypeToString(config->devices[i].io_type),
+                                               "device_" + String(i) + "_iotype")));
         sucess &= bufferAppend(cell(ioPin(config->devices[i].io_pin,
               "device_" + String(i) + "_io_pin")));
         sucess &= bufferAppend(cell(ioValue(config->devices[i].io_default,
@@ -366,7 +427,18 @@ void HttpServer::onConfig(){
     
     sucess &= bufferAppend(tableEnd());
 
-    sucess &= bufferAppend(descriptionListItem("Pull firmware", link("go", "pullfirmware")));
+    sucess &= bufferAppend(descriptionListItem("firmware.bin",
+          link("view", "get?filename=firmware.bin") + " " +
+          link("get", "/get?action=pull&filename=firmware.bin")));
+    sucess &= bufferAppend(descriptionListItem("config.cfg",
+          link("view", "get?filename=config.cfg") + " " +
+          link("get", "get?action=pull&filename=config.cfg")));
+    sucess &= bufferAppend(descriptionListItem("script.js",
+          link("view", "get?filename=script.js") + " " +
+          link("get", "get?action=pull&filename=script.js")));
+    sucess &= bufferAppend(descriptionListItem("style.css",
+          link("view", "get?filename=style.css") + " " +
+          link("get", "get?action=pull&filename=style.css")));
   
     sucess &= bufferInsert(listStart());
     sucess &= sucess &= bufferAppend(listEnd());
@@ -505,27 +577,16 @@ void HttpServer::onSet(){
     io->setup();
   }
   
-  Persist_Data::Persistent<Config> persist_config(config);
-  persist_config.writeConfig();
 
   Serial.println(buffer);
 
   Serial.println("onSet() -");
+  if(sucess){
+    Persist_Data::Persistent<Config> persist_config(config);
+    persist_config.writeConfig();
+    config->save();
+  }
   esp8266_http_server.send((sucess ? 200 : 500), "text/plain", buffer);
-}
-
-// Set the config->pull_firmware bit in flash and reboot so we pull new firmware on
-// next boot.
-void HttpServer::onPullFirmware(){
-  String message = "Pulling firmware\n";
-  esp8266_http_server.send(200, "text/plain", message);
-  
-  config->pull_firmware = true;
-  Persist_Data::Persistent<Config> persist_config(config);
-  persist_config.writeConfig();
-  
-  delay(100);
-  ESP.reset();
 }
 
 void HttpServer::onReset() {

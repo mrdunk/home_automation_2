@@ -265,3 +265,19 @@ void Io::mqttAnnounce(const Connected_device& device){
 
   mqtt->announce(topic, payload);
 }
+
+const String TypeToString(Io_Type type){
+  if (type == Io_Type::pwm) {
+    return "pwm";
+  } else if (type == Io_Type::onoff) {
+    return "onoff";
+  } else if (type == Io_Type::input) {
+    return "input";
+  } else if (type == Io_Type::input_pullup) {
+    return "inputPullUp";
+  } else if (type == Io_Type::timer) {
+    return "timer";
+  }
+  return "test";
+}
+

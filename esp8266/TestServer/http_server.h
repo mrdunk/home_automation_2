@@ -40,13 +40,13 @@ class HttpServer{
  private:
   ESP8266WebServer esp8266_http_server;
   void onTest();
+  void handleNotFound();
+  void onFileOperations(const String& _filename = "");
   void onRoot();
-  void onGetFile(const String& filename);
   void onConfig();
   void onSet();
-  void onPullFirmware();
   void onReset();
-  void readAndTransmitFile(const String& filename);
+  bool readFile(const String& filename, String& mime);
   char* buffer;
   const int buffer_size;
   Config* config;
