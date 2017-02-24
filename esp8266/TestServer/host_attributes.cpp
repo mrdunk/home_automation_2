@@ -102,7 +102,8 @@ bool Config::testValue(const String& parent,
        key == "enable_passphrase" ||
        key == "enable_io_pin" ||
        key == "wifi_ssid" ||
-       key == "wifi_passwd")
+       key == "wifi_passwd" ||
+       key == "brokers")
     {
       return true;
     }
@@ -248,29 +249,21 @@ bool Config::load(const String& filename, bool test){
       line_num++;
       line += file.readStringUntil('\n');
     }
-  
+
     if(line.startsWith("#")){
       // Rest of line is a comment so ignore it.
       line = "";
     } else if(getKeyValue(line, key, value)){
       key.toLowerCase();
-      if(test){
-        if(!testValue(parent, key, value)){
-          error = true;
-          Serial.printf("Problem in file: %s  on line: %i\n", filename.c_str(), line_num);
-          Serial.printf("  near: \"%s\"\n", line.c_str());
-        }
-      } else {
-        Serial.printf("%i:%s  %s : %s\n", level, parent.c_str(), key.c_str(), value.c_str());
-        if(!setValue(parent, key, value, device)){
-          error = true;
-          Serial.printf("Problem in file: %s  on line: %i\n", filename.c_str(), line_num);
-          Serial.printf("  near: \"%s\"\n", line.c_str());
-        }
-        if(key == "brokers"){
-          parent = key;
-          key = "";
-        }
+      //Serial.printf("%i:%s  %s : %s\n", level, parent.c_str(), key.c_str(), value.c_str());
+      if((test and !testValue(parent, key, value)) || !setValue(parent, key, value, device)){
+        error = true;
+        Serial.printf("Problem in file: %s  on line: %i\n", filename.c_str(), line_num);
+        Serial.printf("  near: \"%s\"\n", line.c_str());
+      }
+      if(key == "brokers"){
+        parent = key;
+        key = "";
       }
       key = "";
     } else if((key != "") && (value != "error")) {
@@ -408,9 +401,9 @@ bool Config::save(const String& filename){
       file.print(config.devices[i].io_pin);
       file.println("\",");
 
-      file.print("     \"io_value\": \"");
-      file.print(config.devices[i].io_value);
-      file.println("\",");
+      //file.print("     \"io_value\": \"");
+      //file.print(config.devices[i].io_value);
+      //file.println("\",");
 
       file.print("     \"io_default\": \"");
       file.print(config.devices[i].io_default);
@@ -437,7 +430,6 @@ void Config::insertDevice(Connected_device device){
   }
   for(int i = 0; i < MAX_DEVICES; i++){
     if(devices[i].address_segment[0].segment[0] == '\0'){
-      Serial.println(i);
       memcpy(&(devices[i]), &device, sizeof(device));
       return;
     }
@@ -485,8 +477,6 @@ bool enterList(String& input, bool& inside_list, int& list_index,
     return true;
   } else if(inside_list and input.startsWith(",") and current_level == list_level){
     list_index++;
-    Serial.print("list_index: ");
-    Serial.println(list_index);
     input.remove(0, 1);
     input.trim();
     return true;

@@ -26,10 +26,6 @@
 // Reset if unable to connect to WiFi after this many seconds.
 #define RESET_ON_CONNECT_FAIL 60
 
-// Increase this if any changes are made to "struct Config" or you need to reset
-// config to default values.
-#define CONFIG_VERSION "014"
-
 // Maximum number of devices connected to IO pins.
 #define MAX_DEVICES 4
 

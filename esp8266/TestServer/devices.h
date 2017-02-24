@@ -66,7 +66,10 @@ void SetDevice(const unsigned int index, Connected_device& device);
 
 class Io{
  public:
-  Io(Mqtt* mqtt_) : mqtt(mqtt_){};
+  Io(Mqtt* mqtt_) : mqtt(mqtt_){
+    // Set these to an unlikely value so pins get initialised first time Io::setup() is called.
+    memset(pin_modes, 255, 16);
+  };
   void setup();
   void loop();
   void changeState(Connected_device& device, String command);
@@ -76,9 +79,13 @@ class Io{
   void mqttAnnounce(const Connected_device& device);
  private:
   void (*callback)();
+  void setPinMode(uint8_t io_pin, uint8_t mode);
+  void setPinAnalog(uint8_t io_pin, int value);
   bool dirty_inputs;
   Mqtt* mqtt;
   unsigned int last_update;
+  uint8_t pin_modes[16];
+  int pin_analog_value[16];
 };
 
 const String TypeToString(Io_Type type);

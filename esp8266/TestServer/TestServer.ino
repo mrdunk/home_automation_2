@@ -32,8 +32,6 @@
 #include "mqtt.h"
 #include "ipv4_helpers.h"
 #include "secrets.h"
-#include "persist_data.h"
-#include "persist_data.cpp"   // Template arguments confuse the linker so need to include .cpp .
 #include "mdns_actions.h"
 #include "host_attributes.h"
 #include "config.h"
@@ -44,7 +42,7 @@
 Config config = {
   "",
   {0,0,0,0},  // Null IP address means use DHCP.
-  {0,0,0,0},
+  {255,255,255,0},
   {0,0,0,0},
   {0,0,0,0},
   1883,
@@ -56,10 +54,8 @@ Config config = {
   8000,
   "",
   0,
-  false,
   "",
   "",
-  CONFIG_VERSION
 };
 
 // Global to track whether access to configuration WebPages should be allowed.
@@ -91,12 +87,50 @@ HttpServer http_server((char*)buffer, BUFFER_SIZE, &config, &brokers,
                        &my_mdns, &mqtt, &io, &allow_config);
 
 
+void setPullFirmware(bool pull){
+	bool result = SPIFFS.begin();
+  if(!result){
+		Serial.println("Unable to use SPIFFS.");
+    return;
+  }
+	
+  if(pull){
+    // Create a file to indicate we should pull new firmware from server after reboot.
+    File file = SPIFFS.open("/pullFirmware.flag", "w");
+    if (!file) {
+      Serial.println("file creation failed");
+      return;
+    }
+    file.close();
+  } else {
+    // Remove file, indicating we should not pull new firmware from server after reboot.
+    SPIFFS.remove("/pullFirmware.flag");
+  }
+}
+
+bool testPullFirmware(){
+	bool result = SPIFFS.begin();
+  if(!result){
+		Serial.println("Unable to use SPIFFS.");
+    return false;
+  }
+
+  File file = SPIFFS.open("/pullFirmware.flag", "r");
+  if(file){
+    // File exists so we should pull firmware.
+    file.close();
+    return true;
+  }
+  return false;
+}
+
 // If we boot with the config.pull_firmware bit set in flash we should pull new firmware
 // from an HTTP server.
 bool pullFirmware(){
-  config.pull_firmware = false;
-  Persist_Data::Persistent<Config> persist_config(&config);
-  persist_config.writeConfig();
+  //config.pull_firmware = false;
+  //Persist_Data::Persistent<Config> persist_config(&config);
+  //persist_config.writeConfig();
+  setPullFirmware(false);
 
   for(int tries = 0; tries < UPLOAD_FIRMWARE_RETRIES; tries++){
     ESPhttpUpdate.rebootOnUpdate(false);
@@ -164,7 +198,7 @@ void setup_network(void) {
   Serial.print("IP address: ");
   Serial.println(WiFi.localIP());
 
-  if(!config.pull_firmware){
+  if(!testPullFirmware()){
     brokers.InsertManual("broker_hint", config.broker_ip, config.broker_port);
     brokers.RegisterMDns(&my_mdns);
   }
@@ -182,12 +216,14 @@ void setup(void) {
   Serial.println("Reset.");
   Serial.println();
 
-  Persist_Data::Persistent<Config> persist_config(&config);
-  persist_config.readConfig();
+  if(config.load("/config.cfg", true)){
+    config.load("/config.cfg");
+	}
 
-  if(config.pull_firmware){
+  if(testPullFirmware()){
     Serial.println("Pull Firmware mode!!");
   } else {
+    // Do IO setup early in case an IO pin needs to hold power to esp8266 on.
     pinMode(config.enable_io_pin, INPUT_PULLUP);
     attachInterrupt(digitalPinToInterrupt(config.enable_io_pin), configInterrupt, CHANGE);
     io.registerCallback([]() {io.inputCallback();});  // Inline callback function.
@@ -211,10 +247,8 @@ void loop(void) {
     setup_network();
   }
 
-  if(config.pull_firmware){
+  if(testPullFirmware()){
     bool result = pullFirmware();
-	  //result &= pullFile("style.css", config);
-	  //result &= pullFile("script.js", config);
     if(result){
 			Serial.println("Upgrade successful.");
     }

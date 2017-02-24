@@ -26,10 +26,10 @@
 #include "http_server.h"
 #include "html_primatives.h"
 #include "ipv4_helpers.h"
-#include "persist_data.h"
-#include "persist_data.cpp"   // Template arguments confuse the linker so need to include .cpp .
 #include "config.h"
 #include "serve_files.h"
+
+extern void setPullFirmware(bool pull);
 
 HttpServer::HttpServer(char* _buffer,
                        const int _buffer_size,
@@ -49,22 +49,14 @@ HttpServer::HttpServer(char* _buffer,
     allow_config(_allow_config)
 {
   esp8266_http_server = ESP8266WebServer(HTTP_PORT);
-  //esp8266_http_server.on("/test", [&]() {onTest();});
+  esp8266_http_server.on("/test", [&]() {onTest();});
   esp8266_http_server.on("/", [&]() {onRoot();});
-  esp8266_http_server.on("/get/config.cfg", [&]() {pullFile("config.cfg", *config);
-                                                  if(config->load("/config.cfg", true)){
-                                                    config->load(); 
-                                                  }
-                                                  onTest();});
-  esp8266_http_server.on("/save/config.cfg", [&]() { config->save(); 
-                                                     onTest();});
   esp8266_http_server.on("/configure", [&]() {onConfig();});
   esp8266_http_server.on("/configure/", [&]() {onConfig();});
   esp8266_http_server.on("/set", [&]() {onSet();});
   esp8266_http_server.on("/set/", [&]() {onSet();});
   esp8266_http_server.on("/reset", [&]() {onReset();});
   esp8266_http_server.on("/reset/", [&]() {onReset();});
-  esp8266_http_server.on("/test", [&]() {pullFile("config.cfg", *config); config->load(); onTest();});
   esp8266_http_server.on("/get", [&]() {onFileOperations();});
   esp8266_http_server.onNotFound([&]() {handleNotFound();});
 
@@ -107,11 +99,9 @@ void HttpServer::onFileOperations(const String& _filename){
           String(config->firmware_directory) + filename + "\n");
       if(filename == "firmware.bin"){
         esp8266_http_server.send(200, "text/plain", buffer);
-        // Set the config->pull_firmware bit in flash and reboot so we pull new firmware on
+        // Set flag in persistent filesystem and reboot so we pull new firmware on
         // next boot.
-        config->pull_firmware = true;
-        Persist_Data::Persistent<Config> persist_config(config);
-        persist_config.writeConfig();
+        setPullFirmware(true);
 
         delay(100);
         ESP.reset();
@@ -183,7 +173,6 @@ void HttpServer::onRoot(){
   sucess &= bufferAppend(descriptionListItem("Free memory", String(ESP.getFreeHeap())));
   sucess &= bufferAppend(descriptionListItem("SDK version", ESP.getSdkVersion()));
   sucess &= bufferAppend(descriptionListItem("Core version", ESP.getCoreVersion()));
-  sucess &= bufferAppend(descriptionListItem("Config version", config->config_version));
   sucess &= bufferAppend(descriptionListItem("&nbsp", "&nbsp"));
   sucess &= bufferAppend(descriptionListItem("Analogue in", String(analogRead(A0))));
   sucess &= bufferAppend(descriptionListItem("System clock", String(millis() / 1000)));
@@ -428,17 +417,17 @@ void HttpServer::onConfig(){
     sucess &= bufferAppend(tableEnd());
 
     sucess &= bufferAppend(descriptionListItem("firmware.bin",
-          link("view", "get?filename=firmware.bin") + " " +
-          link("get", "/get?action=pull&filename=firmware.bin")));
+          link("view", "get?filename=firmware.bin") + "&nbsp;&nbsp;&nbsp;" +
+          link("pull_from_server", "/get?action=pull&filename=firmware.bin")));
     sucess &= bufferAppend(descriptionListItem("config.cfg",
-          link("view", "get?filename=config.cfg") + " " +
-          link("get", "get?action=pull&filename=config.cfg")));
+          link("view", "get?filename=config.cfg") + "&nbsp;&nbsp;&nbsp;" +
+          link("pull_from_server", "get?action=pull&filename=config.cfg")));
     sucess &= bufferAppend(descriptionListItem("script.js",
-          link("view", "get?filename=script.js") + " " +
-          link("get", "get?action=pull&filename=script.js")));
+          link("view", "get?filename=script.js") + "&nbsp;&nbsp;&nbsp;" +
+          link("pull_from_server", "get?action=pull&filename=script.js")));
     sucess &= bufferAppend(descriptionListItem("style.css",
-          link("view", "get?filename=style.css") + " " +
-          link("get", "get?action=pull&filename=style.css")));
+          link("view", "get?filename=style.css") + "&nbsp;&nbsp;&nbsp;" +
+          link("pull_from_server", "get?action=pull&filename=style.css")));
   
     sucess &= bufferInsert(listStart());
     sucess &= sucess &= bufferAppend(listEnd());
@@ -582,8 +571,8 @@ void HttpServer::onSet(){
 
   Serial.println("onSet() -");
   if(sucess){
-    Persist_Data::Persistent<Config> persist_config(config);
-    persist_config.writeConfig();
+    //Persist_Data::Persistent<Config> persist_config(config);
+    //persist_config.writeConfig();
     config->save();
   }
   esp8266_http_server.send((sucess ? 200 : 500), "text/plain", buffer);

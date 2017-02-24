@@ -142,14 +142,16 @@ void Io::setup(){
     if (strlen(config.devices[i].address_segment[0].segment) > 0) {
       if(config.devices[i].io_type == input_pullup){
         config.devices[i].io_value = 1;
-        pinMode(config.devices[i].io_pin, INPUT_PULLUP);
+        setPinMode(config.devices[i].io_pin, INPUT_PULLUP);
+        //pinMode(config.devices[i].io_pin, INPUT_PULLUP);
         if(callback){
           attachInterrupt(digitalPinToInterrupt(config.devices[i].io_pin),
                           callback, CHANGE);
         }
       } else if(config.devices[i].io_type == input){
         config.devices[i].io_value = 1;
-        pinMode(config.devices[i].io_pin, INPUT);
+        setPinMode(config.devices[i].io_pin, INPUT);
+        //pinMode(config.devices[i].io_pin, INPUT);
         if(callback){
           attachInterrupt(digitalPinToInterrupt(config.devices[i].io_pin),
                           callback, CHANGE);
@@ -213,17 +215,31 @@ void Io::changeState(Connected_device& device, String command){
   setState(device);
 }
 
+void Io::setPinMode(uint8_t io_pin, uint8_t mode){
+  if(pin_modes[io_pin] != mode){
+    pin_modes[io_pin] = mode;
+    pinMode(io_pin, mode);
+  }
+}
+
+void Io::setPinAnalog(uint8_t io_pin, int value){
+  if(pin_analog_value[io_pin] != value){
+    pin_analog_value[io_pin] = value;
+    analogWrite(io_pin, value);
+  }
+}
+
 void Io::setState(Connected_device& device){
   if(device.io_type == onoff){
-    pinMode(device.io_pin, OUTPUT);
+    setPinMode(device.io_pin, OUTPUT);
     // If pin was previously set to Io_Type::pwm we need to switch off analogue output
     // before using digital output.
-    analogWrite(device.io_pin, 0);
+    setPinAnalog(device.io_pin, 0);
     
     digitalWrite(device.io_pin, device.inverted ? (device.io_value == 0) : device.io_value);
   } else if(device.io_type == pwm){
-    pinMode(device.io_pin, OUTPUT);
-    analogWrite(device.io_pin, device.inverted ? (255 - device.io_value) : device.io_value);
+    setPinMode(device.io_pin, OUTPUT);
+    setPinAnalog(device.io_pin, device.inverted ? (255 - device.io_value) : device.io_value);
   } else if(device.io_type == test){
     Serial.print("Switching pin: ");
     Serial.print(device.io_pin);
@@ -233,17 +249,18 @@ void Io::setState(Connected_device& device){
   } else if(device.io_type == input_pullup){
   } else if(device.io_type == timer){
     const unsigned int now = millis() / 1000;
-    pinMode(device.io_pin, OUTPUT);
+    setPinMode(device.io_pin, OUTPUT);
     // If pin was previously set to Io_Type::pwm we need to switch off analogue output
     // before using digital output.
-    analogWrite(device.io_pin, 0);
+    setPinAnalog(device.io_pin, 0);
 
-    device.io_value = ((now % device.io_default) != 0);
+    if(device.io_value != ((now % device.io_default) != (device.io_default -1))){
+      device.io_value = ((now % device.io_default) != (device.io_default -1));
 
-    digitalWrite(device.io_pin, device.inverted ? (device.io_value == 0) : 
-                                                  device.io_value);
-    if(((now % device.io_default) != 0) && ((now % device.io_default) != 1)){
-      // Avoid excessive MQTT announcements.
+      digitalWrite(device.io_pin, device.inverted ? (device.io_value == 0) : 
+                                                     device.io_value);
+    } else {
+      // Only continue to MQTT announcements when state changes.
       return;
     }
   }

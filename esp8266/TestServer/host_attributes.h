@@ -40,10 +40,8 @@ struct Config {
   int firmware_port;
   char enable_passphrase[STRING_LEN];
   int enable_io_pin;
-  bool pull_firmware;
   char wifi_ssid[STRING_LEN];
   char wifi_passwd[STRING_LEN];
-  char config_version[4];
 
   bool setValue(const String& parent,
                 const String& key,
