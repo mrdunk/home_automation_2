@@ -2,7 +2,7 @@
 xtag.register('ha-container', {
   lifecycle:{
     created: function(){
-      console.log("ha-container.created");
+      //console.log("ha-container.created");
       var template = document.getElementById('ha-container').innerHTML;
       xtag.innerHTML(this, template);
 
@@ -34,7 +34,7 @@ xtag.register('ha-container', {
     // Will add recursive layers of elements to account for the requested child
     // being many layers deeper than the current.
     addChild: function(child_address, child_value){
-      console.log("addChild:", child_address, child_value)
+      //console.log("addChild:", child_address, child_value)
         
       if(child_address !== this.address && child_address.search(this.address) === 0){
         // Since "this" has children, make the button to expand it visible.
@@ -103,7 +103,7 @@ xtag.register('ha-container', {
   accessors: {
     'name': {
       set: function(value){
-        console.log("accessors:name:set:", value)
+        //console.log("accessors:name:set:", value)
         this.getElementsByClassName("ha-container-name")[0].innerHTML = value
         this._name = value
       },
@@ -120,19 +120,19 @@ xtag.register('ha-button-show-children', {
     created: function(){
       // fired once at the time a component
       // is initially created or parsed
-      console.log("ha-button-show-children.created");
+      //console.log("ha-button-show-children.created");
       var template = document.getElementById('ha-button-show-children').content;
       this.appendChild(template.cloneNode(true));
     },
     inserted: function(){
       // fired each time a component
       // is inserted into the DOM
-      console.log("ha-button-show-children.inserted");
+      //console.log("ha-button-show-children.inserted");
     }
   },
   events: {
     'click': function(){
-      console.log("ha-button-show-children.events.click");
+      //console.log("ha-button-show-children.events.click");
       this.expanded = !this.expanded;
       if(this.expanded === false){
         this.getElementsByClassName("ha-button-show-children-show")[0].style.display = "block";
@@ -156,7 +156,7 @@ xtag.register('ha-light', {
   accessors: {
     'switched': {
       set: function(value){
-        console.log('switched:', value)
+        //console.log('switched:', value)
         this.displayed = value
 
         // Now do the same for all children.
@@ -216,21 +216,22 @@ xtag.register('ha-light', {
         // Currently off. will be turning on.
         send_data = 'on';
       }
-      console.log("click:", send_data)
+      //console.log("click:", send_data)
 
       this.switched = !this.on_off;  // To trigger accessors.switched.set.
       this.tidyParent()
 
       var address = this.id.substr("ha-light-".length)
-      var children = document.getElementById("ha-container-" + address).getElementsByClassName("ha-container-children")[0].childNodes
+      var children = document.getElementById("ha-container-" + address)
+          .getElementsByClassName("ha-container-children")[0].childNodes;
+      var payload = {"_command" : send_data};
       if(children.length > 0){
-        Mqtt.send("homeautomation/0/" + address + "/_all", "_command:" + send_data)
-        Page.AppendToLog("homeautomation/0/" + address + "/_all = _command:" + send_data, "red")
+        payload._subject = "homeautomation/0/" + address + "/_all";
       } else {
-        Mqtt.send("homeautomation/0/" + address, "_command:" + send_data) 
-        Page.AppendToLog("homeautomation/0/" + address + " = _command:" + send_data, "red")
+        payload._subject = "homeautomation/0/" + address;
       }
-
+      Mqtt.send(payload._subject, payload);
+      Page.AppendToLog(payload._subject, JSON.stringify(payload), "red")
     }
   }
 });

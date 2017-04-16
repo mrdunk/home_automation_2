@@ -62,7 +62,9 @@ Mqtt.onConnect = function() {
   console.log('Subscribed to topic: ' + STATE_SUBSCRIPTION);
 
   Page.AppendToLog(Page.topics.all_devices + " = _command:solicit", 'RED');
-  Mqtt.send(Page.topics.all_devices, "_command : solicit");
+  var payload = {"_command" : "solicit",
+                 "_subject" : Page.topics.all_devices};
+  Mqtt.send(Page.topics.all_devices, payload);
 }
 
 Mqtt.onConnectionLost = function(response) {
@@ -82,48 +84,13 @@ Mqtt.onMessageArrived = function(message) {
     return;
   }
 
-  var data;
-  var regex_data = /^s*([\s\w\/:,_]+)s*$/ ;
-  if (message.payloadString.match(regex_data)) {
-    data = regex_data.exec(message.payloadString)[0];
-  }
-  if (!data) {
-    console.log('Mqtt.onMessageArrived: Illegal character in payload: ' + message.payloadString);
-    return;
-  }
-
-  // data will be a list of key:value pairs, separated by a colon (:).
-  // eg the following is valid:
-  //    _subject : users/104167545338599232229, _count : 1, _display_name : Duncan Law
-  // Ideally there will be a _subject key and the value should be a valid topic fragment.
-  // If no _subject is set, we can presume the packet applies to the address of the topic.
-  data = data.replace(/:/g, ' : ');
-  data = data.replace(/,/g, ' , ');
-  data = data.split(' ');
-
   var data_object = {};
-  var key_or_val;
-  for(var index in data){
-    if (data[index] === ''){
-      // pass.
-    } else if(!key_or_val){
-      if (data[index][0] !== '_') {
-        console.log('Mqtt.onMessageArrived: Incorrectly formed key: ' + data[index] +
-            '. Expected to start with "_".');
-        return;
-      }
-      key_or_val = data[index];
-    } else if (data[index] === ':') {
-      // pass.
-    } else if (data[index] === ','){
-      // Next key:value pair.
-      key_or_val = undefined;
-    } else if (!data_object[key_or_val]) {
-      data_object[key_or_val] = data[index];
-    } else {
-      // Append data.
-      data_object[key_or_val] += ' ' + data[index];
-    }
+  try{
+    data_object = JSON.parse(message.payloadString);
+  } catch(err) {
+    console.log("WARNING: Invalid payload:");
+    //console.log(err);
+    console.log(message.payloadString);
   }
 
   // If "_subject" missing from data_object, presume it matches the topic.
@@ -184,7 +151,13 @@ Mqtt.ParsePayload = function(payload) {
 }
 
 Mqtt.send = function(send_topic, data) {
-  message = new Paho.MQTT.Message(data);
+  var payload = JSON.stringify(data);
+  if((send_topic.length + payload.length) > 124){
+    console.log("WARNING: payload too long for esp8266 receive buffer. Trimming.");
+    data._subject = undefined;
+    payload = JSON.stringify(data);
+  }
+  message = new Paho.MQTT.Message(payload);
   message.destinationName = send_topic;
   message.qos = 1;
   Mqtt.broker.send(message);
