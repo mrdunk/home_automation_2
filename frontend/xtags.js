@@ -20,7 +20,7 @@ xtag.register('ha-container', {
         return
       }
 
-      if(type === "lighting"){
+      if(type === "io"){
         this.device_icon = document.createElement("ha-light")
         this.getElementsByClassName("ha-device-icon")[0].appendChild(this.device_icon)
         this.device_icon.id = "ha-light-" + this.address

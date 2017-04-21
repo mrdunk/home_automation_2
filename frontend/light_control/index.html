@@ -121,7 +121,7 @@
 
     function send(data) {
         message = new Messaging.Message(data);
-        message.destinationName = 'homeautomation/lighting/kitchen/worktop_1/set';  //topic;
+        message.destinationName = 'homeautomation/io/kitchen/worktop_1/set';  //topic;
         message.qos = 0;
         mqtt.send(message);
     };

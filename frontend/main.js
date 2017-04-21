@@ -111,7 +111,7 @@ Mqtt.onMessageArrived = function(message) {
   if(data_object._subject && data_object._state){
     Page.AppendToLog('  payload parsed as: {_subject: ' + data_object._subject +
         ', _state: ' + data_object._state + '}', 'yellow');
-    document.getElementById('ha-container-lighting').addChild(
+    document.getElementById('ha-container-io').addChild(
         data_object._subject, data_object._state);
   }
 };
